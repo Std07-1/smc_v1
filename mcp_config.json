@@ -1,0 +1,153 @@
+{
+  "version": "1.0",
+  "agent": {
+    "name": "AiOne_t-Copilot",
+    "description": "Помічник для Stage1/SMC шарів: аналізує дані UnifiedDataStore, допомагає з SMC-core, тестами та QA-раннерами.",
+    "capabilities": [
+      "code-generation",
+      "context-aware-suggestions",
+      "smc-core-support",
+      "unified-store-debug",
+      "qa-runner-orchestration"
+    ]
+  },
+  "context": {
+    "project_root": "./",
+    "main_entry": "app/main.py",
+    "modules": [
+      "app/screening_producer.py",
+      "app/asset_state_manager.py",
+      "data/unified_store.py",
+      "smc_core/engine.py",
+      "smc_core/input_adapter.py"
+    ],
+    "data_interfaces": {
+      "unified_store": {
+        "type": "layered_store",
+        "address": "redis://localhost:6379",
+        "description": "Єдине джерело правди для OHLCV (RAM ↔ Redis ↔ диск)."
+      }
+    },
+    "calibration": {
+      "enabled": false,
+      "framework": null,
+      "parameters": {},
+      "objective": null
+    },
+    "components": {
+      "UnifiedDataStore": {
+        "source": "data/unified_store.py",
+        "description": "Шарувате сховище з RAM-кешем, Redis та snapshotами на диску."
+      },
+      "ScreeningProducer": {
+        "source": "app/screening_producer.py",
+        "description": "Формує черги активів і готує дані Stage1 для UI та майбутнього Stage2."
+      },
+      "SmcCoreEngine": {
+        "source": "smc_core/engine.py",
+        "description": "Координує smc_structure/smc_liquidity/smc_zones і формує SmcHint."
+      },
+      "SmcInputAdapter": {
+        "source": "smc_core/input_adapter.py",
+        "description": "Збирає OHLCV із UnifiedDataStore у SmcInput для реального часу й QA."
+      }
+    },
+    "schemas": {
+      "SmcInput": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "tf_primary",
+          "ohlc_by_tf"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "tf_primary": {
+            "type": "string"
+          },
+          "ohlc_by_tf": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "open_time": {
+                    "type": "integer"
+                  },
+                  "open": {
+                    "type": "number"
+                  },
+                  "high": {
+                    "type": "number"
+                  },
+                  "low": {
+                    "type": "number"
+                  },
+                  "close": {
+                    "type": "number"
+                  },
+                  "volume": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "context": {
+            "type": "object"
+          }
+        }
+      },
+      "SmcHint": {
+        "type": "object",
+        "required": [
+          "structure",
+          "liquidity",
+          "zones",
+          "signals"
+        ],
+        "properties": {
+          "structure": {
+            "type": "object"
+          },
+          "liquidity": {
+            "type": "object"
+          },
+          "zones": {
+            "type": "object"
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "signal_type": {
+                  "type": "string"
+                },
+                "confidence": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "meta": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "tools": {
+    "llm": {
+      "model": "gpt-5.1-codex",
+      "temperature": 0.2,
+      "token_limit": 8000
+    }
+  }
+}
