@@ -1,106 +1,151 @@
-# AiOne_t
+# smc_v1 (AiOne_t Stage1 + SMC core)
 
-**AiOne_t** — багатофункціональний трейдинг-бот для автоматизованого моніторингу та торгівлі ф'ючерсами на крипторинку.  
-Проект призначений для дослідження, тестування та вдосконалення сучасних торгових стратегій з глибоким аналітичним стеком.
-
----
-
-## Автор та партнерство
-
-- **Власник/розробник:** Stanislav (Std07-1)
-- **Партнер (раніше):** [Dmitriy (@yonkersss)] — початкове налаштування торгових алгоритмів та обговорення концепції.
+`smc_v1` — це оперативний стек Stage1 для моніторингу Binance Futures із вбудованим
+SMC-core (structure + liquidity + AMD). Проєкт фокусується на стабільній доставці
+джерельних даних (UnifiedDataStore), детермінованій структурній аналітиці та
+телеметрії для наступних шарів (Stage2/UI/Fusion).
 
 ---
 
-## Основні можливості
+## Архітектура
 
-- **Аналіз ринку в реальному часі**:  
-  - Сплески обсягу (volume spike), перекупленість/перепроданість (RSI), відхилення від VWAP, підвищена волатильність тощо.
-- **Мінімізація “шуму”**:  
-  - Динамічна фільтрація та багатофакторний технічний аналіз для відсіювання слабких або хибних сигналів.
-- **Гнучка архітектура**:  
-  - Розширення під власні торгові стратегії та сигнали.
-- **Підтримка модульних індикаторів** (RSI, VWAP, ATR, кореляції, рівні, OI, тощо).
-- **Логування торгових операцій, сигналів та аномалій.**
-- **REST та WebSocket API**, адаптивна робота з кешуванням (Redis).
+- **data/** — `UnifiedDataStore`, WS-стрімер (`WSWorker`) та допоміжні утиліти.
+- **stage1/** — моніторинг активів (prefilter + AssetMonitorStage1), генерація сирих
+  сигналів і станів для UI.
+- **smc_core/** + **smc_structure/** + **smc_liquidity/** — детермінований pipeline,
+  що повертає `SmcHint` (structure/liquidity/zones/signals/meta).
+- **UI/** — публікація агрегованого стану в Redis та консольний consumer.
+- **tools/** — `smc_snapshot_runner` і дослідницькі скрипти для QA.
+- **tests/** — pytest-набір для SMC (structure, liquidity, AMD, bridge, input adapter).
 
----
-
-## Майбутній розвиток
-
-- Підтримка автоматизованої купівлі/продажу.
-- Інтеграція з різними біржами.
-- Додаткові фреймворки для бектестингу та AI-аналізу.
-- Advanced notification/alerts system.
+Документацію по SMC знайдеш у `docs/smc_core_overview.md`, `docs/smc_structure.md`,
+`docs/smc_liquidity.md`.
 
 ---
 
-## Вимоги до системи
+## Ключові можливості
 
-- Python **3.8+**
-- Інтернет-з'єднання
-- Залежності з requirements.txt
+- Єдине джерело правди (Redis + JSONL snapshots) через `UnifiedDataStore`.
+- Prefilter активів + Stage1 тригери (vol spike, RSI, VWAP, breakout, volatility).
+- SMC-core з зафіксованими контрактами (structure/liquidity/zones/meta + bridge до
+  Stage2).
+- Нативний UI канал (Redis pub/sub) для моніторингу ліквідності та стадій AMD.
+- QA-утиліти для локального прогону SMC на історії (без запуску Stage1).
+
+---
+
+## Системні вимоги
+
+- Python **3.11.9** (див. `runtime.txt`).
+- Redis 6+ (локально чи віддалено) з правами на читання/запис.
+- Доступ до Binance Futures API (ключ/секрет) для WS та REST fallback.
+- Залежності з `requirements.txt` (рекомендується окреме віртуальне середовище).
 
 ---
 
 ## Швидкий старт
 
-```bash
-# Клонувати репозиторій:
-git clone https://github.com/Std07-1/AiOne_t.git
+```powershell
+git clone https://github.com/Std07-1/smc_v1.git
+cd smc_v1
 
-# Перейти до директорії:
-cd AiOne_t
+python -m venv .venv
+.\.venv\Scripts\activate
 
-# Створити та активувати віртуальне середовище:
-python -m venv venv
-# Linux/Mac:
-source venv/bin/activate
-# Windows:
-venv\Scripts\activate
-
-# Встановити залежності:
+pip install --upgrade pip
 pip install -r requirements.txt
-````
-
----
-
-## Налаштування .env
-
-Створи файл `.env` у корені проєкту з такими змінними:
-
-```
-API_KEY=your_api_key_here
-API_SECRET=your_api_secret_here
-REDIS_URL=your_redis_url   # (опціонально)
 ```
 
 ---
 
-## Запуск
+## Налаштування середовища
 
-```bash
-python app/main.py
+1. Скопіюй `.env.example` (якщо є) або створи `.env` у корені:
+
+   ```dotenv
+   BINANCE_API_KEY=...
+   BINANCE_SECRET_KEY=...
+   REDIS_HOST=127.0.0.1
+   REDIS_PORT=6379
+   REDIS_PASSWORD=
+   LOG_LEVEL=INFO
+   ```
+
+2. Відредагуй `config/datastore.yaml` для директорій snapshot'ів, namespace та TTL.
+3. Бізнес-параметри Stage1/SMC живуть у `config/config.py` та `app/thresholds.py` —
+   не зберігай їх у змінних оточення.
+
+---
+
+## Запуск сервісів
+
+- **Повний Stage1 pipeline** (prefilter → WS → SMC → UI):
+
+  ```powershell
+  python -m app.main
+  ```
+
+- **UI консоль** (можна запускати окремо, якщо головний процес уже публікує дані):
+
+  ```powershell
+  python -m UI.ui_consumer_entry
+  ```
+
+- **QA/SMC snapshot runner** — детермінований прогон SMC на історичній вибірці без
+  Stage1:
+
+  ```powershell
+  python -m tools.smc_snapshot_runner BTCUSDT --tf 5m --extra 15m 1h --limit 500
+  ```
+
+---
+
+## Тестування
+
+Використовуємо pytest без зовнішніх сервісів (дані мокаються локально):
+
+```powershell
+python -m pytest tests -q
 ```
+
+Таргетні тести:
+
+- `tests/test_smc_structure_basic.py`, `tests/test_smc_ote_basic.py` — структура.
+- `tests/test_smc_liquidity_basic.py`, `tests/test_smc_sfp_wick.py`,
+  `tests/test_smc_amd_phase.py` — ліквідність та AMD FSM.
+- `tests/test_smc_liquidity_bridge.py`, `tests/test_smc_core_contracts.py` — API/bridge.
+
+---
+
+## Структура директорій (скорочено)
+
+| Шлях | Призначення |
+| --- | --- |
+| `app/` | Точка входу (`main.py`), bootstrap, screening producer, helpers |
+| `config/` | Конфіг Stage1/SMC, datastore.yaml |
+| `data/` | UnifiedDataStore, WS worker, raw data утиліти |
+| `stage1/` | Моніторинг активів, тригери, індикатори |
+| `smc_core/`, `smc_structure/`, `smc_liquidity/` | SMC pipeline + типи |
+| `UI/` | Публікація стану та консольний клієнт |
+| `docs/` | Актуальна SMC документація |
+| `tools/` | Snapshot runner, дослідницькі скрипти |
+| `tests/` | Pytest-набір для верифікації контрактів |
 
 ---
 
 ## Ліцензія
 
-**Proprietary License**
-Використання, поширення чи комерційне застосування цього коду без письмового дозволу заборонене.
-Деталі — у файлі LICENSE.
+**Proprietary License.** Будь-яке використання чи розповсюдження можливе лише за
+попередньою письмовою згодою власника (див. `LICENSE.md`).
 
 ---
 
 ## Контакти
 
-* **Email:**
+- **Власник:** Stanislav (Std07-1)
+- **Email:** [Viktoriakievstd1@gmail.com](mailto:Viktoriakievstd1@gmail.com),
+  [Stdst07.1@gmail.com](mailto:Stdst07.1@gmail.com)
+- **GitHub:** [Std07-1](https://github.com/Std07-1)
+- **Telegram:** [@Std07_1](https://t.me/Std07_1)
 
-* [Viktoriakievstd1@gmail.com](mailto:Viktoriakievstd1@gmail.com)
-* [Stdst07.1@gmail.com](mailto:Stdst07.1@gmail.com)
-* 
-* **GitHub:** [Std07-1](https://github.com/Std07-1)
-* **Telegram:** [@Std07\_1](https://t.me/Std07_1)
-
-Дата створення: 14.10.2024
+Оновлено: 23.11.2025
