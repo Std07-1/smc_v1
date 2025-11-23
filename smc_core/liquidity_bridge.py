@@ -28,9 +28,13 @@ def build_liquidity_hint(
         price is not None and any(m.center < price for m in primary_magnets)
     )
     distance = _nearest_relative_distance(primary_magnets, price)
-    amd_phase = (
-        liquidity.amd_phase.name if getattr(liquidity, "amd_phase", None) else "NEUTRAL"
-    )
+    amd_phase_raw = getattr(liquidity, "amd_phase", None)
+    if amd_phase_raw is None:
+        amd_phase = "NEUTRAL"
+    elif hasattr(amd_phase_raw, "name"):
+        amd_phase = amd_phase_raw.name
+    else:
+        amd_phase = str(amd_phase_raw)
 
     hint: dict[str, Any] = {
         "smc_liq_has_above": has_above,
@@ -52,6 +56,8 @@ def _extract_price(smc_hint: SmcHint) -> float | None:
     candidate = meta.get("last_price") or meta.get("price")
     if candidate is None and smc_hint.structure and smc_hint.structure.meta:
         candidate = smc_hint.structure.meta.get("last_price")
+    if candidate is None:
+        return None
     try:
         return float(candidate)
     except (TypeError, ValueError):
