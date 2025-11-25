@@ -693,7 +693,7 @@ class UnifiedDataStore:
         Повертає останній бар (словник), якщо він є в RAM/Redis.
 
         Args:
-            symbol: Напр. "BTCUSDT".
+            symbol: Напр. "XAUUSD".
             interval: "1m"|"5m"|...
 
         Returns:
@@ -811,7 +811,7 @@ class UnifiedDataStore:
         підтримується батчами в RAM та snapshot-ами на диску.
 
         Аргументи:
-            symbol: Напр. "BTCUSDT".
+            symbol: Напр. "XAUUSD".
             interval: Напр. "1m".
             limit: (опційно) максимум рядків у відповіді.
 

@@ -100,7 +100,7 @@ DEFAULT_INTERVALS_TTL: dict[str, int] = {"1m": 90, "1h": 65 * 60}
 SELECTOR_REFRESH_S = 30  # how often to refresh symbol whitelist
 
 STATIC_SYMBOLS = os.getenv("STREAM_SYMBOLS", "")
-DEFAULT_SYMBOLS = [s.lower() for s in STATIC_SYMBOLS.split(",") if s] or ["btcusdt"]
+DEFAULT_SYMBOLS = [s.lower() for s in STATIC_SYMBOLS.split(",") if s] or ["xauusd"]
 
 # ───────────────────────────── Логування ─────────────────────────────
 logger = logging.getLogger("app.data.ws_worker")
@@ -185,7 +185,7 @@ class WSWorker:
                 syms = sorted(self._symbols)
             else:
                 logger.warning(
-                    "[WSWorker] selector:active:stream пустий або невалидний, fallback btcusdt"
+                    "[WSWorker] selector:active:stream пустий або невалидний, fallback xauusd"
                 )
                 syms = DEFAULT_SYMBOLS
         if len(syms) < 3:
@@ -397,7 +397,7 @@ class WSWorker:
         """Backfill пропущених 1m барів через Binance Futures REST.
 
         Args:
-            sym: символ у lower (напр., "btcusdt").
+            sym: символ у lower (напр., "xauusd").
             start_open_time: перший пропущений open_time (ms, UTC).
             end_open_time: останній пропущений open_time (ms, UTC).
             max_bars: верхня межа кількості барів (зазвичай невеликий).
@@ -600,10 +600,10 @@ class WSWorker:
         """Головний цикл: підключення, обробка WS, reconnect/backoff."""
         while not self._stop_event.is_set():
             try:
-                # 1. Завжди визначаємо syms, fallback на {"btcusdt"}
+                # 1. Завжди визначаємо syms, fallback на {"xauusd"}
                 syms = set(await self._get_live_symbols() or [])
                 if not syms:
-                    syms = {"btcusdt"}
+                    syms = {"xauusd"}
                 # 2. Оновлюємо ws_url лише якщо символи змінились
                 if syms != self._symbols or not self._ws_url:
                     self._symbols = syms

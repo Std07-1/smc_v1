@@ -16,6 +16,7 @@ from smc_core.smc_types import (
     SmcSignalType,
     SmcStructureState,
     SmcTrend,
+    SmcZone,
     SmcZonesState,
     SmcZoneType,
 )
@@ -47,7 +48,30 @@ def test_smc_hint_instantiation() -> None:
         price_max=110.0,
         timeframe="5m",
     )
-    zones = SmcZonesState(zones=[poi], focus_zone_type=SmcZoneType.ORDER_BLOCK)
+    zone = SmcZone(
+        zone_type=SmcZoneType.ORDER_BLOCK,
+        price_min=100.0,
+        price_max=110.0,
+        timeframe="5m",
+        origin_time=pd.Timestamp("2024-01-01T00:00:00Z"),
+        direction="LONG",
+        role="PRIMARY",
+        strength=0.75,
+        confidence=0.8,
+        components=["swing_high"],
+        zone_id="ob_test",
+        entry_mode="BODY_05",
+        quality="STRONG",
+        reference_leg_id="leg_1_2",
+        reference_event_id="bos_1",
+        bias_at_creation="LONG",
+        notes="test zone",
+    )
+    zones = SmcZonesState(
+        zones=[zone],
+        active_zones=[zone],
+        poi_zones=[],
+    )
     signal = SmcSignal(
         direction=SmcTrend.UP,
         signal_type=SmcSignalType.CONTINUATION,

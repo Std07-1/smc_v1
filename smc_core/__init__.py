@@ -5,6 +5,7 @@ from __future__ import annotations
 from smc_core.config import SMC_CORE_CONFIG, SmcCoreConfig
 from smc_core.engine import SmcCoreEngine
 from smc_core.liquidity_bridge import build_liquidity_hint
+from smc_core.serializers import to_plain_smc_hint
 from smc_core.smc_types import (
     SmcAmdPhase,
     SmcHint,
@@ -19,6 +20,7 @@ from smc_core.smc_types import (
     SmcSignalType,
     SmcStructureState,
     SmcTrend,
+    SmcZone,
     SmcZonesState,
     SmcZoneType,
 )
@@ -36,6 +38,7 @@ __all__ = [
     "SmcLiquidityState",
     "SmcLiquidityType",
     "SmcPoi",
+    "SmcZone",
     "SmcRangeState",
     "SmcSignal",
     "SmcSignalType",
@@ -43,4 +46,5 @@ __all__ = [
     "SmcTrend",
     "SmcZoneType",
     "SmcZonesState",
+    "to_plain_smc_hint",
 ]

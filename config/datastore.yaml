@@ -62,7 +62,7 @@ historical_stream:
   enabled: true
   preload_range: true        # авто-підвантаження діапазону, якщо path не задано
   path: null                 # не вказуємо файл, хай згенерує снапшот сам
-  symbol: "BTCUSDT"
+  symbol: "XAUUSD"
   timeframe: "1m"
 
   # один із варіантів: ISO

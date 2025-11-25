@@ -104,7 +104,7 @@ def test_compute_structure_state_forms_hh_hl_sequence() -> None:
     )
     frame = _structure_frame()
     snapshot = SmcInput(
-        symbol="btcusdt",
+        symbol="xauusd",
         tf_primary="5m",
         ohlc_by_tf={"5m": frame},
         context={},
@@ -123,7 +123,7 @@ def test_compute_structure_state_forms_hh_hl_sequence() -> None:
         SmcRangeState.DEV_DOWN,
     }
     assert state.meta["bar_count"] == len(frame)
-    assert state.meta["symbol"] == "btcusdt"
+    assert state.meta["symbol"] == "xauusd"
     assert state.meta["tf_input"] == "5m"
     assert isinstance(state.meta["snapshot_start_ts"], pd.Timestamp)
     assert isinstance(state.meta["snapshot_end_ts"], pd.Timestamp)
@@ -144,7 +144,7 @@ def test_bos_threshold_filters_noise() -> None:
     )
     frame = _noisy_frame()
     snapshot = SmcInput(
-        symbol="btcusdt",
+        symbol="xauusd",
         tf_primary="1m",
         ohlc_by_tf={"1m": frame},
         context={},

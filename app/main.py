@@ -23,7 +23,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import aiohttp
 from dotenv import load_dotenv
 from redis.asyncio import Redis
 from rich.console import Console
@@ -36,35 +35,22 @@ from app.utils.helper import (
     store_to_dataframe,
 )
 from config.config import (
-    FAST_SYMBOLS_TTL_AUTO,
     FAST_SYMBOLS_TTL_MANUAL,
-    MANUAL_FAST_SYMBOLS_SEED,
-    PREFILTER_BASE_PARAMS,
-    PREFILTER_INTERVAL_SEC,
-    PRELOAD_1M_LOOKBACK_INIT,
+    FXCM_FAST_SYMBOLS,
     REACTIVE_STAGE1,
     SCREENING_LOOKBACK,
     STAGE1_MONITOR_PARAMS,
-    STAGE1_PREFILTER_THRESHOLDS,
 )
 from config.TOP100_THRESHOLDS import TOP100_THRESHOLDS
 
-# UnifiedDataStore now the single source of truth
-from data.unified_store import StoreConfig, StoreProfile, UnifiedDataStore
-
 # ─────────────────────────── Імпорти бізнес-логіки ───────────────────────────
-from data.ws_worker import WSWorker
+# UnifiedDataStore now the single source of truth
+from data.fxcm_ingestor import run_fxcm_ingestor
+from data.unified_store import StoreConfig, StoreProfile, UnifiedDataStore
 from stage1.asset_monitoring import AssetMonitorStage1
-from stage1.optimized_asset_filter import get_filtered_assets
 from UI.publish_full_state import publish_full_state
 from UI.ui_consumer import UIConsumer
 from utils.utils import get_tick_size
-
-from .preload_and_update import (
-    merge_prefilter_with_manual,
-    periodic_prefilter_and_update,
-    preload_1m_history,
-)
 
 # Завантажуємо налаштування з .env
 load_dotenv()
@@ -176,10 +162,12 @@ def validate_settings() -> None:
         if not settings.redis_port:
             missing.append("REDIS_PORT")
 
-    if not settings.binance_api_key:
-        missing.append("BINANCE_API_KEY")
-    if not settings.binance_secret_key:
-        missing.append("BINANCE_SECRET_KEY")
+    # Binance-ключі необхідні тільки коли джерело даних Binance
+    if settings.data_source.lower() == "binance":
+        if not settings.binance_api_key:
+            missing.append("BINANCE_API_KEY")
+        if not settings.binance_secret_key:
+            missing.append("BINANCE_SECRET_KEY")
 
     if missing:
         raise ValueError(f"Відсутні налаштування: {', '.join(missing)}")
@@ -198,123 +186,50 @@ async def noop_healthcheck() -> None:
 
 async def run_pipeline() -> None:
     """Основний асинхронний цикл застосунку (оркестрація компонентів)."""
-    logger.info("[Pipeline] Старт run_pipeline()")
+    logger.info("[Pipeline] Старт run_pipeline() (FXCM режим)")
 
     tasks_to_run: list[asyncio.Task] = []
-    session: aiohttp.ClientSession | None = None
+    fxcm_task: asyncio.Task | None = None
 
-    # 1. Ініціалізація
     try:
+        # 1. Ініціалізація сховища та Redis
         ds = await bootstrap()
         logger.info("[Pipeline] UnifiedDataStore ініціалізовано успішно")
-    except Exception as e:
-        logger.error(
-            "[Pipeline] Помилка ініціалізації UnifiedDataStore: %s", e, exc_info=True
+
+        redis_conn = Redis(
+            host=settings.redis_host,
+            port=settings.redis_port,
+            decode_responses=True,
+            encoding="utf-8",
         )
-        return
-
-    redis_conn = Redis(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        decode_responses=True,
-        encoding="utf-8",
-    )
-    logger.info(
-        "[Pipeline] Redis async клієнт створено host=%s port=%s",
-        settings.redis_host,
-        settings.redis_port,
-    )
-
-    launch_ui_consumer()
-    logger.info("[Pipeline] Спроба запуску UI consumer ініційована")
-
-    thresholds = STAGE1_PREFILTER_THRESHOLDS.copy()
-    session = aiohttp.ClientSession()
-    logger.info("[Pipeline] aiohttp.ClientSession створено")
-
-    try:
-        use_manual_list = True  # режим вибору списку символів
         logger.info(
-            "[Pipeline] Режим вибору fast-символів: %s",
-            "manual" if use_manual_list else "auto",
+            "[Pipeline] Redis async клієнт створено host=%s port=%s",
+            settings.redis_host,
+            settings.redis_port,
         )
+
+        launch_ui_consumer()
+        logger.info("[Pipeline] Спроба запуску UI consumer ініційована")
+
+        fast_symbols = [str(sym).lower() for sym in FXCM_FAST_SYMBOLS if sym]
+        if not fast_symbols:
+            logger.error("[Pipeline] FXCM_FAST_SYMBOLS порожній — завершення")
+            return
 
         try:
-            manual_overrides = await ds.get_manual_fast_symbols()
+            await ds.set_fast_symbols(fast_symbols, ttl=FAST_SYMBOLS_TTL_MANUAL)
             logger.info(
-                "[Pipeline] Отримано manual_overrides з datastore: %d",
-                len(manual_overrides or []),
+                "[Pipeline] FXCM fast-символи зафіксовано ttl=%s count=%d",
+                FAST_SYMBOLS_TTL_MANUAL,
+                len(fast_symbols),
             )
-        except AttributeError:
-            manual_overrides = []
-            logger.warning(
-                "[Pipeline] Метод get_manual_fast_symbols відсутній — використано порожній список"
+        except Exception as e:
+            logger.error(
+                "[Pipeline] Не вдалося встановити FXCM fast-символи: %s",
+                e,
+                exc_info=True,
             )
-
-        manual_seed_cfg = MANUAL_FAST_SYMBOLS_SEED
-        manual_cfg_set = {str(sym).lower() for sym in manual_seed_cfg if sym}
-        manual_override_set = {str(sym).lower() for sym in manual_overrides if sym}
-        manual_union = sorted(manual_cfg_set | manual_override_set)
-
-        if manual_override_set - manual_cfg_set:
-            extra_overrides = sorted(list(manual_override_set - manual_cfg_set))
-            logger.info(
-                "[Pipeline] Додаткові ручні символи з Redis: %s (усього %d)",
-                extra_overrides[:10],
-                len(extra_overrides),
-            )
-        if manual_union:
-            logger.info(
-                "[Pipeline] Активний ручний whitelist: %s (усього %d)",
-                manual_union[:10],
-                len(manual_union),
-            )
-
-        if use_manual_list:
-            fast_symbols = manual_union.copy()
-            try:
-                await ds.set_fast_symbols(fast_symbols, ttl=FAST_SYMBOLS_TTL_MANUAL)
-                logger.info(
-                    "[Pipeline] Ручний список fast-символів встановлено ttl=%s count=%d",
-                    FAST_SYMBOLS_TTL_MANUAL,
-                    len(fast_symbols),
-                )
-            except Exception as e:
-                logger.error(
-                    "[Pipeline] Не вдалося встановити ручний список fast-символів: %s",
-                    e,
-                )
-        else:
-            logger.info("[Pipeline] Запуск первинного префільтру...")
-            try:
-                fast_symbols = await get_filtered_assets(
-                    session=session,
-                    cache_handler=ds,
-                    min_quote_vol=thresholds["MIN_QUOTE_VOLUME"],
-                    min_price_change=thresholds["MIN_PRICE_CHANGE"],
-                    min_oi=thresholds["MIN_OPEN_INTEREST"],
-                    min_depth=float(PREFILTER_BASE_PARAMS["min_depth"]),
-                    min_atr=float(PREFILTER_BASE_PARAMS["min_atr"]),
-                    max_symbols=int(thresholds["MAX_SYMBOLS"]),
-                    dynamic=bool(PREFILTER_BASE_PARAMS["dynamic"]),
-                )
-                fast_symbols, manual_added = merge_prefilter_with_manual(
-                    fast_symbols or [], manual_seed_cfg, manual_overrides
-                )
-                await ds.set_fast_symbols(fast_symbols, ttl=FAST_SYMBOLS_TTL_AUTO)
-                logger.info(
-                    "[Pipeline] Автоматичний список встановлено ttl=%s count=%d",
-                    FAST_SYMBOLS_TTL_AUTO,
-                    len(fast_symbols),
-                )
-                if manual_added:
-                    logger.info(
-                        "[Pipeline] Додано manual до префільтру: %s",
-                        sorted(list(manual_added)),
-                    )
-            except Exception as e:
-                logger.error("[Pipeline] Помилка префільтру: %s", e, exc_info=True)
-                return
+            return
 
         fast_symbols = await ds.get_fast_symbols()
         if not fast_symbols:
@@ -326,17 +241,9 @@ async def run_pipeline() -> None:
             len(fast_symbols),
             fast_symbols,
         )
-
-        try:
-            await preload_1m_history(
-                fast_symbols, ds, lookback=PRELOAD_1M_LOOKBACK_INIT, session=session
-            )
-            logger.info(
-                "[Pipeline] Preload 1m історії виконано для %d символів",
-                len(fast_symbols),
-            )
-        except Exception as e:
-            logger.error("[Pipeline] Помилка preload_1m_history: %s", e, exc_info=True)
+        logger.info(
+            "[Pipeline] FXCM режим: пропускаємо preload_1m_history (джерело не Binance)"
+        )
 
         for sym in fast_symbols:
             try:
@@ -439,21 +346,7 @@ async def run_pipeline() -> None:
         except Exception as e:
             logger.debug("[Pipeline] Не вдалося прив'язати монітор до datastore: %s", e)
 
-        # ── Фон-воркери ──
-        try:
-            ws_worker = WSWorker(
-                fast_symbols,
-                store=ds,
-                selectors_key="selectors:fast_symbols",
-                intervals_ttl={"1m": 90, "1h": 65 * 60},
-            )
-            ws_task = asyncio.create_task(ws_worker.consume())
-            logger.info("[Pipeline] WSWorker запущено (task created)")
-        except Exception as e:
-            logger.error(
-                "[Pipeline] Не вдалося запустити WSWorker: %s", e, exc_info=True
-            )
-            return
+        logger.info("[Pipeline] FXCM режим: WSWorker (Binance) не запускається")
 
         health_task = asyncio.create_task(noop_healthcheck())
         logger.info("[Pipeline] Healthcheck task створено")
@@ -530,31 +423,22 @@ async def run_pipeline() -> None:
                 "[Pipeline] Помилка публікації початкового стану: %s", e, exc_info=True
             )
 
-        prefilter_task = None
-        if not use_manual_list:
+        if fxcm_task is None:
             try:
-                prefilter_task = asyncio.create_task(
-                    periodic_prefilter_and_update(
-                        ds,
-                        session,
-                        thresholds,
-                        interval=PREFILTER_INTERVAL_SEC,
-                        buffer=ds,
-                    )
-                )
-                logger.info("[Pipeline] periodic_prefilter_and_update task створено")
+                fxcm_task = asyncio.create_task(run_fxcm_ingestor(ds))
+                logger.info("[Pipeline] FXCM інжестор запущено")
             except Exception as e:
-                logger.error(
-                    "[Pipeline] Не вдалося створити prefilter task: %s",
+                logger.warning(
+                    "[Pipeline] Не вдалося запустити FXCM інжестор: %s",
                     e,
                     exc_info=True,
                 )
 
-        tasks_to_run = [ws_task, health_task, metrics_task]
+        tasks_to_run = [health_task, metrics_task]
         if prod is not None:
             tasks_to_run.append(prod)
-        if prefilter_task:
-            tasks_to_run.append(prefilter_task)
+        if fxcm_task is not None:
+            tasks_to_run.append(fxcm_task)
 
         logger.info("[Pipeline] Запуск %d фон-виконавчих задач", len(tasks_to_run))
         logger.info(
@@ -578,12 +462,6 @@ async def run_pipeline() -> None:
         if to_cancel:
             await asyncio.gather(*to_cancel, return_exceptions=True)
             logger.info("[Pipeline] Незавершені задачі скасовано")
-        if session is not None:
-            try:
-                await session.close()
-                logger.info("[Pipeline] aiohttp.ClientSession закрито")
-            except Exception as e:
-                logger.warning("[Pipeline] Помилка закриття session: %s", e)
         logger.info("[Pipeline] Завершення run_pipeline()")
 
 

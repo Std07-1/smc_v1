@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
@@ -21,8 +21,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.config import (
     DATASTORE_BASE_DIR as CFG_DATASTORE_BASE_DIR,
-)
-from config.config import (
     NAMESPACE as CFG_NAMESPACE,
 )
 
@@ -59,10 +57,14 @@ class Settings(BaseSettings):
     db_user: str | None = None
     db_password: str | None = None
     db_name: str | None = None
+    # Джерело OHLCV-даних для Stage1/Stage2
+    # "binance" — стандартний режим (REST+WS з Binance)
+    # "fxcm" — беремо свічки з Redis-стріму fxcm:ohlcv (конектор FXCM)
+    data_source: Literal["binance", "fxcm"] = "binance"
 
     # Символ для референс-логів у циклі Screening Producer
-    # Може бути перевизначений через ENV: REFERENCE_SYMBOL=ETHUSDT
-    reference_symbol: str = "BTCUSDT"
+    # Може бути перевизначений через ENV: REFERENCE_SYMBOL=XAUUSD
+    reference_symbol: str = "XAUUSD"
 
     # Проста валідація полів перенесена на рівень запуску/конфігів; додаткові
     # pydantic-валідатори не використовуємо тут для сумісності зі stubs mypy.

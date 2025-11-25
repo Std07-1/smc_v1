@@ -564,26 +564,6 @@ def get_tick_size(
     return float(TICK_SIZE_DEFAULT)
 
 
-def _infer_decimals_for_symbol(symbol: str, price: float) -> int:
-    """Визначає кількість знаків після коми, відштовхуючись від tick_size.
-
-    Логіка:
-        - Отримати tick_size через get_tick_size(price_hint=price)
-        - Якщо >0 → кількість знаків у дробовій частині тіку
-        - Інакше (неможливо) — fallback стара евристика
-    """
-    tick = get_tick_size(symbol, price_hint=price)
-    if tick > 0:
-        s = f"{tick:.16f}".rstrip("0").rstrip(".")
-        return len(s.split(".")[1]) if "." in s else 0
-    sym = symbol.lower()
-    if "btc" in sym or "eth" in sym or price >= 100:
-        return 2
-    if price < 1:
-        return 4 if price >= 0.01 else 6
-    return 4
-
-
 def format_price(price: float, symbol: str) -> str:
     """Форматує ціну відповідно до специфіки активу.
 
@@ -592,19 +572,21 @@ def format_price(price: float, symbol: str) -> str:
         symbol: Тікер (використовується для евристик та TICK_SIZE_MAP).
 
     Returns:
-        str: Відформатована ціна (з розділювачем тисяч для великих чисел).
+        str: Відформатована ціна у вигляді `1234,56` без тисячних роздільників.
     """
     try:
         p = float(price)
     except (TypeError, ValueError):
         return "-"
-    decimals = _infer_decimals_for_symbol(symbol, p)
-    # Гарантія точності при зворотному парсингу у тестах: принаймні 6 знаків
-    if decimals < 6:
+    abs_p = abs(p)
+    if abs_p >= 1:
+        decimals = 2
+    elif abs_p >= 0.01:
+        decimals = 4
+    else:
         decimals = 6
-    if p < 1000:
-        return f"{p:.{decimals}f}"
-    return f"{p:,.{decimals}f}"
+    formatted = f"{p:.{decimals}f}"
+    return formatted.replace(",", "").replace(".", ",")
 
 
 # ── Cache / TTL helpers (мапа в config.INTERVAL_TTL_MAP) ─────────────────────

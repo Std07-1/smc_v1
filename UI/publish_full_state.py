@@ -44,6 +44,11 @@ from utils.utils import (
     safe_float,
 )
 
+try:  # pragma: no cover - best-effort залежність
+    from smc_core.serializers import to_plain_smc_hint as _core_plain_smc_hint
+except Exception:  # pragma: no cover
+    _core_plain_smc_hint = None
+
 # ───────────────────────────── Логування ─────────────────────────────
 logger = logging.getLogger("ui.publish_full_state")
 if not logger.handlers:  # guard від повторної ініціалізації
@@ -460,7 +465,7 @@ async def publish_full_state(
             else:
                 asset.pop("analytics", None)
 
-            _inject_smc_liquidity(asset)
+            _prepare_smc_hint(asset)
 
             serialized_assets.append(asset)
 
@@ -726,24 +731,84 @@ async def publish_full_state(
 __all__ = ["publish_full_state"]
 
 
-def _inject_smc_liquidity(asset: dict[str, Any]) -> None:
-    """Додає серіалізований smc_liquidity блок у payload активу."""
+def _prepare_smc_hint(asset: dict[str, Any]) -> None:
+    """Нормалізує smc_hint/structure/liquidity/zones у payload активу."""
 
     hint_obj = asset.get("smc_hint")
     stats_obj = asset.get("stats")
     if hint_obj is None and isinstance(stats_obj, dict):
         hint_obj = stats_obj.get("smc_hint")
+        stats_obj.pop("smc_hint", None)
 
-    liq_source: Any | None = None
-    if hint_obj is not None:
-        if isinstance(hint_obj, dict):
-            liq_source = hint_obj.get("liquidity")
-        else:
-            liq_source = getattr(hint_obj, "liquidity", None)
-    elif "smc_liquidity" in asset:
-        liq_source = asset.get("smc_liquidity")
+    if hint_obj is None:
+        for key in ("smc", "smc_hint", "smc_structure", "smc_liquidity", "smc_zones"):
+            asset.pop(key, None)
+        return
 
-    asset["smc_liquidity"] = _to_plain_smc_liquidity(liq_source)
+    plain_hint: Any
+    if isinstance(hint_obj, dict):
+        plain_hint = hint_obj
+    else:
+        plain_hint = _plain_smc_hint_via_core(hint_obj)
+
+    if plain_hint is None:
+        for key in ("smc", "smc_hint", "smc_structure", "smc_liquidity", "smc_zones"):
+            asset.pop(key, None)
+        return
+
+    if not isinstance(plain_hint, dict):
+        plain_hint = {"value": plain_hint}
+
+    asset["smc"] = plain_hint
+    asset["smc_hint"] = plain_hint
+
+    structure_plain = plain_hint.get("structure")
+    if structure_plain:
+        asset["smc_structure"] = structure_plain
+    else:
+        asset.pop("smc_structure", None)
+
+    zones_plain = plain_hint.get("zones")
+    if zones_plain:
+        asset["smc_zones"] = zones_plain
+    else:
+        asset.pop("smc_zones", None)
+
+    liq_source = plain_hint.get("liquidity")
+    if liq_source is None:
+        liq_source = getattr(hint_obj, "liquidity", None)
+    liq_plain = _to_plain_smc_liquidity(liq_source)
+    if liq_plain is not None:
+        asset["smc_liquidity"] = liq_plain
+    else:
+        asset.pop("smc_liquidity", None)
+
+
+_CORE_SERIALIZER_MISSING_LOGGED = False
+
+
+def _plain_smc_hint_via_core(hint_obj: Any) -> Any:
+    """Повертає plain SMC hint через спільний core-серіалізатор."""
+
+    if hint_obj is None:
+        return None
+    if isinstance(hint_obj, dict):
+        return hint_obj
+
+    global _CORE_SERIALIZER_MISSING_LOGGED
+    if _core_plain_smc_hint is None:
+        if not _CORE_SERIALIZER_MISSING_LOGGED:
+            logger.warning(
+                "smc_core.serializers.to_plain_smc_hint недоступний — smc_hint пропущено"
+            )
+            _CORE_SERIALIZER_MISSING_LOGGED = True
+        return None
+
+    try:
+        return _core_plain_smc_hint(hint_obj)
+    except Exception:
+        logger.exception("Не вдалося серіалізувати smc_hint через smc_core")
+        return None
 
 
 def _to_plain_smc_liquidity(liq_state: Any | None) -> dict[str, Any] | None:

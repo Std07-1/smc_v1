@@ -21,6 +21,11 @@ class SmcCoreConfig:
     leg_min_amplitude_atr_m1: float = 0.8
     ote_trend_only_m1: bool = True
     ote_max_active_per_side_m1: int = 1
+    ob_leg_min_atr_mul: float = 0.8
+    ob_leg_max_bars: int = 40
+    ob_prelude_max_bars: int = 6
+    ob_body_domination_pct: float = 0.65
+    ob_body_min_pct: float = 0.25
 
 
 SMC_CORE_CONFIG = SmcCoreConfig()

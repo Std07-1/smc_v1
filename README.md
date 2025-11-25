@@ -91,11 +91,16 @@ pip install -r requirements.txt
   python -m UI.ui_consumer_entry
   ```
 
+  UI payload зараз у схемі `1.2`: коли `SMC_PIPELINE_ENABLED=True`, кожен актив
+  отримає опційний alias `smc` (plain JSON), який дублює `smc_hint` і використовується
+  консольним клієнтом для швидкого відображення тренду/ренджу/AMD без додаткових
+  розрахунків.
+
 - **QA/SMC snapshot runner** — детермінований прогон SMC на історичній вибірці без
   Stage1:
 
   ```powershell
-  python -m tools.smc_snapshot_runner BTCUSDT --tf 5m --extra 15m 1h --limit 500
+  python -m tools.smc_snapshot_runner XAUUSD --tf 5m --extra 15m 1h --limit 500
   ```
 
 ---

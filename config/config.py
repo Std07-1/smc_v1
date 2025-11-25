@@ -24,6 +24,7 @@ __all__ = [
     "FAST_SYMBOLS_TTL_MANUAL",
     "MANUAL_FAST_SYMBOLS_SEED",
     "CANARY_SYMBOLS",
+    "FXCM_FAST_SYMBOLS",
     "PREFILTER_BASE_PARAMS",
     "PREFILTER_INTERVAL_SEC",
     "PRELOAD_1M_LOOKBACK_INIT",
@@ -55,6 +56,9 @@ __all__ = [
     "TRIGGER_TP_SL_SWAP_SHORT",
     "PROM_GAUGES_ENABLED",
     "PROM_HTTP_PORT",
+    "SMC_BACKTEST_ENABLED",
+    "SMC_PIPELINE_ENABLED",
+    "SMC_PIPELINE_CFG",
     "REDIS_CACHE_TTL",
 ]
 
@@ -168,7 +172,7 @@ STATS_HEALTH_KEY: str = f"{NAMESPACE}:stats:health"
 UI_SNAPSHOT_TTL_SEC: int = 180
 
 # Версія схеми UI payload (для консюмерів/міграцій)
-UI_PAYLOAD_SCHEMA_VERSION: str = "1.0"
+UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
 
 
 # ── Підготовчі прапорці для WS gap‑бекфілу (за замовчуванням вимкнено) ──
@@ -188,13 +192,15 @@ WS_GAP_STATUS_PATH: tuple[str, ...] = ("stream", "resync")
 FAST_SYMBOLS_TTL_AUTO = 15 * 60
 FAST_SYMBOLS_TTL_MANUAL = 60 * 60
 MANUAL_FAST_SYMBOLS_SEED = [
-    "btcusdt",
-    "ethusdt",
-    "solusdt",
-    "tonusdt",
-    "snxusdt",
+    "XAUUSD",
 ]
 CANARY_SYMBOLS = [sym.upper() for sym in MANUAL_FAST_SYMBOLS_SEED]
+# Окремий whitelist для FXCM-режиму — не змішуємо з Binance-юніверсом
+FXCM_FAST_SYMBOLS = [
+    "xauusd",  # у всій системі символи зберігаємо у lower-case
+    # пізніше можна додати "eurusd", "gbpusd" тощо
+]
+
 PREFILTER_BASE_PARAMS = {
     "min_depth": 50_000,
     "min_atr": 0.35,
@@ -209,7 +215,7 @@ SCREENING_LOOKBACK = 240
 SCREENING_BATCH_SIZE = 12
 SCREENING_LEVELS_UPDATE_EVERY = 30
 DEFAULT_TIMEFRAME = "1m"
-DEFAULT_LOOKBACK = 180
+DEFAULT_LOOKBACK = 3
 DEFAULT_TIMEZONE = "UTC"
 MIN_READY_PCT = 0.6
 TRADE_REFRESH_INTERVAL = 30
@@ -243,7 +249,19 @@ DIRECTIONAL_PARAMS = {
 
 PROM_GAUGES_ENABLED = False
 PROM_HTTP_PORT = 9108
+
+# SMC snapshot / backtest режим (CLI-утиліти)
 SMC_BACKTEST_ENABLED: bool = False
+
+# SMC у бойовому пайплайні Stage1 → UI (фіче-флаг; за замовчуванням вимкнено)
+SMC_PIPELINE_ENABLED: bool = True
+SMC_PIPELINE_CFG: dict[str, Any] = {
+    "tf_primary": "1m",
+    "tfs_extra": ("5m", "15m", "1h"),
+    "limit": 300,
+    "max_concurrency": 4,
+    "log_latency": True,
+}
 INTERVAL_TTL_MAP = {
     "1m": 90,
     "3m": 3 * 60,
@@ -272,9 +290,6 @@ TICK_SIZE_BRACKETS = [
     (1_000, 0.1),
 ]
 TICK_SIZE_MAP = {
-    "btcusdt": 0.1,
-    "ethusdt": 0.01,
-    "solusdt": 0.001,
-    "tonusdt": 0.0001,
-    "snxusdt": 0.001,
+    "xauusd": 0.01,
+    "xagusd": 0.001,
 }

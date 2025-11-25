@@ -53,13 +53,13 @@ def test_build_smc_input_from_store() -> None:
         }
     )
     store = _make_store()
-    store.ram.put("btcusdt", "5m", frame)
-    store.ram.put("btcusdt", "15m", frame)
+    store.ram.put("xauusd", "5m", frame)
+    store.ram.put("xauusd", "15m", frame)
 
     smc_input = asyncio.run(
         build_smc_input_from_store(
             store,
-            "btcusdt",
+            "xauusd",
             "5m",
             tfs_extra=["15m"],
             limit=1,

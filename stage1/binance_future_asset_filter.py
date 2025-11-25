@@ -62,7 +62,7 @@ if not logger.handlers:
 console = Console()
 
 
-WHITELIST_SYMBOLS: set[str] = {"BTCUSDT"}
+WHITELIST_SYMBOLS: set[str] = {"XAUUSD"}
 
 
 # CORE LOGIC

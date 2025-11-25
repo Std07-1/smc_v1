@@ -31,7 +31,13 @@ class SmcCoreEngine:
         liquidity_state = smc_liquidity.compute_liquidity_state(
             snapshot, structure_state, self._cfg
         )
-        zones_state = smc_zones.compute_zones_state(snapshot, self._cfg)
+        # Підетап 4.2: зони містять принаймні Order Block-и з нового детектора.
+        zones_state = smc_zones.compute_zones_state(
+            snapshot=snapshot,
+            structure=structure_state,
+            liquidity=liquidity_state,
+            cfg=self._cfg,
+        )
 
         last_price = _extract_last_price(snapshot)
         hint_meta: dict[str, Any] = {"snapshot_tf": snapshot.tf_primary}

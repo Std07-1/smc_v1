@@ -11,8 +11,10 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from redis.asyncio import Redis
@@ -24,6 +26,8 @@ from config.config import (
     DEFAULT_TIMEFRAME,
     MIN_READY_PCT,
     SCREENING_BATCH_SIZE,
+    SMC_PIPELINE_CFG,
+    SMC_PIPELINE_ENABLED,
     TRADE_REFRESH_INTERVAL,
     WS_GAP_STATUS_PATH,
 )
@@ -38,7 +42,6 @@ from utils.utils import (
     create_error_signal,
     create_no_data_signal,
     normalize_result_types,
-    safe_float,
 )
 
 from .asset_state_manager import AssetStateManager
@@ -52,6 +55,118 @@ if not logger.handlers:
     logger.setLevel(logging.DEBUG)
     logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
     logger.propagate = False
+
+
+if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгів
+    from smc_core.engine import SmcCoreEngine
+    from smc_core.smc_types import SmcHint
+
+
+_SMC_ENGINE: SmcCoreEngine | None = None
+_SMC_TO_PLAIN: Callable[[Any], dict[str, Any] | None] | None = None
+
+
+async def _get_smc_engine() -> SmcCoreEngine | None:
+    """Ліниво створює SmcCoreEngine при першому зверненні."""
+
+    global _SMC_ENGINE
+    if not SMC_PIPELINE_ENABLED:
+        return None
+    if _SMC_ENGINE is not None:
+        return _SMC_ENGINE
+
+    try:
+        module_engine = importlib.import_module("smc_core.engine")
+        engine_cls = module_engine.SmcCoreEngine
+    except Exception as exc:  # pragma: no cover - best-effort
+        logger.warning("[SMC] Не вдалося імпортувати SmcCoreEngine: %s", exc)
+        return None
+
+    _SMC_ENGINE = engine_cls()
+    logger.info("[SMC] SmcCoreEngine ініціалізовано для пайплайна")
+    return _SMC_ENGINE
+
+
+def _get_smc_plain_serializer() -> Callable[[Any], dict[str, Any] | None] | None:
+    """Повертає to_plain_smc_hint із core без глобального імпорту під час старту."""
+
+    global _SMC_TO_PLAIN
+    if not SMC_PIPELINE_ENABLED:
+        return None
+    if _SMC_TO_PLAIN is not None:
+        return _SMC_TO_PLAIN
+
+    try:
+        module_serializers = importlib.import_module("smc_core.serializers")
+        _SMC_TO_PLAIN = module_serializers.to_plain_smc_hint
+        return _SMC_TO_PLAIN
+    except Exception as exc:  # pragma: no cover
+        logger.warning("[SMC] Не вдалося імпортувати to_plain_smc_hint: %s", exc)
+        return None
+
+
+async def _build_smc_hint(
+    symbol: str,
+    store: UnifiedDataStore,
+) -> SmcHint | None:
+    """Формує SmcHint для символу, не впливаючи на Stage1 при помилках."""
+
+    if not SMC_PIPELINE_ENABLED:
+        return None
+
+    try:
+        tf_primary = str(SMC_PIPELINE_CFG.get("tf_primary", "1m"))
+        tfs_extra_cfg = SMC_PIPELINE_CFG.get("tfs_extra", ("5m", "15m", "1h"))
+        tfs_extra = tuple(tfs_extra_cfg)
+        limit = int(SMC_PIPELINE_CFG.get("limit", 300))
+    except Exception as exc:
+        logger.debug("[SMC] Некоректний SMC_PIPELINE_CFG: %s", exc)
+        return None
+
+    try:
+        module_adapter = importlib.import_module("smc_core.input_adapter")
+        build_smc_input_from_store = module_adapter.build_smc_input_from_store
+    except Exception as exc:  # pragma: no cover - best-effort
+        logger.warning("[SMC] Не вдалося імпортувати input_adapter: %s", exc)
+        return None
+
+    engine = await _get_smc_engine()
+    if engine is None:
+        return None
+
+    t0 = time.perf_counter()
+    try:
+        smc_input = await build_smc_input_from_store(
+            store=store,
+            symbol=symbol,
+            tf_primary=tf_primary,
+            tfs_extra=tfs_extra,
+            limit=limit,
+        )
+        hint = engine.process_snapshot(smc_input)
+    except Exception as exc:
+        logger.debug("[SMC] Помилка під час побудови SMC hint для %s: %s", symbol, exc)
+        return None
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    if SMC_PIPELINE_CFG.get("log_latency", False):
+        liq = getattr(hint, "liquidity", None)
+        meta = getattr(liq, "meta", {}) if liq is not None else {}
+        pool_count = meta.get("pool_count")
+        magnet_count = meta.get("magnet_count")
+        amd_phase = getattr(liq, "amd_phase", None)
+        amd_phase_name = getattr(amd_phase, "name", None) or "UNKNOWN"
+        logger.debug(
+            "[SMC] symbol=%s tf=%s latency_ms=%.2f pools=%s magnets=%s amd_phase=%s",
+            symbol,
+            getattr(smc_input, "tf_primary", tf_primary),
+            elapsed_ms,
+            pool_count,
+            magnet_count,
+            amd_phase_name,
+        )
+
+    return hint
 
 
 async def process_asset_batch(
@@ -194,20 +309,25 @@ async def process_asset_batch(
             except Exception:
                 normalized["stats"] = stats_container
 
-            signal_val = str(normalized.get(K_SIGNAL, "")).upper()
-            if not signal_val.startswith("ALERT"):
-                normalized["recommendation"] = None
-                normalized["narrative"] = None
-                conf_raw = normalized.get("confidence")
-                conf_val = safe_float(conf_raw)
-                normalized["confidence"] = conf_val if conf_val is not None else 0.0
-                normalized["market_context"] = None
-                normalized["risk_parameters"] = None
-                normalized["confidence_metrics"] = None
-                normalized["anomaly_detection"] = None
-                normalized.pop("reco_original", None)
-                normalized.pop("reco_gate_reason", None)
-                normalized.pop("analytics", None)
+            # Додаємо SMC hint, якщо можливо
+            smc_hint = None
+            if SMC_PIPELINE_ENABLED:
+                try:
+                    smc_hint = await _build_smc_hint(symbol=symbol, store=store)
+                except Exception as exc:  # pragma: no cover - захист від edge-case
+                    logger.debug(
+                        "[SMC] Спроба побудови SMC hint для %s завершилася помилкою: %s",
+                        symbol,
+                        exc,
+                    )
+            if smc_hint is not None:
+                plain_fn = _get_smc_plain_serializer()
+                if plain_fn is not None:
+                    plain_hint = plain_fn(smc_hint)
+                    if plain_hint is not None:
+                        normalized["smc_hint"] = plain_hint
+                else:
+                    normalized["smc_hint"] = smc_hint
 
             state_manager.update_asset(symbol, normalized)
         except Exception as e:
@@ -222,7 +342,7 @@ async def screening_producer(
     assets: list[str],
     redis_conn: Redis[str],
     *,
-    reference_symbol: str = "BTCUSDT",
+    reference_symbol: str = "XAUUSD",
     timeframe: str = DEFAULT_TIMEFRAME,
     lookback: int = DEFAULT_LOOKBACK,
     interval_sec: int = TRADE_REFRESH_INTERVAL,
@@ -246,7 +366,7 @@ async def screening_producer(
         assets_current = list(state_manager.state.keys())
     for sym in assets_current:
         state_manager.init_asset(sym)
-    ref = (reference_symbol or "BTCUSDT").lower()
+    ref = (reference_symbol or "XAUUSD").lower()
     if ref not in state_manager.state:
         state_manager.init_asset(ref)
     logger.info(f"Ініціалізовано стан для {len(assets_current)} активів")

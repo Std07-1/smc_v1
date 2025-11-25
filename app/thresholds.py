@@ -328,7 +328,7 @@ async def load_thresholds(
     повертає дефолтні значення Thresholds().
 
     Params:
-        symbol – ticker, наприклад "BTCUSDT"
+        symbol – ticker, наприклад "XAUUSD"
         cache  – екземпляр UnifiedDataStore для взаємодії з Redis
     """
     key = _redis_key(symbol)

@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Формує SmcHint по історії з UnifiedDataStore"
     )
-    parser.add_argument("symbol", help="Символ, напр. BTCUSDT")
+    parser.add_argument("symbol", help="Символ, напр. XAUUSD")
     parser.add_argument(
         "--tf", dest="tf_primary", default="5m", help="Головний таймфрейм"
     )

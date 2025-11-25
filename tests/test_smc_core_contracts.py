@@ -25,7 +25,7 @@ def _sample_frame() -> pd.DataFrame:
 def test_engine_returns_hint() -> None:
     engine = SmcCoreEngine()
     snapshot = SmcInput(
-        symbol="btcusdt",
+        symbol="xauusd",
         tf_primary="5m",
         ohlc_by_tf={"5m": _sample_frame()},
         context={},
@@ -39,4 +39,5 @@ def test_engine_returns_hint() -> None:
     assert hint.structure.meta["bar_count"] == 3
     assert hint.liquidity is not None
     assert hint.zones is not None
+    assert "orderblocks_total" in hint.zones.meta
     assert hint.meta.get("last_price") == 12.7

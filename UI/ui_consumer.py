@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from datetime import datetime
 from typing import Any, Literal, cast
 
@@ -100,55 +101,6 @@ class UIConsumer:
             "NONE": "⚪",
         }
         return icons.get(signal, "❓")
-
-    def _format_band_pct(self, asset: dict[str, Any]) -> str:
-        """Повертає рядок із Band% для відображення у таблиці."""
-
-        def _to_float(value: Any) -> float | None:
-            try:
-                if isinstance(value, (int, float)):
-                    return float(value)
-                if isinstance(value, str) and value.strip():
-                    sanitized = value.strip().replace("%", "")
-                    return float(sanitized)
-            except Exception:
-                return None
-            return None
-
-        band_raw: float | None = None
-        try:
-            root_band = asset.get("band_pct")
-            band_raw = _to_float(root_band)
-            if band_raw is None:
-                analytics = asset.get("analytics")
-                if isinstance(analytics, dict):
-                    band_candidate = analytics.get("corridor_band_pct")
-                    band_raw = _to_float(band_candidate)
-            if band_raw is None:
-                stats_block = asset.get(K_STATS, {}) if isinstance(asset, dict) else {}
-                if isinstance(stats_block, dict):
-                    band_raw = _to_float(
-                        stats_block.get("corridor_band_pct")
-                        or stats_block.get("band_pct")
-                    )
-        except Exception:
-            band_raw = None
-
-        if band_raw is None or band_raw < 0:
-            return "-"
-
-        band_pct_val = band_raw * 100.0 if band_raw <= 1.0 else band_raw
-
-        try:
-            if band_pct_val < 0.3:
-                band_color = "red"
-            elif band_pct_val <= 1.5:
-                band_color = "yellow"
-            else:
-                band_color = "green"
-            return f"[{band_color}]{band_pct_val:.2f}%[/]"
-        except Exception:
-            return f"{band_pct_val:.2f}%"
 
     async def redis_consumer(
         self,
@@ -817,11 +769,11 @@ class UIConsumer:
             ("Оборот USD", "right"),
             ("ATR%", "right"),
             ("RSI", "right"),
-            ("Band%", "right"),
             ("Статус", "center"),
             ("Причини", "left"),
             ("Сигнал", "center"),
-            ("TP/SL", "right"),
+            # ("TP/SL", "right"),
+            ("SMC", "left"),
         ]
         for header, justify in columns:
             j = (
@@ -946,10 +898,10 @@ class UIConsumer:
             else:
                 signal_str = "[dim]—[/]"
 
-            band_str = self._format_band_pct(asset)
-
             # Render-only: TP/SL лише з готового поля tp_sl (нині статичний placeholder)
-            tp_sl_str = asset.get("tp_sl") or "-"
+            # tp_sl_str = asset.get("tp_sl") or "-"
+
+            smc_summary = self._build_smc_summary(asset)
 
             # Підсвітка для ALERT*
             row_style = (
@@ -979,15 +931,82 @@ class UIConsumer:
                 volume_str,
                 atr_str,
                 rsi_str,
-                band_str,
                 status_str,
                 reasons,
                 signal_str,
-                tp_sl_str,
+                # tp_sl_str,
+                smc_summary,
                 style=row_style,
             )
 
         return table
+
+    def _build_smc_summary(self, asset: dict[str, Any]) -> str:
+        smc_block = asset.get("smc") or asset.get("smc_hint")
+        if not isinstance(smc_block, dict):
+            return "-"
+
+        structure = smc_block.get("structure")
+        structure = structure if isinstance(structure, dict) else {}
+        liq_block = smc_block.get("liquidity")
+        liq_block = liq_block if isinstance(liq_block, dict) else {}
+        zones_block = smc_block.get("zones")
+        zones_block = zones_block if isinstance(zones_block, dict) else {}
+
+        trend_raw = structure.get("trend") or structure.get("bias")
+        trend = str(trend_raw).upper() if trend_raw else "-"
+        range_state_raw = structure.get("range_state")
+        range_state = str(range_state_raw).upper() if range_state_raw else "-"
+        amd_phase_raw = liq_block.get("amd_phase")
+        amd_phase = str(amd_phase_raw).upper() if amd_phase_raw else "-"
+
+        pools_counter: Counter[str] = Counter()
+        pools = liq_block.get("pools")
+        if isinstance(pools, list):
+            for pool in pools:
+                if isinstance(pool, dict):
+                    liq_type = pool.get("liq_type")
+                    if isinstance(liq_type, str) and liq_type:
+                        pools_counter[liq_type.upper()] += 1
+
+        pools_summary = (
+            f"EQH{pools_counter.get('EQH', 0)}/"
+            f"EQL{pools_counter.get('EQL', 0)}/"
+            f"TLQ{pools_counter.get('TLQ', 0)}/"
+            f"SLQ{pools_counter.get('SLQ', 0)}"
+        )
+
+        magnets = liq_block.get("magnets")
+        magnets_count = len(magnets) if isinstance(magnets, list) else 0
+
+        poi_candidates = zones_block.get("zones")
+        poi_count = len(poi_candidates) if isinstance(poi_candidates, list) else 0
+        poi_flag = "Y" if poi_count > 0 else "N"
+
+        structure_meta = structure.get("meta")
+        structure_meta = structure_meta if isinstance(structure_meta, dict) else {}
+        hint_meta = smc_block.get("meta")
+        hint_meta = hint_meta if isinstance(hint_meta, dict) else {}
+
+        tf_primary = structure.get("primary_tf") or hint_meta.get("tf_primary")
+        tf_str = str(tf_primary) if tf_primary else "-"
+        window = structure_meta.get("bar_count") or hint_meta.get("window_bars")
+        if isinstance(window, (int, float)):
+            window_str = f"/{int(window)}"
+        else:
+            window_str = ""
+
+        parts = [
+            f"T:{trend}",
+            f"Range:{range_state}",
+            f"AMD:{amd_phase}",
+            f"Pools:{pools_summary}",
+            f"Mag:{magnets_count}",
+            f"POI:{poi_flag}({poi_count})",
+            f"TF:{tf_str}{window_str}",
+        ]
+
+        return " | ".join(parts)
 
 
 async def main() -> None:

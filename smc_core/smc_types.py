@@ -91,6 +91,32 @@ class SmcPoi:
 
 
 @dataclass(slots=True)
+class SmcZone:
+    """Базова зона/POI, яку SMC повертає для Stage2/Stage3."""
+
+    zone_type: SmcZoneType
+    price_min: float
+    price_max: float
+    timeframe: str
+    origin_time: pd.Timestamp
+    direction: Literal["LONG", "SHORT", "BOTH"]
+    role: Literal["PRIMARY", "COUNTERTREND", "NEUTRAL"]
+    strength: float
+    confidence: float
+    components: list[str]
+    zone_id: str | None = None
+    entry_mode: Literal["BODY_05", "WICK_05", "BODY_TOUCH", "WICK_TOUCH", "UNKNOWN"] = (
+        "UNKNOWN"
+    )
+    quality: Literal["STRONG", "MEDIUM", "WEAK", "UNKNOWN"] = "UNKNOWN"
+    reference_leg_id: str | None = None
+    reference_event_id: str | None = None
+    bias_at_creation: Literal["LONG", "SHORT", "NEUTRAL", "UNKNOWN"] = "UNKNOWN"
+    notes: str = ""
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class SmcSignal:
     """SMC-сигнал, який може бути використаний у Stage2/Stage3."""
 
@@ -229,10 +255,11 @@ class SmcLiquidityState:
 
 @dataclass(slots=True)
 class SmcZonesState:
-    """Набір зон/POI, який SMC пропонує відстежувати."""
+    """Зведення по всіх знайдених зонах та POI."""
 
-    zones: list[SmcPoi] = field(default_factory=list)
-    focus_zone_type: SmcZoneType | None = None
+    zones: list[SmcZone] = field(default_factory=list)
+    active_zones: list[SmcZone] = field(default_factory=list)
+    poi_zones: list[SmcZone] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
 
