@@ -40,6 +40,7 @@ from config.config import (
     REACTIVE_STAGE1,
     SCREENING_LOOKBACK,
     STAGE1_MONITOR_PARAMS,
+    UI_EXPERIMENTAL_VIEW_ENABLED,
 )
 from config.TOP100_THRESHOLDS import TOP100_THRESHOLDS
 
@@ -128,11 +129,19 @@ async def bootstrap() -> UnifiedDataStore:
 
 
 def launch_ui_consumer() -> None:
-    """Запускає `UI.ui_consumer_entry` у новому терміналі (Windows / *nix)."""
+    """Запускає відповідний UI-консюмер (стандартний або експериментальний)."""
+
+    module_name = (
+        "UI.ui_consumer_experimental_entry"
+        if UI_EXPERIMENTAL_VIEW_ENABLED
+        else "UI.ui_consumer_entry"
+    )
+    if UI_EXPERIMENTAL_VIEW_ENABLED:
+        logger.info("[UI] Увімкнено experimental viewer під флагом")
     proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     if sys.platform.startswith("win"):
         subprocess.Popen(
-            ["start", "cmd", "/k", "python", "-m", "UI.ui_consumer_entry"],
+            ["start", "cmd", "/k", "python", "-m", module_name],
             shell=True,
             cwd=proj_root,  # запуск з кореня проекту, щоб UI бачився як модуль
         )
@@ -146,9 +155,7 @@ def launch_ui_consumer() -> None:
             )
             return
         try:
-            subprocess.Popen(
-                [term, "--", "python3", "-m", "UI.ui_consumer_entry"], cwd=proj_root
-            )
+            subprocess.Popen([term, "--", "python3", "-m", module_name], cwd=proj_root)
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("Не вдалося запустити UI consumer: %s", e)
 

@@ -96,6 +96,18 @@ pip install -r requirements.txt
   консольним клієнтом для швидкого відображення тренду/ренджу/AMD без додаткових
   розрахунків.
 
+- **Experimental SMC viewer** (вимкнено за замовчуванням):
+
+  ```powershell
+  # або автоматично через app.main, якщо UI_EXPERIMENTAL_VIEW_ENABLED=True
+  python -m UI.ui_consumer_experimental_entry
+  ```
+
+  Активується прапором `UI_EXPERIMENTAL_VIEW_ENABLED` у `config/config.py` та показує
+  розширений SMC-блок для одного символу (за замовчуванням `XAUUSD`, можна змінити
+  через `SMC_EXPERIMENT_SYMBOL`). Viewer не впливає на базовий UI й працює в окремих
+  модулях, тож його можна безболісно видалити у разі потреби.
+
 - **QA/SMC snapshot runner** — детермінований прогон SMC на історичній вибірці без
   Stage1:
 

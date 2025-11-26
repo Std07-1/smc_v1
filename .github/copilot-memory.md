@@ -46,13 +46,13 @@
 - `SmcLiquidityState` → список `pools` (`SmcLiquidityPool`) + `magnets`
    (`SmcLiquidityMagnet`) + `amd_phase` + `meta`. Тільки поля `role == "PRIMARY"`
    споживаються Stage2/Stage3 (аналог OTE).
-- Пулі покривають EQH/EQL, трендові TLQ/SLQ, RANGE_EXTREME (верх/низ активного
+- Пули покривають EQH/EQL, трендові TLQ/SLQ, RANGE_EXTREME (верх/низ активного
    діапазону) та SESSION_HIGH/SESSION_LOW із `snapshot.context` (`pdh/pdl`).
-- Магніти групують близькі пулі (кластер по ціні), роль магніта = агрегована роль
+- Магніти групують близькі пули (кластер по ціні), роль магніта = агрегована роль
    кластеру (PRIMARY, COUNTERTREND, NEUTRAL) й відображається у snapshot JSON.
 - `SmcHint.liquidity` може бути `None`, але движок завжди повертає валідний стан
    з `meta.pool_count`, `meta.magnet_count`, `meta.bias` для QA/телеметрії.
-- Додано детектор SFP/Wick (`smc_liquidity/sfp_wick.py`), що розширює пулі ролями PRIMARY/COUNTERTREND та
+- Додано детектор SFP/Wick (`smc_liquidity/sfp_wick.py`), що розширює пули ролями PRIMARY/COUNTERTREND та
    зберігає списки знайдених sweep/wick кластера у `SmcLiquidityState.meta`.
 
 ## NEXT: SMC_LIQUIDITY
@@ -117,7 +117,7 @@
 - **Основні дії:**
   - Об’єднувати близькі центри зон (`poi_cluster_tolerance`) у `POI`.
   - Визначати `FTA` як перший сильний контрівень за напрямком потенційної угоди.
-  - Реалізувати кластеризацію та призначення ролей для зон у пулі.
+  - Реалізувати кластеризацію та призначення ролей для зон у пули.
 
 ### 4.6. Інтеграція та UI
 

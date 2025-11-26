@@ -1,7 +1,7 @@
 """Логіка формування пулів ліквідності (EQH/EQL/TLQ/SLQ/Range/Session).
 
 Алгоритм працює поверх уже побудованої структури, не змінюючи її. Свінги
-кластеризуються за ціною з допуском ``cfg.eq_tolerance_pct``; додаткові пулі
+кластеризуються за ціною з допуском ``cfg.eq_tolerance_pct``; додаткові пули
 формуються на базі активного ренджа та контексту сесії.
 """
 
@@ -47,7 +47,7 @@ def build_eq_pools_from_swings(
 def add_trend_pools(
     pools: list[SmcLiquidityPool], structure: SmcStructureState
 ) -> None:
-    """Додає трендові пулі TLQ/SLQ на базі останніх swing low/high."""
+    """Додає трендові пули TLQ/SLQ на базі останніх swing low/high."""
 
     last_low = _last_swing(structure.swings, "LOW")
     last_high = _last_swing(structure.swings, "HIGH")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pandas as pd
 
 import smc_structure
@@ -14,6 +16,8 @@ from smc_core.smc_types import (
     SmcTrend,
 )
 from smc_structure import structure_engine
+from smc_structure.range_engine import detect_active_range
+from smc_structure.swing_detector import detect_swings
 
 
 def _structure_frame() -> pd.DataFrame:
@@ -196,6 +200,49 @@ def test_significant_moves_trigger_events() -> None:
 
     assert any(evt.event_type == "BOS" and evt.direction == "SHORT" for evt in events)
     assert any(evt.event_type == "CHOCH" and evt.direction == "LONG" for evt in events)
+
+
+def _epoch_ms_df(bar_count: int) -> pd.DataFrame:
+    base = datetime(2025, 11, 25, 10, 0, tzinfo=UTC)
+    base_ms = int(base.timestamp() * 1000)
+    times = [base_ms + i * 60_000 for i in range(bar_count)]
+    prices = [4100 + ((-1) ** i) * 2 + (i % 3) for i in range(bar_count)]
+    return pd.DataFrame(
+        {
+            "timestamp": times,
+            "open_time": times,
+            "open": prices,
+            "high": [p + 2 for p in prices],
+            "low": [p - 2 for p in prices],
+            "close": prices,
+        }
+    )
+
+
+def test_detect_swings_preserves_epoch_ms() -> None:
+    df = _epoch_ms_df(10)
+
+    swings = detect_swings(df, min_separation=1)
+
+    assert swings, "Очікуємо хоча б один свінг"
+    assert all(s.time.year >= 2025 for s in swings)
+
+
+def test_active_range_uses_epoch_ms_for_bounds() -> None:
+    df = _epoch_ms_df(8)
+
+    active_range, state = detect_active_range(df, min_range_bars=5, tolerance_pct=0.05)
+
+    assert active_range is not None
+    assert state in {
+        SmcRangeState.INSIDE,
+        SmcRangeState.DEV_UP,
+        SmcRangeState.DEV_DOWN,
+    }
+    assert active_range.start_time is not None
+    assert active_range.end_time is not None
+    assert active_range.start_time.year >= 2025
+    assert active_range.end_time.year >= 2025
 
 
 def test_timestamp_meta_recovers_from_epoch_ms() -> None:

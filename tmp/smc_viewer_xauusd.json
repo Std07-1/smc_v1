@@ -1,0 +1,2223 @@
+{
+  "symbol": "XAUUSD",
+  "payload_ts": "2025-11-26T00:09:38.183855Z",
+  "payload_seq": 5,
+  "schema": null,
+  "price": 4135.24,
+  "session": null,
+  "structure": {
+    "trend": "UP",
+    "bias": "LONG",
+    "range_state": "DEV_UP",
+    "legs": [
+      {
+        "label": "LL",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4136.12,
+        "to_price": 4131.51
+      },
+      {
+        "label": "LL",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4131.51,
+        "to_price": 4131.15
+      },
+      {
+        "label": "LH",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4131.15,
+        "to_price": 4133.4
+      },
+      {
+        "label": "LL",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4133.4,
+        "to_price": 4128.37
+      },
+      {
+        "label": "LH",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4128.37,
+        "to_price": 4132.43
+      },
+      {
+        "label": "HL",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4132.43,
+        "to_price": 4130.05
+      },
+      {
+        "label": "HH",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4130.05,
+        "to_price": 4135.88
+      },
+      {
+        "label": "HL",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4135.88,
+        "to_price": 4131.45
+      },
+      {
+        "label": "LH",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4131.45,
+        "to_price": 4132.53
+      },
+      {
+        "label": "LL",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4132.53,
+        "to_price": 4131.42
+      },
+      {
+        "label": "HH",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4131.42,
+        "to_price": 4133.43
+      },
+      {
+        "label": "HL",
+        "from_time": null,
+        "to_time": null,
+        "from_price": 4133.43,
+        "to_price": 4132.02
+      }
+    ],
+    "swings": [
+      {
+        "kind": "HIGH",
+        "price": 4140.17,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4133.35,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4128.57,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4133.02,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4130.02,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4133.575,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4129.27,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4133.145,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4129.78,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4132.78,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4130.76,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4137.39,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4134.47,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4137.83,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4134.985,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4137.87,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4131.53,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4136.12,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4131.51,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4131.15,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4133.4,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4128.37,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4132.43,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4130.05,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4135.88,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4131.45,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4132.53,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4131.42,
+        "time": null
+      },
+      {
+        "kind": "HIGH",
+        "price": 4133.43,
+        "time": null
+      },
+      {
+        "kind": "LOW",
+        "price": 4132.02,
+        "time": null
+      }
+    ],
+    "ranges": [
+      {
+        "high": 4135.905,
+        "low": 4132.02,
+        "state": "DEV_UP",
+        "start": null,
+        "end": null
+      }
+    ],
+    "events": [],
+    "ote_zones": [
+      {
+        "direction": "LONG",
+        "role": "PRIMARY",
+        "ote_min": 4151.0081,
+        "ote_max": 4152.8118
+      }
+    ],
+    "meta": {
+      "snapshot_start_ts": "1970-01-01T00:29:24.089160+00:00",
+      "snapshot_end_ts": "1970-01-01T00:29:24.115500+00:00",
+      "tf_input": "1m",
+      "bias": "LONG",
+      "swing_count": 60
+    }
+  },
+  "liquidity": {
+    "amd_phase": "MANIPULATION",
+    "pools": [
+      {
+        "level": 4142.048333333333,
+        "liq_type": "EQH",
+        "role": "COUNTERTREND",
+        "strength": 90.0
+      },
+      {
+        "level": 4135.554166666666,
+        "liq_type": "EQL",
+        "role": "PRIMARY",
+        "strength": 90.0
+      },
+      {
+        "level": 4132.02,
+        "liq_type": "TLQ",
+        "role": "PRIMARY",
+        "strength": 3.0
+      },
+      {
+        "level": 4132.02,
+        "liq_type": "RANGE_EXTREME",
+        "role": "PRIMARY",
+        "strength": 3.884999999999309
+      },
+      {
+        "level": 4135.905,
+        "liq_type": "RANGE_EXTREME",
+        "role": "COUNTERTREND",
+        "strength": 3.884999999999309
+      },
+      {
+        "level": 4134.7,
+        "liq_type": "WICK_CLUSTER",
+        "role": "PRIMARY",
+        "strength": 3.1549999999997453
+      },
+      {
+        "level": 4137.94,
+        "liq_type": "WICK_CLUSTER",
+        "role": "COUNTERTREND",
+        "strength": 6.414999999999964
+      },
+      {
+        "level": 4135.59,
+        "liq_type": "WICK_CLUSTER",
+        "role": "PRIMARY",
+        "strength": 3.1549999999997453
+      }
+    ],
+    "magnets": [
+      {
+        "price_min": 4128.37,
+        "price_max": 4159.39,
+        "role": "PRIMARY"
+      }
+    ]
+  },
+  "zones": {
+    "raw": {
+      "zones": [
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4136.64,
+          "price_max": 4137.74,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.089460",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6436619718308799,
+          "components": [
+            "orderblock",
+            "leg_6_12"
+          ],
+          "zone_id": "ob_xauusd_1m_5_12",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_6_12",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.7746478873235196,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.22535211267648034,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 7,
+            "amplitude": 2.3499999999994543,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4136.64,
+          "price_max": 4136.71,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.089880",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.46258992805750687,
+          "components": [
+            "orderblock",
+            "leg_12_16"
+          ],
+          "zone_id": "ob_xauusd_1m_12_16",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_12_16",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.05035971223002753,
+            "wick_top_pct": 0.19424460431628787,
+            "wick_bottom_pct": 0.7553956834536846,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 15.875,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4144.46,
+          "price_max": 4145.05,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.090120",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.46805385556915974,
+          "components": [
+            "orderblock",
+            "leg_16_22"
+          ],
+          "zone_id": "ob_xauusd_1m_16_22",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_16_22",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.07221542227663895,
+            "wick_top_pct": 0.7851897184822407,
+            "wick_bottom_pct": 0.14259485924112034,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 7,
+            "amplitude": 6.529999999999745,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4146.54,
+          "price_max": 4146.9,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.090480",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4778637770897617,
+          "components": [
+            "orderblock",
+            "leg_22_25"
+          ],
+          "zone_id": "ob_xauusd_1m_22_25",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_22_25",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.11145510835904682,
+            "wick_top_pct": 0.3916408668732193,
+            "wick_bottom_pct": 0.4969040247677339,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 8.424999999999272,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4148.46,
+          "price_max": 4153.36,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.090660",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6061224489795775,
+          "components": [
+            "orderblock",
+            "leg_25_32"
+          ],
+          "zone_id": "ob_xauusd_1m_25_32",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_25_32",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.6244897959183098,
+            "wick_top_pct": 0.3469387755101927,
+            "wick_bottom_pct": 0.028571428571497512,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 8,
+            "amplitude": 8.039999999999964,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4145.32,
+          "price_max": 4148.35,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.091080",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6092409240923988,
+          "components": [
+            "orderblock",
+            "leg_32_41"
+          ],
+          "zone_id": "ob_xauusd_1m_32_41",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_32_41",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.6369636963695954,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.3630363036304046,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 10,
+            "amplitude": 8.710000000000036,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4150.725,
+          "price_max": 4153.405,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.091560",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5470149253731533,
+          "components": [
+            "orderblock",
+            "leg_41_44"
+          ],
+          "zone_id": "ob_xauusd_1m_40_44",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_41_44",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.38805970149261326,
+            "wick_top_pct": 0.2705223880595603,
+            "wick_bottom_pct": 0.34141791044782643,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 5.25,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4149.78,
+          "price_max": 4151.62,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.091740",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.65,
+          "components": [
+            "orderblock",
+            "leg_44_48"
+          ],
+          "zone_id": "ob_xauusd_1m_43_48",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_44_48",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.8,
+            "wick_top_pct": 0.043478260869719954,
+            "wick_bottom_pct": 0.15652173913028006,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 10.610000000000582,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4156.85,
+          "price_max": 4157.42,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.092040",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 2.3333333333356374,
+          "confidence": 0.5025830258302307,
+          "components": [
+            "orderblock",
+            "leg_48_52"
+          ],
+          "zone_id": "ob_xauusd_1m_48_52",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_48_52",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.210332103320923,
+            "wick_top_pct": 0.7269372693727779,
+            "wick_bottom_pct": 0.06273062730629907,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 1.535000000000764,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4152.36,
+          "price_max": 4157.37,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.092280",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6670710571924017,
+          "components": [
+            "orderblock",
+            "leg_52_56"
+          ],
+          "zone_id": "ob_xauusd_1m_52_56",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_52_56",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.8682842287696064,
+            "wick_top_pct": 0.0840554592720472,
+            "wick_bottom_pct": 0.0476603119583464,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 8.0,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4152.36,
+          "price_max": 4152.63,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.092340",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4790948275862576,
+          "components": [
+            "orderblock",
+            "leg_56_59"
+          ],
+          "zone_id": "ob_xauusd_1m_53_59",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_56_59",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.11637931034503035,
+            "wick_top_pct": 0.08405172413781613,
+            "wick_bottom_pct": 0.7995689655171535,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 3.785000000000764,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4151.2,
+          "price_max": 4152.69,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.092640",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6628571428571117,
+          "components": [
+            "orderblock",
+            "leg_59_68"
+          ],
+          "zone_id": "ob_xauusd_1m_58_68",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_59_68",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.8514285714284467,
+            "wick_top_pct": 0.0800000000001871,
+            "wick_bottom_pct": 0.06857142857136621,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 10,
+            "amplitude": 9.420000000000073,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4146.57,
+          "price_max": 4149.365,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.093120",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5761180679785982,
+          "components": [
+            "orderblock",
+            "leg_68_78"
+          ],
+          "zone_id": "ob_xauusd_1m_66_78",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_68_78",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.5044722719143926,
+            "wick_top_pct": 0.3023255813951067,
+            "wick_bottom_pct": 0.19320214669050073,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 11,
+            "amplitude": 6.779999999999745,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4148.49,
+          "price_max": 4150.365,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.094140",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5566666666665696,
+          "components": [
+            "orderblock",
+            "leg_84_85"
+          ],
+          "zone_id": "ob_xauusd_1m_83_85",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_84_85",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.4266666666662786,
+            "wick_top_pct": 0.26933333333339154,
+            "wick_bottom_pct": 0.30400000000032984,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 2,
+            "amplitude": 9.039999999999964,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4148.49,
+          "price_max": 4150.365,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.094140",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5566666666665696,
+          "components": [
+            "orderblock",
+            "leg_85_88"
+          ],
+          "zone_id": "ob_xauusd_1m_83_88",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_85_88",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.4266666666662786,
+            "wick_top_pct": 0.26933333333339154,
+            "wick_bottom_pct": 0.30400000000032984,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 5.664999999999964,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4145.96,
+          "price_max": 4147.3,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.094440",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6213554987212526,
+          "components": [
+            "orderblock",
+            "leg_88_93"
+          ],
+          "zone_id": "ob_xauusd_1m_88_93",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_88_93",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.6854219948850104,
+            "wick_top_pct": 0.12276214833748883,
+            "wick_bottom_pct": 0.19181585677750074,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 6,
+            "amplitude": 5.359999999999673,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4144.57,
+          "price_max": 4144.66,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.094620",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4828467153285011,
+          "components": [
+            "orderblock",
+            "leg_93_94"
+          ],
+          "zone_id": "ob_xauusd_1m_91_94",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_93_94",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.1313868613140043,
+            "wick_top_pct": 0.38686131386886513,
+            "wick_bottom_pct": 0.4817518248171306,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 2,
+            "amplitude": 3.4650000000001455,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4144.73,
+          "price_max": 4145.645,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.094800",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5975409836064067,
+          "components": [
+            "orderblock",
+            "leg_94_104"
+          ],
+          "zone_id": "ob_xauusd_1m_94_104",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_94_104",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.5901639344256266,
+            "wick_top_pct": 0.1256830601099251,
+            "wick_bottom_pct": 0.28415300546444827,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 11,
+            "amplitude": 3.005000000000109,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4142.705,
+          "price_max": 4143.61,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.095340",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5964088397789764,
+          "components": [
+            "orderblock",
+            "leg_104_108"
+          ],
+          "zone_id": "ob_xauusd_1m_103_108",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_104_108",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.5856353591159055,
+            "wick_top_pct": 0.2651933701655793,
+            "wick_bottom_pct": 0.14917127071851521,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 2.319999999999709,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4144.67,
+          "price_max": 4144.96,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.095640",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.7,
+          "components": [
+            "orderblock",
+            "leg_108_112"
+          ],
+          "zone_id": "ob_xauusd_1m_108_112",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_108_112",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 1.0,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.0,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 9.680000000000291,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4144.67,
+          "price_max": 4144.96,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.095640",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.7,
+          "components": [
+            "orderblock",
+            "leg_112_116"
+          ],
+          "zone_id": "ob_xauusd_1m_108_116",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_112_116",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 1.0,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.0,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 6.180000000000291,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4139.43,
+          "price_max": 4139.63,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.096000",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5125000000002842,
+          "components": [
+            "orderblock",
+            "leg_116_118"
+          ],
+          "zone_id": "ob_xauusd_1m_114_118",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_116_118",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.25000000000113687,
+            "wick_top_pct": 0.3499999999988631,
+            "wick_bottom_pct": 0.4,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 3,
+            "amplitude": 3.0299999999997453,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4139.77,
+          "price_max": 4139.79,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.096120",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.45268817204294765,
+          "components": [
+            "orderblock",
+            "leg_118_120"
+          ],
+          "zone_id": "ob_xauusd_1m_116_120",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_118_120",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.010752688171790635,
+            "wick_top_pct": 0.8978494623657886,
+            "wick_bottom_pct": 0.0913978494624208,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 3,
+            "amplitude": 2.8599999999996726,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4139.7,
+          "price_max": 4140.77,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.096660",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5247663551400757,
+          "components": [
+            "orderblock",
+            "leg_127_133"
+          ],
+          "zone_id": "ob_xauusd_1m_125_133",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_127_133",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.29906542056030283,
+            "wick_top_pct": 0.16822429906559533,
+            "wick_bottom_pct": 0.5327102803741018,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 7,
+            "amplitude": 8.340000000000146,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4136.96,
+          "price_max": 4137.33,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.097080",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.49868421052631073,
+          "components": [
+            "orderblock",
+            "leg_133_136"
+          ],
+          "zone_id": "ob_xauusd_1m_132_136",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_133_136",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.194736842105243,
+            "wick_top_pct": 0.3447368421051951,
+            "wick_bottom_pct": 0.4605263157895619,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 7.869999999999891,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4138.65,
+          "price_max": 4138.91,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.097260",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4964285714285923,
+          "components": [
+            "orderblock",
+            "leg_136_138"
+          ],
+          "zone_id": "ob_xauusd_1m_135_138",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_136_138",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.18571428571436924,
+            "wick_top_pct": 0.6642857142856633,
+            "wick_bottom_pct": 0.14999999999996752,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 3,
+            "amplitude": 8.9350000000004,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4138.65,
+          "price_max": 4138.91,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.097260",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4964285714285923,
+          "components": [
+            "orderblock",
+            "leg_138_145"
+          ],
+          "zone_id": "ob_xauusd_1m_135_145",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_138_145",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.18571428571436924,
+            "wick_top_pct": 0.6642857142856633,
+            "wick_bottom_pct": 0.14999999999996752,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 8,
+            "amplitude": 8.645000000000437,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4137.235,
+          "price_max": 4140.17,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.097860",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5862862010221589,
+          "components": [
+            "orderblock",
+            "leg_145_153"
+          ],
+          "zone_id": "ob_xauusd_1m_145_153",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_145_153",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.5451448040886356,
+            "wick_top_pct": 0.35093696763189264,
+            "wick_bottom_pct": 0.10391822827947171,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 9,
+            "amplitude": 6.819999999999709,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4134.53,
+          "price_max": 4134.84,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.098340",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4823590814196724,
+          "components": [
+            "orderblock",
+            "leg_153_162"
+          ],
+          "zone_id": "ob_xauusd_1m_153_162",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_153_162",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.1294363256786895,
+            "wick_top_pct": 0.3778705636742898,
+            "wick_bottom_pct": 0.4926931106470207,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 10,
+            "amplitude": 4.780000000000655,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4128.9,
+          "price_max": 4130.06,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.098880",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6446308724832593,
+          "components": [
+            "orderblock",
+            "leg_162_165"
+          ],
+          "zone_id": "ob_xauusd_1m_162_165",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_162_165",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.7785234899330374,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.2214765100669625,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 4.450000000000728,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4130.88,
+          "price_max": 4133.02,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.099060",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5434579439252406,
+          "components": [
+            "orderblock",
+            "leg_165_168"
+          ],
+          "zone_id": "ob_xauusd_1m_165_168",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_165_168",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.3738317757009624,
+            "wick_top_pct": 0.48130841121518564,
+            "wick_bottom_pct": 0.14485981308385198,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 3.0,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4130.02,
+          "price_max": 4132.69,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.099240",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5876404494382692,
+          "components": [
+            "orderblock",
+            "leg_168_169"
+          ],
+          "zone_id": "ob_xauusd_1m_168_169",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_168_169",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.5505617977530769,
+            "wick_top_pct": 0.15730337078625276,
+            "wick_bottom_pct": 0.2921348314606703,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 2,
+            "amplitude": 3.5549999999993815,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4130.8,
+          "price_max": 4133.05,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.099300",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6512522361359518,
+          "components": [
+            "orderblock",
+            "leg_169_175"
+          ],
+          "zone_id": "ob_xauusd_1m_169_175",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_169_175",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.8050089445438073,
+            "wick_top_pct": 0.18783542039342488,
+            "wick_bottom_pct": 0.007155635062767813,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 7,
+            "amplitude": 4.3049999999993815,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4129.27,
+          "price_max": 4130.77,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.099660",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5133333333333515,
+          "components": [
+            "orderblock",
+            "leg_175_178"
+          ],
+          "zone_id": "ob_xauusd_1m_175_178",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_175_178",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.2533333333334061,
+            "wick_top_pct": 0.42000000000007276,
+            "wick_bottom_pct": 0.32666666666652117,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 3.875,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4129.29,
+          "price_max": 4130.6,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.099600",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5187022900762525,
+          "components": [
+            "orderblock",
+            "leg_178_184"
+          ],
+          "zone_id": "ob_xauusd_1m_174_184",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_178_184",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.2748091603050096,
+            "wick_top_pct": 0.3664122137407071,
+            "wick_bottom_pct": 0.3587786259542833,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 7,
+            "amplitude": 3.365000000000691,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.85,
+          "price_max": 4132.88,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.099900",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5470873786409332,
+          "components": [
+            "orderblock",
+            "leg_184_185"
+          ],
+          "zone_id": "ob_xauusd_1m_179_185",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_184_185",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.3883495145637326,
+            "wick_top_pct": 0.2815533980582867,
+            "wick_bottom_pct": 0.33009708737798066,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 2,
+            "amplitude": 3.0,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4130.58,
+          "price_max": 4130.64,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.100200",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.45949367088613974,
+          "components": [
+            "orderblock",
+            "leg_185_189"
+          ],
+          "zone_id": "ob_xauusd_1m_184_189",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_185_189",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.037974683544558824,
+            "wick_top_pct": 0.4556962025312521,
+            "wick_bottom_pct": 0.5063291139241891,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 2.019999999999527,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.62,
+          "price_max": 4131.73,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.100440",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.49999999999983463,
+          "components": [
+            "orderblock",
+            "leg_189_198"
+          ],
+          "zone_id": "ob_xauusd_1m_188_198",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_189_198",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.19999999999933854,
+            "wick_top_pct": 0.8000000000006614,
+            "wick_bottom_pct": 0.0,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 10,
+            "amplitude": 6.630000000000109,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4136.49,
+          "price_max": 4136.57,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.101040",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.46197604790418023,
+          "components": [
+            "orderblock",
+            "leg_198_200"
+          ],
+          "zone_id": "ob_xauusd_1m_198_200",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_198_200",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.04790419161672081,
+            "wick_top_pct": 0.4910179640722052,
+            "wick_bottom_pct": 0.46107784431107396,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 3,
+            "amplitude": 2.9200000000000728,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4134.5,
+          "price_max": 4136.69,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.101100",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5630136986301327,
+          "components": [
+            "orderblock",
+            "leg_200_202"
+          ],
+          "zone_id": "ob_xauusd_1m_199_202",
+          "entry_mode": "WICK_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_200_202",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.4520547945205309,
+            "wick_top_pct": 0.09132420091317564,
+            "wick_bottom_pct": 0.4566210045662935,
+            "entry_mode": "WICK_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 3,
+            "amplitude": 3.3599999999996726,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4137.64,
+          "price_max": 4137.77,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.101280",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6210526315794512,
+          "components": [
+            "orderblock",
+            "leg_202_206"
+          ],
+          "zone_id": "ob_xauusd_1m_202_206",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_202_206",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.684210526317805,
+            "wick_top_pct": 0.315789473682195,
+            "wick_bottom_pct": 0.0,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 2.8450000000002547,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4137.08,
+          "price_max": 4137.16,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.101340",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.493956043956011,
+          "components": [
+            "orderblock",
+            "leg_206_211"
+          ],
+          "zone_id": "ob_xauusd_1m_203_211",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_206_211",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.17582417582404403,
+            "wick_top_pct": 0.1648351648347914,
+            "wick_bottom_pct": 0.6593406593411646,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 6,
+            "amplitude": 2.8850000000002183,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4137.46,
+          "price_max": 4137.87,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.101880",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5536585365854471,
+          "components": [
+            "orderblock",
+            "leg_211_224"
+          ],
+          "zone_id": "ob_xauusd_1m_211_224",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_211_224",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.414634146341788,
+            "wick_top_pct": 0.29268292682910596,
+            "wick_bottom_pct": 0.29268292682910596,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 14,
+            "amplitude": 6.3400000000001455,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.58,
+          "price_max": 4131.68,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.103080",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6166666666666667,
+          "components": [
+            "orderblock",
+            "leg_224_230"
+          ],
+          "zone_id": "ob_xauusd_1m_224_230",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_224_230",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.6666666666666666,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.3333333333333333,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 7,
+            "amplitude": 4.5900000000001455,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4133.56,
+          "price_max": 4133.59,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.103200",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4999999999993937,
+          "components": [
+            "orderblock",
+            "leg_230_235"
+          ],
+          "zone_id": "ob_xauusd_1m_226_235",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_230_235",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.19999999999757467,
+            "wick_top_pct": 0.5999999999987874,
+            "wick_bottom_pct": 0.200000000003638,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 6,
+            "amplitude": 4.609999999999673,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.15,
+          "price_max": 4131.88,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.104100",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.5630136986303503,
+          "components": [
+            "orderblock",
+            "leg_241_245"
+          ],
+          "zone_id": "ob_xauusd_1m_241_245",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_241_245",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.4520547945214013,
+            "wick_top_pct": 0.43835616438287894,
+            "wick_bottom_pct": 0.10958904109571974,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 5,
+            "amplitude": 2.25,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4132.7,
+          "price_max": 4133.4,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.104340",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.55714285714295,
+          "components": [
+            "orderblock",
+            "leg_245_252"
+          ],
+          "zone_id": "ob_xauusd_1m_245_252",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_245_252",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.4285714285717998,
+            "wick_top_pct": 0.5714285714282002,
+            "wick_bottom_pct": 0.0,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 8,
+            "amplitude": 5.029999999999745,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4128.39,
+          "price_max": 4128.5,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.104760",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6333333333321207,
+          "components": [
+            "orderblock",
+            "leg_252_262"
+          ],
+          "zone_id": "ob_xauusd_1m_252_262",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_252_262",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.7333333333284827,
+            "wick_top_pct": 0.13333333333575864,
+            "wick_bottom_pct": 0.13333333333575864,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 11,
+            "amplitude": 4.0600000000004,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.96,
+          "price_max": 4131.99,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.105300",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4664835164833792,
+          "components": [
+            "orderblock",
+            "leg_262_264"
+          ],
+          "zone_id": "ob_xauusd_1m_261_264",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_262_264",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.06593406593351679,
+            "wick_top_pct": 0.28571428571457125,
+            "wick_bottom_pct": 0.648351648351912,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 3,
+            "amplitude": 2.380000000000109,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4130.36,
+          "price_max": 4130.38,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.105480",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.4619047619050197,
+          "components": [
+            "orderblock",
+            "leg_264_272"
+          ],
+          "zone_id": "ob_xauusd_1m_264_272",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_264_272",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.04761904762007879,
+            "wick_top_pct": 0.21428571428602364,
+            "wick_bottom_pct": 0.7380952380938975,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 9,
+            "amplitude": 5.829999999999927,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.31,
+          "price_max": 4131.51,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.105780",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.6351851851847173,
+          "components": [
+            "orderblock",
+            "leg_272_280"
+          ],
+          "zone_id": "ob_xauusd_1m_269_280",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_272_280",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.7407407407388693,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.25925925926113064,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 9,
+            "amplitude": 4.430000000000291,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.45,
+          "price_max": 4131.78,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.114360",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 1.641693811075612,
+          "confidence": 0.5560606060608775,
+          "components": [
+            "orderblock",
+            "leg_280_283"
+          ],
+          "zone_id": "ob_xauusd_1m_280_283",
+          "entry_mode": "WICK_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_280_283",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.42424242424350994,
+            "wick_top_pct": 0.06060606060464083,
+            "wick_bottom_pct": 0.5151515151518492,
+            "entry_mode": "WICK_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 1.0799999999999272,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4132.4,
+          "price_max": 4132.44,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.114420",
+          "direction": "SHORT",
+          "role": "NEUTRAL",
+          "strength": 1.6872964169384395,
+          "confidence": 0.6499999999990905,
+          "components": [
+            "orderblock",
+            "leg_283_286"
+          ],
+          "zone_id": "ob_xauusd_1m_281_286",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_283_286",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.7999999999963621,
+            "wick_top_pct": 0.200000000003638,
+            "wick_bottom_pct": 0.0,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 1.1099999999996726,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4131.78,
+          "price_max": 4131.8,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.114660",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 3.0,
+          "confidence": 0.46785714285754887,
+          "components": [
+            "orderblock",
+            "leg_286_288"
+          ],
+          "zone_id": "ob_xauusd_1m_285_288",
+          "entry_mode": "BODY_TOUCH",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_286_288",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.07142857143019553,
+            "wick_top_pct": 0.4999999999983759,
+            "wick_bottom_pct": 0.42857142857142855,
+            "entry_mode": "BODY_TOUCH",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 3,
+            "amplitude": 2.0100000000002183,
+            "quality": "WEAK"
+          }
+        },
+        {
+          "zone_type": "ORDER_BLOCK",
+          "price_min": 4132.74,
+          "price_max": 4133.43,
+          "timeframe": "1m",
+          "origin_time": "1970-01-01T00:29:24.114840",
+          "direction": "LONG",
+          "role": "NEUTRAL",
+          "strength": 2.1433224755708613,
+          "confidence": 0.6616564417178153,
+          "components": [
+            "orderblock",
+            "leg_288_291"
+          ],
+          "zone_id": "ob_xauusd_1m_288_291",
+          "entry_mode": "BODY_05",
+          "quality": "WEAK",
+          "reference_leg_id": "leg_288_291",
+          "reference_event_id": null,
+          "bias_at_creation": "LONG",
+          "notes": "",
+          "meta": {
+            "body_pct": 0.8466257668712615,
+            "wick_top_pct": 0.0,
+            "wick_bottom_pct": 0.15337423312873852,
+            "entry_mode": "BODY_05",
+            "role": "NEUTRAL",
+            "bias_at_creation": "LONG",
+            "has_bos": false,
+            "bar_count": 4,
+            "amplitude": 1.4099999999998545,
+            "quality": "WEAK"
+          }
+        }
+      ],
+      "active_zones": [],
+      "poi_zones": [],
+      "meta": {
+        "zone_count": 55,
+        "orderblocks_total": 55,
+        "orderblocks_primary": 0,
+        "orderblocks_countertrend": 0,
+        "orderblocks_long": 27,
+        "orderblocks_short": 28
+      }
+    }
+  },
+  "sessions": []
+}

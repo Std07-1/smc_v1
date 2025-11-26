@@ -56,8 +56,9 @@ def detect_active_range(
 def _extract_timestamp(df: pd.DataFrame, pos: int) -> pd.Timestamp:
     if "timestamp" in df.columns:
         ts = df["timestamp"].iloc[pos]
-        if pd.notna(ts):
-            return pd.Timestamp(ts)
+        normalized = _coerce_scalar_timestamp(ts)
+        if normalized is not None:
+            return normalized
     for column in ("open_time", "time", "timestamp", "close_time"):
         if column in df.columns:
             value = df[column].iloc[pos]
@@ -65,22 +66,50 @@ def _extract_timestamp(df: pd.DataFrame, pos: int) -> pd.Timestamp:
             if ts is not None:
                 return ts
     if isinstance(df.index, pd.DatetimeIndex):
-        return pd.Timestamp(df.index[pos])
-    return pd.Timestamp(pos)
+        ts = _coerce_scalar_timestamp(df.index[pos])
+        if ts is not None:
+            return ts
+    return pd.Timestamp(pos, unit="s", tz="UTC")
 
 
 def _coerce_scalar_timestamp(value: Any) -> pd.Timestamp | None:
     if value is None or value is pd.NaT:
         return None
     if isinstance(value, pd.Timestamp):
-        return value
+        return _ensure_utc(value)
+    ts = None
     try:
-        return pd.Timestamp(value)
+        ts = pd.Timestamp(value)
     except (TypeError, ValueError):
-        pass
-    for unit in ("ms", "s"):
-        try:
-            return pd.to_datetime(float(value), unit=unit)
-        except Exception:  # noqa: BLE001
-            continue
-    return None
+        ts = None
+    if ts is not None and ts.year >= 2000:
+        return _ensure_utc(ts)
+    numeric: float | None = None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        numeric = None
+    if numeric is None:
+        return None
+    magnitude = abs(numeric)
+    if magnitude < 1e8:
+        return None
+    if magnitude >= 1e17:
+        unit = "ns"
+    elif magnitude >= 1e14:
+        unit = "us"
+    elif magnitude >= 1e11:
+        unit = "ms"
+    else:
+        unit = "s"
+    try:
+        ts = pd.to_datetime(numeric, unit=unit, utc=True)
+        return _ensure_utc(ts)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ensure_utc(ts: pd.Timestamp) -> pd.Timestamp:
+    if ts.tzinfo is None:
+        return ts.tz_localize("UTC")
+    return ts.tz_convert("UTC")

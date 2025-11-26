@@ -21,7 +21,7 @@ def build_magnets_from_pools_and_range(
     snapshot: SmcInput,
     cfg: SmcCoreConfig,
 ) -> list[SmcLiquidityMagnet]:
-    """Групує пулі за рівнем ціни та повертає узгоджені магніти."""
+    """Групує пули за рівнем ціни та повертає узгоджені магніти."""
 
     if not pools:
         return []

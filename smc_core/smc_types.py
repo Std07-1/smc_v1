@@ -232,7 +232,7 @@ class SmcLiquidityPool:
 
 @dataclass(slots=True)
 class SmcLiquidityMagnet:
-    """Зона-магніт, яка агрегує близькі пулі ліквідності."""
+    """Зона-магніт, яка агрегує близькі пули ліквідності."""
 
     price_min: float
     price_max: float
@@ -245,7 +245,7 @@ class SmcLiquidityMagnet:
 
 @dataclass(slots=True)
 class SmcLiquidityState:
-    """Зведення про пулі, магніти та AMD-фазу."""
+    """Зведення про пули, магніти та AMD-фазу."""
 
     pools: list[SmcLiquidityPool] = field(default_factory=list)
     magnets: list[SmcLiquidityMagnet] = field(default_factory=list)

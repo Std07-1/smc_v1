@@ -10,6 +10,7 @@ import pandas as pd
 
 from data.unified_store import UnifiedDataStore
 from smc_core.smc_types import SmcInput
+from utils.utils import ensure_timestamp_column
 
 
 async def build_smc_input_from_store(
@@ -51,6 +52,24 @@ def _normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame is None or frame.empty:
         return pd.DataFrame()
     df = frame.copy()
-    if "open_time" in df.columns:
-        df = df.sort_values("open_time").reset_index(drop=True)
+    if "timestamp" not in df.columns:
+        for fallback in ("open_time", "time", "close_time"):
+            if fallback in df.columns:
+                df["timestamp"] = df[fallback]
+                break
+    df = ensure_timestamp_column(
+        df,
+        drop_duplicates=False,
+        sort=False,
+        min_rows=1,
+        log_prefix="smc_input:",
+    )
+    if df.empty:
+        return pd.DataFrame()
+    if "timestamp" not in df.columns:
+        return df.reset_index(drop=True)
+    ts = df["timestamp"]
+    if not pd.api.types.is_datetime64_any_dtype(ts):
+        df["timestamp"] = pd.to_datetime(ts, errors="coerce", utc=True)
+    df = df.dropna(subset=["timestamp"]).reset_index(drop=True)
     return df

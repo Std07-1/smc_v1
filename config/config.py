@@ -60,6 +60,7 @@ __all__ = [
     "SMC_PIPELINE_ENABLED",
     "SMC_PIPELINE_CFG",
     "REDIS_CACHE_TTL",
+    "UI_EXPERIMENTAL_VIEW_ENABLED",
 ]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -173,6 +174,9 @@ UI_SNAPSHOT_TTL_SEC: int = 180
 
 # Версія схеми UI payload (для консюмерів/міграцій)
 UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
+
+# Опційний рендерер (SMC viewer) — вимкнено за замовчуванням
+UI_EXPERIMENTAL_VIEW_ENABLED: bool = True
 
 
 # ── Підготовчі прапорці для WS gap‑бекфілу (за замовчуванням вимкнено) ──

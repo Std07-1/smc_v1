@@ -14,6 +14,7 @@ from smc_core.smc_types import (
     SmcLiquidityType,
     SmcStructureState,
 )
+from utils.utils import ensure_timestamp_column
 
 from .pools import resolve_role_for_bias
 
@@ -35,7 +36,7 @@ def detect_sfp_and_wicks(
     structure: SmcStructureState,
     cfg: SmcCoreConfig,
 ) -> tuple[list[SmcLiquidityPool], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Повертає додаткові пулі та метадані для SFP і wick-кластерів."""
+    """Повертає додаткові пули та метадані для SFP і wick-кластерів."""
 
     df = _prepare_price_frame(snapshot, cfg.max_lookback_bars)
     if df is None:
@@ -253,14 +254,18 @@ def _prepare_price_frame(snapshot: SmcInput, max_bars: int) -> pd.DataFrame | No
     df = df.copy()
     if max_bars > 0 and len(df) > max_bars:
         df = df.tail(max_bars)
-    if "timestamp" not in df.columns:
-        for fallback in ("open_time", "time", "close_time"):
-            if fallback in df.columns:
-                df["timestamp"] = df[fallback]
-                break
+    df = ensure_timestamp_column(
+        df,
+        drop_duplicates=False,
+        sort=False,
+        min_rows=1,
+        log_prefix="sfp_wick:",
+    )
+    if df.empty:
+        return None
     if "timestamp" not in df.columns:
         df["timestamp"] = pd.RangeIndex(start=0, stop=len(df), step=1)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
     df = df.dropna(subset=["timestamp"])
     required = {"open", "high", "low", "close"}
     if not required.issubset(df.columns):

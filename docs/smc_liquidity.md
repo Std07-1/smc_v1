@@ -17,16 +17,16 @@ Stage3 (AMD/SFP/Wick). Шар спирається на готову струк�
 
 ## Конвеєр обробки
 
-1. **EQH/EQL пулі** (`pools.build_eq_pools_from_swings`) — групує swing high/low у
+1. **EQH/EQL пули** (`pools.build_eq_pools_from_swings`) — групує swing high/low у
    кластери з допуском `cfg.eq_tolerance_pct`, визначає роль на основі bias.
 2. **Трендові TLQ/SLQ** (`pools.add_trend_pools`) — бере останній swing low/high і
    додає пул PRIMARY у бік bias.
-3. **Range/session пулі** (`pools.add_range_and_session_pools`) — активний діапазон
+3. **Range/session пули** (`pools.add_range_and_session_pools`) — активний діапазон
    → `RANGE_EXTREME`; контекст `pdl/pdh` → `SESSION_LOW/HIGH`.
 4. **SFP + wick** (`sfp_wick.detect_sfp_and_wicks`) — проходить кожну свічку,
-   шукає sweep проти рівня й довгі гніта (`WICK_RATIO`), повертає додаткові пулі та
+   шукає sweep проти рівня й довгі гніта (`WICK_RATIO`), повертає додаткові пули та
    телеметрію.
-5. **Магніти** (`magnets.build_magnets_from_pools_and_range`) — агрегує пулі за ціною
+5. **Магніти** (`magnets.build_magnets_from_pools_and_range`) — агрегує пули за ціною
    з тим самим допуском, визначає тип за пріоритетом (`RANGE_EXTREME` > session >
    trend > EQ) і роль PRIMARY/COUNTERTREND.
 6. **AMD-фаза** (`amd_state.derive_amd_phase`) — FSM з пріоритетом
