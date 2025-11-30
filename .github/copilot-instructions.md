@@ -55,7 +55,7 @@
 ### 2.1 Data layer (`data/unified_store.py`, `data/ws_worker.py`, `app/settings.py`)
 
 - UnifiedDataStore — єдине джерело OHLCV та службових даних (RAM ↔ Redis ↔ диск). Не додавай обхідні кеші/файли.
-- WSWorker: лише стрім Binance → оновлення 1m/1h через UnifiedDataStore. Не додавати бізнес-логіку стратегії.
+- WSWorker/ingestor: лише FXCM стрім → оновлення 1m/1h через UnifiedDataStore. Не додавати бізнес-логіку стратегії.
 - Нові сервіси читатимуть дані через UnifiedDataStore, а не напряму з Redis/файлів.
 
 ### 2.2 Stage1 (`stage1/asset_monitoring.py`, `app/screening_producer.py`, `app/asset_state_manager.py`)

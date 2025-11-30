@@ -71,6 +71,7 @@ class UIConsumer:
         )  # кеш останнього непорожнього списку
         self._blink_state = False  # для миготіння pressure
         self._pressure_alert_active = False
+        self._fxcm_state: dict[str, Any] | None = None
 
     # self._last_core_refresh: float = 0.0  # видалено: Core/Health більше не використовуються
 
@@ -101,6 +102,54 @@ class UIConsumer:
             "NONE": "⚪",
         }
         return icons.get(signal, "❓")
+
+    def _consume_fxcm_block(self, fxcm_payload: Any) -> None:
+        """Оновлює кешований стан FXCM, якщо payload містить dict."""
+
+        if isinstance(fxcm_payload, dict):
+            self._fxcm_state = fxcm_payload
+
+    def _format_fxcm_fragment(self) -> str:
+        """Формує текстовий блок для відображення телеметрії FXCM."""
+
+        block = self._fxcm_state
+        if not isinstance(block, dict):
+            return ""
+
+        market_state = str(block.get("market_state") or "unknown").lower()
+        process_state = str(block.get("process_state") or "unknown").lower()
+        icon = {
+            "open": "🟢",
+            "closed": "🔴",
+        }.get(market_state, "⚪")
+
+        lag_val = block.get("lag_seconds")
+        if isinstance(lag_val, (int, float)):
+            lag_color = (
+                "green" if lag_val < 5 else ("yellow" if lag_val < 20 else "red")
+            )
+            lag_fragment = f"Лаг: [{lag_color}]{lag_val:.1f}s[/]"
+        else:
+            lag_fragment = "Лаг: -"
+
+        last_close_ms = block.get("last_bar_close_ms")
+        if isinstance(last_close_ms, (int, float)) and last_close_ms > 0:
+            try:
+                last_close_dt = datetime.utcfromtimestamp(float(last_close_ms) / 1000.0)
+                last_close_fragment = last_close_dt.strftime("%H:%M:%S") + "Z"
+            except Exception:
+                last_close_fragment = "-"
+        else:
+            last_close_fragment = "-"
+
+        next_open_raw = block.get("next_open_utc")
+        next_open_fragment = str(next_open_raw).strip() if next_open_raw else "-"
+
+        return (
+            f"[cyan]FXCM[/]: {icon} {market_state.upper()} / {process_state.upper()} | "
+            f"{lag_fragment} | Останній close: {last_close_fragment} | "
+            f"Наступне відкриття: {next_open_fragment}"
+        )
 
     async def redis_consumer(
         self,
@@ -140,6 +189,7 @@ class UIConsumer:
                     if self._last_results:
                         self._display_results = self._last_results
                     self._last_counters = snap.get("counters", {}) or {}
+                    self._consume_fxcm_block(snap.get("fxcm"))
                     meta_ts = snap.get("meta", {}).get("ts")
                     meta_seq = snap.get("meta", {}).get("seq")
                     if meta_ts:
@@ -308,6 +358,9 @@ class UIConsumer:
                                                         "Snapshot reloaded after gap: assets=%d seq=%s",
                                                         len(self._last_results),
                                                         self._last_seq,
+                                                    )
+                                                    self._consume_fxcm_block(
+                                                        snap.get("fxcm")
                                                     )
                                         except Exception:
                                             ui_logger.debug(
@@ -496,6 +549,7 @@ class UIConsumer:
                             incoming_counters = data.get("counters", {}) or {}
                             if isinstance(incoming_counters, dict):
                                 self._last_counters.update(incoming_counters)
+                            self._consume_fxcm_block(data.get("fxcm"))
                             # Додатковий лог узгодженості
                             ui_logger.debug(
                                 "Post-assign last_results_len=%d counters_assets=%s display_len=%d",
@@ -747,6 +801,7 @@ class UIConsumer:
 
         # Індикатори Core/Health повністю прибрані з заголовка
 
+        fxcm_fragment = self._format_fxcm_fragment()
         title = (
             f"[bold]Система моніторингу AiOne_t[/bold] | "
             f"Активи: [green]{total_assets}[/green] | "
@@ -754,6 +809,8 @@ class UIConsumer:
             f"Оновлено: [cyan]{last_update}[/cyan]"
             f"{trades_fragment}{skipped_fragment}{drift_fragment}{dynamic_fragment}{pressure_fragment}{consec_fragment}{alpha_fragment}{skip_reasons_fragment}{blink_fragment}"
         )
+        if fxcm_fragment:
+            title = f"{title}\n{fxcm_fragment}"
 
         table = Table(
             title=title,

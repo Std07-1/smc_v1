@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.config import (
@@ -42,8 +42,6 @@ class Settings(BaseSettings):
 
     redis_host: str = "localhost"
     redis_port: int = 6379
-    binance_api_key: str | None = None
-    binance_secret_key: str | None = None
     telegram_token: str | None = None
     admin_id: int = 0
     # Permit disabling Admin Pub/Sub loop via ENV override (e.g., ADMIN_ENABLED=false)
@@ -57,14 +55,18 @@ class Settings(BaseSettings):
     db_user: str | None = None
     db_password: str | None = None
     db_name: str | None = None
-    # Джерело OHLCV-даних для Stage1/Stage2
-    # "binance" — стандартний режим (REST+WS з Binance)
-    # "fxcm" — беремо свічки з Redis-стріму fxcm:ohlcv (конектор FXCM)
-    data_source: Literal["binance", "fxcm"] = "binance"
-
-    # Символ для референс-логів у циклі Screening Producer
-    # Може бути перевизначений через ENV: REFERENCE_SYMBOL=XAUUSD
-    reference_symbol: str = "XAUUSD"
+    # Джерело OHLCV-даних для Stage1/Stage2 (у поточній версії лише FXCM)
+    data_source: Literal["fxcm"] = "fxcm"
+    fxcm_access_token: str | None = None
+    fxcm_username: str | None = None
+    fxcm_password: str | None = None
+    fxcm_connection: str | None = "Demo"  # або "Real"
+    fxcm_host_url: str | None = "http://www.fxcorporate.com/Hosts.jsp"
+    fxcm_hmac_secret: str | None = None
+    fxcm_hmac_algo: str = "sha256"  # алгоритм HMAC-підпису для FXCM
+    fxcm_hmac_required: bool = True  # чи вимагати HMAC-підписи від FXCM
+    fxcm_heartbeat_channel: str = "fxcm:heartbeat"
+    fxcm_market_status_channel: str = "fxcm:market_status"
 
     # Проста валідація полів перенесена на рівень запуску/конфігів; додаткові
     # pydantic-валідатори не використовуємо тут для сумісності зі stubs mypy.
@@ -84,6 +86,59 @@ class Settings(BaseSettings):
             if s in {"0", "false", "no", "off", ""}:
                 return False
         return v
+
+    @field_validator("fxcm_hmac_secret", mode="before")
+    @classmethod
+    def _strip_fxcm_hmac_secret(cls, v):  # type: ignore[no-untyped-def]
+        if v is None:
+            return None
+        if isinstance(v, str):
+            value = v.strip()
+            return value or None
+        return v
+
+    @field_validator("fxcm_hmac_algo", mode="before")
+    @classmethod
+    def _normalize_fxcm_hmac_algo(cls, v):  # type: ignore[no-untyped-def]
+        if v is None:
+            return "sha256"
+        value = str(v).strip().lower()
+        return value or "sha256"
+
+    @field_validator("fxcm_hmac_required", mode="before")
+    @classmethod
+    def _coerce_fxcm_hmac_required(cls, v):  # type: ignore[no-untyped-def]
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in {"1", "true", "yes", "on"}:
+                return True
+            if s in {"0", "false", "no", "off", ""}:
+                return False
+        return bool(v)
+
+    @field_validator(
+        "fxcm_heartbeat_channel",
+        "fxcm_market_status_channel",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_fxcm_channels(  # type: ignore[no-untyped-def]
+        cls, v, info: ValidationInfo
+    ):
+        if v is None:
+            return v
+        text = str(v).strip()
+        if text:
+            return text
+        return (
+            "fxcm:heartbeat"
+            if info.field_name == "fxcm_heartbeat_channel"
+            else "fxcm:market_status"
+        )
 
 
 settings = Settings()  # буде валідовано під час імпорту

@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -35,8 +36,12 @@ from app.utils.helper import (
     store_to_dataframe,
 )
 from config.config import (
+    DATASTORE_WARMUP_ENABLED,
+    DATASTORE_WARMUP_INTERVALS,
     FAST_SYMBOLS_TTL_MANUAL,
+    FXCM_DUKA_WARMUP_ENABLED,
     FXCM_FAST_SYMBOLS,
+    FXCM_WARMUP_BARS,
     REACTIVE_STAGE1,
     SCREENING_LOOKBACK,
     STAGE1_MONITOR_PARAMS,
@@ -47,8 +52,10 @@ from config.TOP100_THRESHOLDS import TOP100_THRESHOLDS
 # ─────────────────────────── Імпорти бізнес-логіки ───────────────────────────
 # UnifiedDataStore now the single source of truth
 from data.fxcm_ingestor import run_fxcm_ingestor
+from data.fxcm_status_listener import run_fxcm_status_listener
 from data.unified_store import StoreConfig, StoreProfile, UnifiedDataStore
 from stage1.asset_monitoring import AssetMonitorStage1
+from tools.fxcm_warmup import warmup as run_fxcm_warmup
 from UI.publish_full_state import publish_full_state
 from UI.ui_consumer import UIConsumer
 from utils.utils import get_tick_size
@@ -125,7 +132,171 @@ async def bootstrap() -> UnifiedDataStore:
     store = UnifiedDataStore(redis=redis, cfg=store_cfg)
     await store.start_maintenance()
     logger.info("[Launch] UnifiedDataStore maintenance loop started")
+    await _warmup_datastore_from_snapshots(store)
     return store
+
+
+async def _warmup_datastore_from_snapshots(
+    target_store: UnifiedDataStore,
+) -> None:
+    """Завантажує останні снапшоти барів із диска, щоб прискорити холодний старт."""
+
+    if not DATASTORE_WARMUP_ENABLED:
+        logger.info("[Warmup] Пропущено (DATASTORE_WARMUP_ENABLED=False)")
+        return
+
+    intervals_cfg = DATASTORE_WARMUP_INTERVALS or {}
+    if not intervals_cfg:
+        logger.info("[Warmup] Пропущено (немає інтервалів у конфігу)")
+        return
+
+    base_dir = Path(target_store.cfg.base_dir)
+    if not base_dir.exists():
+        logger.warning(
+            "[Warmup] Каталог зі снапшотами відсутній: %s", base_dir.as_posix()
+        )
+        return
+
+    for interval, bars_needed in intervals_cfg.items():
+        symbols = _discover_snapshot_symbols(base_dir, interval)
+        if not symbols:
+            logger.debug(
+                "[Warmup] Снапшоти для інтервалу %s не знайдені у %s",
+                interval,
+                base_dir.as_posix(),
+            )
+            continue
+        bars = max(int(bars_needed), 0)
+        logger.info(
+            "[Warmup] Прогріваємо %s символів (%s) останніми %s барами",
+            len(symbols),
+            interval,
+            bars,
+        )
+        try:
+            await target_store.warmup(symbols, interval, bars)
+        except Exception:
+            logger.exception(
+                "[Warmup] Помилка під час прогріву інтервалу %s (symbols=%s)",
+                interval,
+                symbols[:4],
+            )
+
+
+def _discover_snapshot_symbols(base_dir: Path, interval: str) -> list[str]:
+    """Повертає список символів, для яких існують snapshot-файли певного інтервалу."""
+
+    marker = f"_bars_{interval}_snapshot"
+    symbols: set[str] = set()
+    for path in base_dir.rglob(f"*{marker}.*"):
+        if not path.is_file():
+            continue
+        name = path.name
+        if marker not in name:
+            continue
+        symbol = name.split(marker, 1)[0].strip().strip("_")
+        if symbol:
+            symbols.add(symbol.lower())
+    return sorted(symbols)
+
+
+async def _maybe_run_fxcm_coldstart(
+    target_store: UnifiedDataStore, symbols: list[str]
+) -> None:
+    """Запускає FXCM warmup, якщо активний FXCM-режим."""
+
+    if not FXCM_DUKA_WARMUP_ENABLED:
+        logger.info("[FXCM Warmup] Пропущено (FXCM_DUKA_WARMUP_ENABLED=False)")
+        return
+    if settings.data_source != "fxcm":
+        logger.info("[FXCM Warmup] Пропущено (data_source=%s)", settings.data_source)
+        return
+    if not symbols:
+        logger.info("[FXCM Warmup] Пропущено (порожній список символів)")
+        return
+    logger.info(
+        "[FXCM Warmup] Спроба прогріти %d символів (%s барів)",
+        len(symbols),
+        FXCM_WARMUP_BARS,
+    )
+    try:
+        warmed = await run_fxcm_warmup(
+            symbols,
+            period="m1",
+            number=FXCM_WARMUP_BARS,
+            store=target_store,
+        )
+    except Exception:
+        logger.exception("[FXCM Warmup] Збій прогріву FXCM (symbols=%s)", symbols[:5])
+        return
+    if warmed:
+        logger.info(
+            "[FXCM Warmup] Прогріто %d символів із %d",
+            warmed,
+            len(symbols),
+        )
+    else:
+        logger.warning("[FXCM Warmup] Свічки не отримані ні для одного символу")
+
+
+async def _await_fxcm_history(
+    store_obj: UnifiedDataStore,
+    symbols: list[str],
+    *,
+    interval: str,
+    min_rows: int,
+    timeout_sec: int = 30,
+) -> None:
+    """Очікує надходження мінімальної кількості барів для cold-start."""
+
+    if not symbols:
+        return
+    min_rows = max(1, int(min_rows))
+    timeout = max(1.0, float(timeout_sec))
+    deadline = time.monotonic() + timeout
+    pending = {sym.lower() for sym in symbols if sym}
+    if not pending:
+        return
+    logger.info(
+        "[FXCM Coldstart] Перевіряємо історію %d символів (>= %d барів)",
+        len(pending),
+        min_rows,
+    )
+    while pending and time.monotonic() < deadline:
+        resolved: set[str] = set()
+        for sym in list(pending):
+            try:
+                df = await store_obj.get_df(sym, interval, limit=min_rows)
+            except Exception as exc:
+                logger.debug(
+                    "[FXCM Coldstart] Не вдалося отримати df для %s: %s",
+                    sym,
+                    exc,
+                )
+                continue
+            if df is None or df.empty:
+                continue
+            row_count = len(df)
+            if row_count >= min_rows:
+                logger.info(
+                    "[FXCM Coldstart] %s готовий: %d барів (інтервал %s)",
+                    sym,
+                    row_count,
+                    interval,
+                )
+                resolved.add(sym)
+        pending -= resolved
+        if pending:
+            await asyncio.sleep(1.0)
+    if pending:
+        logger.warning(
+            "[FXCM Coldstart] Не вдалося отримати >= %d барів для: %s. "
+            "Очікуємо живий стрім від конектора",
+            min_rows,
+            ", ".join(sorted(pending)),
+        )
+    else:
+        logger.info("[FXCM Coldstart] Історія успішно отримана для всіх FX-символів")
 
 
 def launch_ui_consumer() -> None:
@@ -161,20 +332,13 @@ def launch_ui_consumer() -> None:
 
 
 def validate_settings() -> None:
-    """Перевіряє необхідні змінні середовища (Redis + Binance ключі)."""
+    """Перевіряє необхідні змінні середовища (Redis для FXCM режиму)."""
     missing: list[str] = []
     if not os.getenv("REDIS_URL"):
         if not settings.redis_host:
             missing.append("REDIS_HOST")
         if not settings.redis_port:
             missing.append("REDIS_PORT")
-
-    # Binance-ключі необхідні тільки коли джерело даних Binance
-    if settings.data_source.lower() == "binance":
-        if not settings.binance_api_key:
-            missing.append("BINANCE_API_KEY")
-        if not settings.binance_secret_key:
-            missing.append("BINANCE_SECRET_KEY")
 
     if missing:
         raise ValueError(f"Відсутні налаштування: {', '.join(missing)}")
@@ -197,6 +361,7 @@ async def run_pipeline() -> None:
 
     tasks_to_run: list[asyncio.Task] = []
     fxcm_task: asyncio.Task | None = None
+    fxcm_status_task: asyncio.Task | None = None
 
     try:
         # 1. Ініціалізація сховища та Redis
@@ -243,13 +408,15 @@ async def run_pipeline() -> None:
             logger.error("[Pipeline] Порожній список fast-символів — завершення")
             return
 
+        await _maybe_run_fxcm_coldstart(ds, fast_symbols)
+
         logger.info(
             "[Pipeline] Початковий fast-список (count=%d): %s",
             len(fast_symbols),
             fast_symbols,
         )
         logger.info(
-            "[Pipeline] FXCM режим: пропускаємо preload_1m_history (джерело не Binance)"
+            "[Pipeline] FXCM режим: пропускаємо preload_1m_history (джерело FXCM)"
         )
 
         for sym in fast_symbols:
@@ -353,7 +520,51 @@ async def run_pipeline() -> None:
         except Exception as e:
             logger.debug("[Pipeline] Не вдалося прив'язати монітор до datastore: %s", e)
 
-        logger.info("[Pipeline] FXCM режим: WSWorker (Binance) не запускається")
+        logger.info("[Pipeline] FXCM режим: legacy крипто-WSWorker не запускається")
+
+        if fxcm_task is None:
+            try:
+                fxcm_task = asyncio.create_task(
+                    run_fxcm_ingestor(
+                        ds,
+                        hmac_secret=settings.fxcm_hmac_secret,
+                        hmac_algo=settings.fxcm_hmac_algo,
+                        hmac_required=settings.fxcm_hmac_required,
+                    )
+                )
+                logger.info("[Pipeline] FXCM інжестор запущено (early)")
+            except Exception as e:
+                logger.warning(
+                    "[Pipeline] Не вдалося запустити FXCM інжестор: %s",
+                    e,
+                    exc_info=True,
+                )
+
+        if fxcm_status_task is None:
+            try:
+                fxcm_status_task = asyncio.create_task(
+                    run_fxcm_status_listener(
+                        redis_host=settings.redis_host,
+                        redis_port=settings.redis_port,
+                        heartbeat_channel=settings.fxcm_heartbeat_channel,
+                        market_status_channel=settings.fxcm_market_status_channel,
+                    )
+                )
+                logger.info("[Pipeline] FXCM статус-лістенер запущено")
+            except Exception as e:
+                logger.warning(
+                    "[Pipeline] Не вдалося запустити FXCM статус-лістенер: %s",
+                    e,
+                    exc_info=True,
+                )
+
+        await _await_fxcm_history(
+            ds,
+            fast_symbols,
+            interval="1m",
+            min_rows=SCREENING_LOOKBACK,
+            timeout_sec=45,
+        )
 
         health_task = asyncio.create_task(noop_healthcheck())
         logger.info("[Pipeline] Healthcheck task створено")
@@ -430,22 +641,13 @@ async def run_pipeline() -> None:
                 "[Pipeline] Помилка публікації початкового стану: %s", e, exc_info=True
             )
 
-        if fxcm_task is None:
-            try:
-                fxcm_task = asyncio.create_task(run_fxcm_ingestor(ds))
-                logger.info("[Pipeline] FXCM інжестор запущено")
-            except Exception as e:
-                logger.warning(
-                    "[Pipeline] Не вдалося запустити FXCM інжестор: %s",
-                    e,
-                    exc_info=True,
-                )
-
         tasks_to_run = [health_task, metrics_task]
         if prod is not None:
             tasks_to_run.append(prod)
         if fxcm_task is not None:
             tasks_to_run.append(fxcm_task)
+        if fxcm_status_task is not None:
+            tasks_to_run.append(fxcm_status_task)
 
         logger.info("[Pipeline] Запуск %d фон-виконавчих задач", len(tasks_to_run))
         logger.info(

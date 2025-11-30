@@ -17,8 +17,14 @@ from rich.live import Live
 from rich.logging import RichHandler
 from rich.panel import Panel
 
-from config.config import REDIS_CHANNEL_ASSET_STATE, REDIS_SNAPSHOT_KEY
+from config.config import (
+    FXCM_FAST_SYMBOLS,
+    REDIS_CHANNEL_ASSET_STATE,
+    REDIS_SNAPSHOT_KEY,
+    UI_VIEWER_PROFILE,
+)
 from UI.experimental_viewer import SmcExperimentalViewer
+from UI.experimental_viewer_extended import SmcExperimentalViewerExtended
 
 logger = logging.getLogger("ui_consumer_experimental")
 logger.setLevel(logging.INFO)
@@ -27,15 +33,23 @@ logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
 logger.propagate = False
 
 
+DEFAULT_VIEWER_SYMBOL = FXCM_FAST_SYMBOLS[0].lower() if FXCM_FAST_SYMBOLS else "xauusd"
+
+
 class ExperimentalUIConsumer:
     """Легковаговий консюмер, що відображає один символ у SMC viewer."""
 
-    def __init__(self, symbol: str = "xauusd", snapshot_dir: str = "tmp") -> None:
-        self.symbol = symbol.lower()
+    def __init__(
+        self,
+        symbol: str | None = None,
+        snapshot_dir: str = "tmp",
+        viewer_profile: str | None = None,
+    ) -> None:
+        base_symbol = (symbol or DEFAULT_VIEWER_SYMBOL or "xauusd").lower()
+        self.symbol = base_symbol
         self.console = Console(stderr=False, force_terminal=True)
-        self.viewer = SmcExperimentalViewer(
-            symbol=self.symbol, snapshot_dir=snapshot_dir
-        )
+        self.viewer_profile = (viewer_profile or UI_VIEWER_PROFILE).lower()
+        self.viewer = self._create_viewer(snapshot_dir)
 
     async def redis_consumer(
         self,
@@ -87,7 +101,9 @@ class ExperimentalUIConsumer:
                 asset = self._extract_asset(data)
                 if asset is None:
                     continue
-                viewer_state = self.viewer.build_state(asset, data.get("meta") or {})
+                viewer_state = self.viewer.build_state(
+                    asset, data.get("meta") or {}, data.get("fxcm")
+                )
                 live.update(self.viewer.render_panel(viewer_state))
                 self.viewer.dump_snapshot(viewer_state)
 
@@ -100,7 +116,9 @@ class ExperimentalUIConsumer:
             asset = self._extract_asset(data)
             if asset is None:
                 return
-            viewer_state = self.viewer.build_state(asset, data.get("meta") or {})
+            viewer_state = self.viewer.build_state(
+                asset, data.get("meta") or {}, data.get("fxcm")
+            )
             panel = self.viewer.render_panel(viewer_state)
             self.console.print(panel)
             self.viewer.dump_snapshot(viewer_state)
@@ -126,3 +144,10 @@ class ExperimentalUIConsumer:
     @staticmethod
     def placeholder_panel() -> Panel:
         return Panel("Очікування даних…", border_style="yellow")
+
+    def _create_viewer(self, snapshot_dir: str) -> SmcExperimentalViewer:
+        if self.viewer_profile == "extended":
+            return SmcExperimentalViewerExtended(
+                symbol=self.symbol, snapshot_dir=snapshot_dir
+            )
+        return SmcExperimentalViewer(symbol=self.symbol, snapshot_dir=snapshot_dir)

@@ -33,6 +33,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 from collections.abc import Mapping, Sequence
@@ -44,10 +46,47 @@ from redis.asyncio import Redis
 from app.settings import settings
 from data.unified_store import UnifiedDataStore
 
+try:  # pragma: no cover - опціональна залежність
+    from prometheus_client import Counter as PromCounter  # type: ignore[import]
+except Exception:  # pragma: no cover - у тестах/CI клієнта може не бути
+    PromCounter = None
+
 logger = logging.getLogger("fxcm_ingestor")
 
 
 FXCM_OHLCV_CHANNEL = "fxcm:ohlcv"
+
+
+class _NoopCounter:
+    def labels(self, *args: Any, **kwargs: Any) -> _NoopCounter:
+        return self
+
+    def inc(self, amount: float = 1.0) -> None:
+        return None
+
+
+def _build_counter(
+    name: str, description: str, *, labelnames: tuple[str, ...] = ()
+) -> Any:
+    if PromCounter is None:
+        return _NoopCounter()
+    try:
+        return PromCounter(name, description, labelnames=labelnames)
+    except Exception:  # pragma: no cover - реєстр уже містить метрику
+        return _NoopCounter()
+
+
+PROM_FXCM_INVALID_SIG = _build_counter(
+    "ai_one_fxcm_invalid_sig_total",
+    "Кількість FXCM пакетів з некоректним або відсутнім HMAC.",
+    labelnames=("reason",),
+)
+PROM_FXCM_UNSIGNED_PAYLOAD = _build_counter(
+    "ai_one_fxcm_unsigned_payload_total",
+    "Кількість FXCM пакетів без підпису при вимозі HMAC.",
+)
+
+_UNEXPECTED_SIG_LOGGED = False
 
 
 def _bars_payload_to_df(bars: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
@@ -121,6 +160,148 @@ def _bars_payload_to_df(bars: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
     ]
 
 
+def _normalize_signature(sig: Any) -> str | None:
+    if sig is None:
+        return None
+    if isinstance(sig, bytes):
+        value = sig.decode("utf-8", errors="ignore")
+    else:
+        value = str(sig)
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _log_unexpected_sig_once(symbol: Any, interval: Any) -> None:
+    global _UNEXPECTED_SIG_LOGGED
+    if _UNEXPECTED_SIG_LOGGED:
+        return
+    logger.warning(
+        "[FXCM_INGEST] Отримано підписаний пакет при вимкненому HMAC "
+        "(symbol=%r, tf=%r). Пакет прийнято, але конфіги варто синхронізувати",
+        symbol,
+        interval,
+    )
+    _UNEXPECTED_SIG_LOGGED = True
+
+
+def _verify_hmac_signature(
+    payload: Mapping[str, Any],
+    sig: str | None,
+    *,
+    secret: str | None,
+    algo: str = "sha256",
+) -> bool:
+    """Перевіряє HMAC-підпис FXCM-пакету.
+
+    True повертається лише коли secret відсутній і sig теж немає, або коли
+    секрет заданий та підпис збігається. Інакше повертаємо False.
+    """
+
+    if secret is None:
+        return sig is None
+
+    if not sig:
+        return False
+
+    try:
+        serialized = json.dumps(
+            payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return False
+
+    digest_name = (algo or "sha256").lower()
+    digestmod = getattr(hashlib, digest_name, hashlib.sha256)
+    try:
+        digest = hmac.new(secret.encode("utf-8"), serialized, digestmod)
+    except Exception:
+        return False
+    return hmac.compare_digest(digest.hexdigest(), sig)
+
+
+async def _process_payload(
+    store: UnifiedDataStore,
+    payload: Mapping[str, Any],
+    *,
+    hmac_secret: str | None,
+    hmac_algo: str,
+    hmac_required: bool,
+) -> tuple[int, str | None, str | None]:
+    symbol = payload.get("symbol")
+    interval = payload.get("tf")
+    bars = payload.get("bars")
+
+    if (
+        not symbol
+        or not interval
+        or not isinstance(bars, Sequence)
+        or isinstance(bars, (bytes, str))
+    ):
+        logger.warning(
+            "[FXCM_INGEST] Некоректний payload: symbol=%r interval=%r bars_type=%r",
+            symbol,
+            interval,
+            type(bars),
+        )
+        return 0, None, None
+
+    sig = _normalize_signature(payload.get("sig"))
+    base_payload = {"symbol": symbol, "tf": interval, "bars": bars}
+
+    if hmac_secret:
+        if not sig:
+            PROM_FXCM_INVALID_SIG.labels(reason="missing").inc()
+            if hmac_required:
+                PROM_FXCM_UNSIGNED_PAYLOAD.inc()
+                logger.warning(
+                    "[FXCM_INGEST] Відкинуто пакет через відсутній HMAC "
+                    "(symbol=%r, tf=%r)",
+                    symbol,
+                    interval,
+                )
+                return 0, None, None
+            logger.warning(
+                "[FXCM_INGEST] FXCM-пакет без HMAC (symbol=%r, tf=%r) — приймаємо, "
+                "бо FXCM_HMAC_REQUIRED=False",
+                symbol,
+                interval,
+            )
+        elif not _verify_hmac_signature(
+            base_payload, sig, secret=hmac_secret, algo=hmac_algo
+        ):
+            PROM_FXCM_INVALID_SIG.labels(reason="mismatch").inc()
+            logger.warning(
+                "[FXCM_INGEST] Відкинуто пакет через некоректний HMAC "
+                "(symbol=%r, tf=%r)",
+                symbol,
+                interval,
+            )
+            return 0, None, None
+    else:
+        if sig:
+            _log_unexpected_sig_once(symbol, interval)
+
+    df = _bars_payload_to_df(bars)
+    if df.empty:
+        return 0, None, None
+
+    symbol_norm = str(symbol).lower()
+    interval_norm = str(interval).lower()
+
+    try:
+        await store.put_bars(symbol_norm, interval_norm, df)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[FXCM_INGEST] Помилка під час put_bars(%s, %s): %s",
+            symbol_norm,
+            interval_norm,
+            exc,
+        )
+        return 0, None, None
+
+    return len(df), symbol_norm, interval_norm
+
+
 async def run_fxcm_ingestor(
     store: UnifiedDataStore,
     *,
@@ -128,6 +309,9 @@ async def run_fxcm_ingestor(
     redis_port: int | None = None,
     channel: str = FXCM_OHLCV_CHANNEL,
     log_every_n: int = 1,
+    hmac_secret: str | None = None,
+    hmac_algo: str = "sha256",
+    hmac_required: bool = False,
 ) -> None:
     """Основний цикл інжестора FXCM → UnifiedDataStore.
 
@@ -137,9 +321,16 @@ async def run_fxcm_ingestor(
         redis_port: Порт Redis; за замовчуванням береться з app.settings.
         channel: Назва Redis Pub/Sub каналу, з якого читаємо OHLCV-пакети.
         log_every_n: Як часто логувати успішний інжест (щоб уникнути спаму).
+        hmac_secret: Якщо задано — перевіряємо HMAC-підпис FXCM payload.
+        hmac_algo: Назва алгоритму (наприклад, "sha256").
+        hmac_required: True → усі пакети без валідного підпису відкидаємо.
     """
     host = redis_host or settings.redis_host
     port = redis_port or settings.redis_port
+    normalized_secret = (
+        hmac_secret.strip() if isinstance(hmac_secret, str) else hmac_secret
+    )
+    normalized_algo = (hmac_algo or "sha256").strip().lower() or "sha256"
 
     redis = Redis(host=host, port=port)
     pubsub = redis.pubsub()
@@ -155,6 +346,7 @@ async def run_fxcm_ingestor(
 
     processed = 0
     log_every_n = max(1, int(log_every_n))
+    hmac_required = bool(hmac_required)
 
     try:
         async for message in pubsub.listen():
@@ -192,47 +384,25 @@ async def run_fxcm_ingestor(
                 )
                 continue
 
-            symbol = payload.get("symbol")
-            interval = payload.get("tf")
-            bars = payload.get("bars")
+            rows, symbol, interval = await _process_payload(
+                store,
+                payload,
+                hmac_secret=normalized_secret,
+                hmac_algo=normalized_algo,
+                hmac_required=hmac_required,
+            )
 
-            if not symbol or not interval or not isinstance(bars, Sequence):
-                logger.warning(
-                    "[FXCM_INGEST] Некоректний payload: symbol=%r interval=%r "
-                    "bars_type=%r",
-                    symbol,
-                    interval,
-                    type(bars),
-                )
+            if rows <= 0:
                 continue
 
-            # Усі внутрішні модулі очікують lower-case символи/таймфрейми
-            symbol = str(symbol).lower()
-            interval = str(interval).lower()
-
-            df = _bars_payload_to_df(bars)
-            if df.empty:
-                continue
-
-            try:
-                await store.put_bars(symbol, interval, df)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "[FXCM_INGEST] Помилка під час put_bars(%s, %s): %s",
-                    symbol,
-                    interval,
-                    exc,
-                )
-                continue
-
-            processed += len(df)
-            if processed % log_every_n == 0:
+            processed += rows
+            if processed % log_every_n == 0 and symbol and interval:
                 logger.info(
                     "[FXCM_INGEST] Інгестовано барів: %d (останній пакет: %s %s, rows=%d)",
                     processed,
                     symbol,
                     interval,
-                    len(df),
+                    rows,
                 )
     except asyncio.CancelledError:
         # Очікуваний шлях завершення при зупинці пайплайна

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 import pandas as pd
 
@@ -40,7 +40,7 @@ def detect_order_blocks(
     bias = str(structure.meta.get("bias") or structure.bias or "NEUTRAL").upper()
     zones: list[SmcZone] = []
 
-    for idx, leg in enumerate(structure.legs):
+    for _, leg in enumerate(structure.legs):
         direction = _leg_direction(leg)
         if direction is None:
             continue
@@ -144,9 +144,9 @@ def _find_ob_candidate(
 
     # fallback: найбільш екстремальна свічка у вікні
     if direction == "LONG":
-        rel_pos = int(window["low"].astype(float).values.argmin())
+        rel_pos = int(window["low"].astype(float).to_numpy().argmin())
     else:
-        rel_pos = int(window["high"].astype(float).values.argmax())
+        rel_pos = int(window["high"].astype(float).to_numpy().argmax())
     return pre_start + rel_pos
 
 
@@ -155,14 +155,23 @@ def _leg_bos_event(
     leg: SmcStructureLeg,
     direction: Literal["LONG", "SHORT"],
 ) -> SmcStructureEvent | None:
+    target_sig = _leg_signature(leg)
     for event in events:
-        if (
-            event.source_leg is leg
-            and event.event_type == "BOS"
-            and event.direction == direction
-        ):
+        if event.event_type != "BOS" or event.direction != direction:
+            continue
+        if event.source_leg is None:
+            continue
+        if _leg_signature(event.source_leg) == target_sig:
             return event
     return None
+
+
+def _leg_signature(leg: SmcStructureLeg) -> tuple[int, int, str]:
+    return (
+        int(getattr(leg.from_swing, "index", -1)),
+        int(getattr(leg.to_swing, "index", -1)),
+        str(getattr(leg, "label", "")),
+    )
 
 
 def _build_zone_from_row(
@@ -226,6 +235,9 @@ def _build_zone_from_row(
         f"bos_{int(bos_event.time.value)}" if bos_event is not None else None
     )
 
+    bias_value = bias if bias in {"LONG", "SHORT", "NEUTRAL"} else "UNKNOWN"
+    bias_at_creation = cast(Literal["LONG", "SHORT", "NEUTRAL", "UNKNOWN"], bias_value)
+
     zone = SmcZone(
         zone_type=SmcZoneType.ORDER_BLOCK,
         price_min=min(zone_low, zone_high),
@@ -242,7 +254,7 @@ def _build_zone_from_row(
         quality=quality,
         reference_leg_id=leg_id,
         reference_event_id=reference_event_id,
-        bias_at_creation=bias if bias in {"LONG", "SHORT", "NEUTRAL"} else "UNKNOWN",
+        bias_at_creation=bias_at_creation,
         notes="",
         meta={},
     )
@@ -254,7 +266,7 @@ def _build_zone_from_row(
             "wick_bottom_pct": wick_bottom_pct,
             "entry_mode": entry_mode,
             "role": role,
-            "bias_at_creation": zone.bias_at_creation,
+            "bias_at_creation": bias_at_creation,
             "has_bos": has_bos,
             "bar_count": bar_count,
             "amplitude": amplitude,
@@ -276,6 +288,15 @@ def _derive_role(
 
 
 def _extract_timestamp(row: pd.Series) -> pd.Timestamp:
+    """
+    Витягує відмітку часу з рядка DataFrame або повертає поточний час, якщо її немає.
+
+        :param row: Рядок з OHLCV-даними.
+        :type row: pd.Series
+        :return: Відповідна мітка часу.
+        :rtype: pd.Timestamp
+    """
+
     for column in ("open_time", "close_time", "time", "timestamp"):
         if column in row and pd.notna(row[column]):
             try:

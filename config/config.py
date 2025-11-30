@@ -7,13 +7,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 __all__ = [
-    "FilterParams",
-    "MetricResults",
     "SymbolInfo",
     "NAMESPACE",
     "DATASTORE_BASE_DIR",
@@ -22,13 +19,13 @@ __all__ = [
     "KLINES_SEMAPHORE",
     "FAST_SYMBOLS_TTL_AUTO",
     "FAST_SYMBOLS_TTL_MANUAL",
-    "MANUAL_FAST_SYMBOLS_SEED",
-    "CANARY_SYMBOLS",
     "FXCM_FAST_SYMBOLS",
-    "PREFILTER_BASE_PARAMS",
-    "PREFILTER_INTERVAL_SEC",
-    "PRELOAD_1M_LOOKBACK_INIT",
-    "PRELOAD_DAILY_DAYS",
+    "FXCM_DUKA_WARMUP_ENABLED",
+    "FXCM_WARMUP_BARS",
+    "FXCM_STREAM_POLL_SECONDS",
+    "FXCM_STREAM_LOOKBACK_MINUTES",
+    "FXCM_STREAM_LIMIT",
+    "FXCM_STALE_LAG_SECONDS",
     "REACTIVE_STAGE1",
     "SCREENING_LOOKBACK",
     "SCREENING_BATCH_SIZE",
@@ -39,9 +36,8 @@ __all__ = [
     "MIN_READY_PCT",
     "TRADE_REFRESH_INTERVAL",
     "WS_GAP_STATUS_PATH",
-    "STAGE1_PREFILTER_THRESHOLDS",
+    "ASSET_TRIGGER_FLAGS",
     "STAGE1_METRICS_BATCH",
-    "STAGE1_PREFILTER_HEAVY_LIMIT",
     "STAGE1_MONITOR_PARAMS",
     "STAGE1_BEARISH_REASON_BONUS",
     "STAGE1_BEARISH_TRIGGER_TAGS",
@@ -61,6 +57,9 @@ __all__ = [
     "SMC_PIPELINE_CFG",
     "REDIS_CACHE_TTL",
     "UI_EXPERIMENTAL_VIEW_ENABLED",
+    "UI_VIEWER_PROFILE",
+    "DATASTORE_WARMUP_ENABLED",
+    "DATASTORE_WARMUP_INTERVALS",
 ]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -71,39 +70,8 @@ NAMESPACE = "ai_one"
 # ───────────────────────────── Допоміжні типи ─────────────────────────────
 
 
-@dataclass(slots=True)
-class FilterParams:
-    """Параметри Stage1 prefilter/оптимізованого відбору активів."""
-
-    min_quote_volume: float = 2_000_000.0
-    min_price_change: float = 2.5
-    min_open_interest: float = 400_000.0
-    min_orderbook_depth: float = 40_000.0
-    min_atr_percent: float = 0.4
-    max_symbols: int = 40
-    dynamic: bool = True
-
-    def dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(slots=True)
-class MetricResults:
-    """Статистика виконання Stage1 prefilter."""
-
-    initial_count: int = 0
-    prefiltered_count: int = 0
-    filtered_count: int = 0
-    result_count: int = 0
-    elapsed_time: float = 0.0
-    params: dict[str, Any] = field(default_factory=dict)
-
-    def dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
 class SymbolInfo(dict):
-    """Легка обгортка навколо Binance exchangeInfo зі збереженням сирих полів."""
+    """Легка обгортка навколо біржового exchangeInfo зі збереженням сирих полів."""
 
     def __init__(self, **data: Any) -> None:
         super().__init__(data)
@@ -177,6 +145,15 @@ UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
 
 # Опційний рендерер (SMC viewer) — вимкнено за замовчуванням
 UI_EXPERIMENTAL_VIEW_ENABLED: bool = True
+# Профіль experimental viewer: "standard" (поточна версія) або "extended"
+UI_VIEWER_PROFILE: str = "extended"
+
+# Прогрів UnifiedDataStore при холодному старті (зчитуємо останні снапшоти)
+DATASTORE_WARMUP_ENABLED: bool = True
+DATASTORE_WARMUP_INTERVALS: dict[str, int] = {
+    "5m": 1500,
+    "1m": 1800,
+}
 
 
 # ── Підготовчі прапорці для WS gap‑бекфілу (за замовчуванням вимкнено) ──
@@ -191,29 +168,25 @@ WS_GAP_BACKFILL: dict[str, int | bool] = {
 #: Redis-шлях для статусу WS-ресинхронізації (ai_one:stream:resync)
 WS_GAP_STATUS_PATH: tuple[str, ...] = ("stream", "resync")
 
-# ───────────────────────────── Stage1 / Prefilter ─────────────────────────────
+# ───────────────────────────── Stage1 параметри ─────────────────────────────
 
 FAST_SYMBOLS_TTL_AUTO = 15 * 60
 FAST_SYMBOLS_TTL_MANUAL = 60 * 60
-MANUAL_FAST_SYMBOLS_SEED = [
-    "XAUUSD",
-]
-CANARY_SYMBOLS = [sym.upper() for sym in MANUAL_FAST_SYMBOLS_SEED]
-# Окремий whitelist для FXCM-режиму — не змішуємо з Binance-юніверсом
+# Окремий whitelist для FXCM-режиму — не змішуємо з історичними крипто-юніверсами
 FXCM_FAST_SYMBOLS = [
-    "xauusd",  # у всій системі символи зберігаємо у lower-case
-    # пізніше можна додати "eurusd", "gbpusd" тощо
+    "eurusd",  # у всій системі символи зберігаємо у lower-case
 ]
 
-PREFILTER_BASE_PARAMS = {
-    "min_depth": 50_000,
-    "min_atr": 0.35,
-    "dynamic": True,
-}
-PREFILTER_INTERVAL_SEC = 10 * 60
-# Мінімально потрібна глибина 1m-історії для Stage1 (~EMA200 H1).
-PRELOAD_1M_LOOKBACK_INIT = 26_600
-PRELOAD_DAILY_DAYS = 45
+FXCM_DUKA_WARMUP_ENABLED = False
+# Коли True — автоматично підтягуємо історію з Dukascopy перед стартом Stage1
+# (корисно для cold-start без 3.7-конектора). За замовчуванням вимкнено, бо
+# FXCM конектор самостійно прогріває Redis.
+FXCM_WARMUP_BARS = 1000
+FXCM_STREAM_POLL_SECONDS = 5
+FXCM_STREAM_LOOKBACK_MINUTES = 15
+FXCM_STREAM_LIMIT = 3000
+FXCM_STALE_LAG_SECONDS = 120
+
 REACTIVE_STAGE1 = False
 SCREENING_LOOKBACK = 240
 SCREENING_BATCH_SIZE = 12
@@ -223,14 +196,14 @@ DEFAULT_LOOKBACK = 3
 DEFAULT_TIMEZONE = "UTC"
 MIN_READY_PCT = 0.6
 TRADE_REFRESH_INTERVAL = 30
-STAGE1_PREFILTER_THRESHOLDS = {
-    "MIN_QUOTE_VOLUME": 2_000_000.0,
-    "MIN_PRICE_CHANGE": 2.0,
-    "MIN_OPEN_INTEREST": 400_000.0,
-    "MAX_SYMBOLS": 40,
+ASSET_TRIGGER_FLAGS = {
+    "volume_spike": False,
+    "breakout": False,
+    "volatility_spike": False,
+    "rsi": False,
+    "vwap_deviation": False,
 }
 STAGE1_METRICS_BATCH = 15
-STAGE1_PREFILTER_HEAVY_LIMIT = 250
 STAGE1_MONITOR_PARAMS = {
     "vol_z_threshold": 2.2,
     "rsi_overbought": 68.0,

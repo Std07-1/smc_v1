@@ -1,10 +1,10 @@
-"""Stage1 моніторинг потокових барів (1m/5m) та генерація сирих сигналів.
+"""Stage1 моніторинг потокових FX-барів (1m/5m) та генерація сирих сигналів.
 
 Шлях: ``stage1/asset_monitoring.py``
 
 Призначення:
     • підтримка інкрементальної статистики (RSI, VWAP, ATR, VolumeZ);
-    • агрегація тригерів (volume / breakout / volatility / RSI / VWAP deviation);
+    • агрегація FX-тригерів (volume / breakout / volatility / RSI / VWAP deviation);
     • нормалізація причин (`normalize_trigger_reasons`) і формування сигналу ALERT/NORMAL.
 
 Особливості:
@@ -25,6 +25,7 @@ from rich.logging import RichHandler
 
 from app.thresholds import Thresholds, load_thresholds
 from config.config import (  # додано USE_RSI_DIV, USE_VWAP_DEVIATION
+    ASSET_TRIGGER_FLAGS,
     DIRECTIONAL_PARAMS,
     STAGE1_BEARISH_REASON_BONUS,
     STAGE1_BEARISH_TRIGGER_TAGS,
@@ -64,15 +65,7 @@ if not logger.handlers:  # guard від подвійного підключен�
 
 
 class AssetMonitorStage1:
-    """
-    Stage1: Моніторинг крипто-активів у реальному часі на основі WS-барів.
-    Основні тригери:
-      • Сплеск обсягу (volume_z)
-      • Динамічний RSI (overbought/oversold)
-      • Локальні рівні підтримки/опору
-      • VWAP
-      • ATR-коридор (волатильність)
-    """
+    """Stage1 моніторинг FX-активів у реальному часі на основі live-барів."""
 
     def __init__(
         self,
@@ -124,8 +117,12 @@ class AssetMonitorStage1:
         self._symbol_cfg: dict[str, Thresholds] = {}
         self.state_manager = state_manager
         # Статистики для anti-spam/визначення частоти тригерів можна додати тут, якщо потрібно
-        self.feature_switches = feature_switches or {}
-        self._sw_triggers = self.feature_switches.get("triggers") or {}
+        self.feature_switches = dict(feature_switches) if feature_switches else {}
+        default_triggers = dict(ASSET_TRIGGER_FLAGS)
+        custom_triggers = self.feature_switches.get("triggers")
+        if isinstance(custom_triggers, dict):
+            default_triggers.update({k: bool(v) for k, v in custom_triggers.items()})
+        self._sw_triggers = default_triggers
         # Callback для подальшої обробки (async). Signature: (signal: dict) -> Awaitable[None]
         self._on_alert_cb = on_alert
         # Службові маркери для дедуплікації обробки барів
@@ -141,7 +138,7 @@ class AssetMonitorStage1:
         self.low_atr_strict_ratio: float = float(cfg.get("low_atr_strict_ratio", 0.7))
 
         # Можливий оверрайд через feature_switches
-        sw = (feature_switches or {}).get("volume_spike", {})
+        sw = self.feature_switches.get("volume_spike", {})
         if isinstance(sw, dict) and "use_vol_atr" in sw:
             self.use_vol_atr = bool(sw["use_vol_atr"])
 
@@ -589,7 +586,7 @@ class AssetMonitorStage1:
 
         # ————— ІНТЕГРАЦІЯ ВСІХ СУЧАСНИХ ТРИГЕРІВ —————
         # 1. Сплеск обсягу (використовуємо виключно Z‑score, vol/atr шлях опційний)
-        if self._sw_triggers.get("volume_spike", True):
+        if self._sw_triggers.get("volume_spike", False):
             volz = float(
                 effective.get("vol_z_threshold", getattr(thr, "vol_z_threshold", 2.0))
             )
@@ -627,7 +624,7 @@ class AssetMonitorStage1:
                     )
 
         # 2. Пробій рівнів (локальний breakout, підхід до рівня)
-        if self._sw_triggers.get("breakout", True):
+        if self._sw_triggers.get("breakout", False):
             # Налаштування breakout із конфігурації (state-aware)
             br_cfg: dict[str, Any] = {}
             st = (
@@ -689,12 +686,12 @@ class AssetMonitorStage1:
                 _add("near_daily_resistance", "🔴 Підхід до денного рівня опору")
 
         # 3. Сплеск волатильності
-        if self._sw_triggers.get("volatility_spike", True):
+        if self._sw_triggers.get("volatility_spike", False):
             if volatility_spike_trigger(df, window=14, threshold=2.0):
                 _add("volatility_spike", "⚡️ Сплеск волатильності (ATR/TR)")
 
         # 4. RSI + дивергенції
-        if self._sw_triggers.get("rsi", True):
+        if self._sw_triggers.get("rsi", False):
             rsi_res = rsi_divergence_trigger(df, rsi_period=14)
             if rsi_res.get("rsi") is not None:
                 # Замість фіксованих 70/30 — динамічні з stats, із clamp від конфігу (за наявності)
@@ -747,7 +744,7 @@ class AssetMonitorStage1:
                     _add("bullish_div", "🦅 Бичача дивергенція RSI/ціна")
 
         # 5. Відхилення від VWAP (порог з thresholds)
-        if self._sw_triggers.get("vwap_deviation", True):
+        if self._sw_triggers.get("vwap_deviation", False):
             vwap_thr = float(
                 effective.get("vwap_deviation", getattr(thr, "vwap_deviation", 0.02))
                 or 0.02

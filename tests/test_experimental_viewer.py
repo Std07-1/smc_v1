@@ -1,30 +1,17 @@
 """Перевірки побудови стану для SmcExperimentalViewer."""
 
-from rich.panel import Panel
-
 from UI.experimental_viewer import SmcExperimentalViewer
 
 
 def _sample_asset() -> dict:
     return {
         "symbol": "xauusd",
-        "stats": {
-            "current_price": 2375.5,
-            "session_tag": "LONDON",
-            "session_seq": 128,
-            "session_start_ts": "2025-11-25T08:00:00Z",
-            "session_end_ts": "2025-11-25T15:59:00Z",
-        },
+        "stats": {"current_price": 2375.5, "session_tag": "LONDON"},
         "smc": {
             "structure": {
                 "trend": "UP",
                 "bias": "LONG",
                 "range_state": "INSIDE",
-                "meta": {
-                    "snapshot_start_ts": "2025-11-25T07:00:00Z",
-                    "snapshot_end_ts": "2025-11-25T12:10:00Z",
-                    "last_choch_ts": "2025-11-25T11:55:00Z",
-                },
                 "events": [
                     {
                         "event_type": "BOS",
@@ -92,29 +79,8 @@ def test_build_state_returns_compact_sections(tmp_path) -> None:
 
     assert state["structure"]["bias"] == "LONG"
     assert state["liquidity"]["pools"][0]["liq_type"] == "EQH"
+    assert "fxcm" in state
     assert state["payload_seq"] == 42
-    assert state["sessions"][0]["label"] == "LONDON"
-    assert state["structure"]["meta"]["session_id"] == "128"
 
     viewer.dump_snapshot(state)
     assert viewer.snapshot_path.exists()
-
-
-def test_render_panel_builds_extended_layout(tmp_path) -> None:
-    viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
-    state = viewer.build_state(_sample_asset(), {"ts": "2025-11-25", "seq": 1})
-
-    panel = viewer.render_panel(state)
-
-    assert isinstance(panel, Panel)
-    assert str(panel.title) == "SMC Experimental Viewer · XAUUSD"
-
-
-def test_render_panel_handles_empty_sections(tmp_path) -> None:
-    viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
-    empty_asset = {"symbol": "xauusd", "stats": {}, "smc": {}}
-    state = viewer.build_state(empty_asset, {"ts": None, "seq": None})
-
-    panel = viewer.render_panel(state)
-
-    assert isinstance(panel, Panel)

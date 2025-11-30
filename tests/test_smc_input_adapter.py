@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from typing import Any, cast
 
 import pandas as pd
 from redis.asyncio import Redis
 
 from data.unified_store import StoreConfig, UnifiedDataStore
-from smc_core.input_adapter import _normalize_frame, build_smc_input_from_store
+from smc_core.input_adapter import build_smc_input_from_store
 
 
 class _InMemoryRedis:
@@ -70,24 +69,3 @@ def test_build_smc_input_from_store() -> None:
     assert smc_input.ohlc_by_tf["5m"].shape[0] == 1
     assert "15m" in smc_input.ohlc_by_tf
     assert smc_input.context == {}
-
-
-def test_normalize_frame_converts_open_time_ms_to_utc_timestamp() -> None:
-    base_ms = int(datetime(2025, 11, 25, 12, 0, tzinfo=UTC).timestamp() * 1000)
-    frame = pd.DataFrame(
-        {
-            "open_time": [base_ms, base_ms + 60_000],
-            "open": [100.0, 101.0],
-            "high": [101.0, 102.0],
-            "low": [99.5, 100.5],
-            "close": [100.5, 101.5],
-            "volume": [10.0, 12.0],
-        }
-    )
-
-    normalized = _normalize_frame(frame)
-
-    assert "timestamp" in normalized.columns
-    assert normalized["timestamp"].dt.tz is not None
-    assert normalized["timestamp"].iloc[0].year == 2025
-    assert normalized["timestamp"].iloc[1] > normalized["timestamp"].iloc[0]

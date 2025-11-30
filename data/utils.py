@@ -1,10 +1,13 @@
-import logging
 import json
+import logging
+from datetime import UTC, datetime
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Any, Union
 
 logger = logging.getLogger("utils")
+
 
 def get_ttl_for_interval(interval: str) -> int:
     """
@@ -18,13 +21,15 @@ def get_ttl_for_interval(interval: str) -> int:
       - "30m": 30 хвилин
     """
     mapping = {
-        "1d": 24 * 3600,   # 24 години
-        "4h": 4 * 3600,    # 4 години
-        "1h": 3600,        # 1 година
-        "30m": 1800        # 30 хвилин (приклад)
+        "1d": 24 * 3600,  # 24 години
+        "4h": 4 * 3600,  # 4 години
+        "1h": 3600,  # 1 година
+        "30m": 1800,  # 30 хвилин (приклад)
         # ... додай ще інтервали за потреби
     }
-    return mapping.get(interval, 3600)  # За замовчуванням 1 година, якщо інше не вказано
+    return mapping.get(
+        interval, 3600
+    )  # За замовчуванням 1 година, якщо інше не вказано
 
 
 def make_serializable(obj: Any) -> Any:
@@ -42,7 +47,7 @@ def make_serializable(obj: Any) -> Any:
 
     elif isinstance(obj, pd.Timestamp):
         return obj.isoformat()
-    
+
     elif isinstance(obj, (list, tuple)):
         return [make_serializable(i) for i in obj]
 
@@ -59,14 +64,17 @@ def make_serializable(obj: Any) -> Any:
     elif isinstance(obj, pd.DataFrame):
         # Серіалізуємо DataFrame у список словників
         return obj.to_dict(orient="records")
-    
+
     elif isinstance(obj, (list, dict)):
         return obj
     else:
         # fallback: перетворюємо у str
         return str(obj)
 
-def serialize_to_json(value: Any, ensure_ascii: bool = False, indent: Union[None, int] = None) -> str:
+
+def serialize_to_json(
+    value: Any, ensure_ascii: bool = False, indent: None | int = None
+) -> str:
     """
     Обгортає json.dumps(), викликаючи make_serializable перед цим.
     """
@@ -79,3 +87,13 @@ def deserialize_from_json(json_str: str) -> Any:
     Стандартна десеріалізація JSON (reverse до serialize_to_json).
     """
     return json.loads(json_str)
+
+
+def ensure_utc(value: datetime | pd.Timestamp) -> datetime:
+    """Повертає datetime у UTC з tzinfo=UTC (навіть якщо вхід був naive)."""
+
+    if isinstance(value, pd.Timestamp):
+        value = value.to_pydatetime()
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

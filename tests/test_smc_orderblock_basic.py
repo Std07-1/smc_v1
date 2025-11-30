@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import pandas as pd
 
 from smc_core.config import SmcCoreConfig
@@ -44,15 +46,20 @@ def _make_snapshot(values: list[tuple[float, float, float, float]]) -> SmcInput:
     )
 
 
-def _swing(idx: int, price: float, kind: str) -> SmcSwing:
+def _swing(idx: int, price: float, kind: Literal["HIGH", "LOW"]) -> SmcSwing:
     return SmcSwing(index=idx, time=_ts(idx), price=price, kind=kind, strength=3)
 
 
+SmcStructureLegLabel = Literal["HH", "HL", "LH", "LL", "UNDEFINED"]
+SmcBias = Literal["LONG", "SHORT", "NEUTRAL"]
+
+
 def _structure(
-    legs: list[tuple[SmcSwing, SmcSwing, str]],
+    legs: list[tuple[SmcSwing, SmcSwing, SmcStructureLegLabel]],
     events: list[SmcStructureEvent],
-    bias: str,
+    bias: SmcBias,
 ) -> SmcStructureState:
+
     swings = {leg[0].index: leg[0] for leg in legs}
     for _, swing_to, _ in legs:
         swings[swing_to.index] = swing_to
@@ -64,12 +71,15 @@ def _structure(
     # align events with actual leg instances
     remapped_events: list[SmcStructureEvent] = []
     for event in events:
+        source_leg = getattr(event, "source_leg", None)
+        if source_leg is None:
+            continue
         matching_leg = next(
             (
                 leg
                 for leg in leg_objs
-                if leg.from_swing.index == event.source_leg.from_swing.index
-                and leg.to_swing.index == event.source_leg.to_swing.index
+                if leg.from_swing.index == source_leg.from_swing.index
+                and leg.to_swing.index == source_leg.to_swing.index
             ),
             None,
         )
@@ -223,3 +233,34 @@ def test_orderblock_role_aligns_with_bias() -> None:
     short_zone = next(z for z in zones if z.direction == "SHORT")
     assert long_zone.role == "PRIMARY"
     assert short_zone.role == "COUNTERTREND"
+
+
+def test_orderblock_detects_bos_with_leg_copy() -> None:
+    values = [
+        (100.0, 100.2, 99.4, 99.8),
+        (99.8, 100.1, 98.8, 99.0),
+        (99.0, 100.5, 98.6, 100.1),
+        (100.1, 102.4, 100.0, 101.8),
+    ]
+    snapshot = _make_snapshot(values)
+    leg = (_swing(1, 98.8, "LOW"), _swing(3, 102.4, "HIGH"), "HL")
+    bos_event = SmcStructureEvent(
+        event_type="BOS",
+        direction="LONG",
+        price_level=101.8,
+        time=_ts(3),
+        source_leg=SmcStructureLeg(
+            from_swing=_swing(1, 98.8, "LOW"),
+            to_swing=_swing(3, 102.4, "HIGH"),
+            label="HL",
+        ),
+    )
+    # Події містять копію ноги, але _structure має зіставити її з leg_objs
+    structure = _structure([leg], [bos_event], bias="LONG")
+
+    zones = detect_order_blocks(snapshot, structure, SmcCoreConfig())
+
+    assert zones, "Очікуємо знайдену зону"
+    zone = zones[0]
+    assert zone.role == "PRIMARY"
+    assert zone.meta["has_bos"] is True

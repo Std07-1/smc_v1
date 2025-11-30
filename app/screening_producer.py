@@ -21,9 +21,12 @@ from redis.asyncio import Redis
 from rich.console import Console
 from rich.logging import RichHandler
 
+from app.settings import settings
 from config.config import (
     DEFAULT_LOOKBACK,
     DEFAULT_TIMEFRAME,
+    FXCM_FAST_SYMBOLS,
+    FXCM_STALE_LAG_SECONDS,
     MIN_READY_PCT,
     SCREENING_BATCH_SIZE,
     SMC_PIPELINE_CFG,
@@ -36,6 +39,7 @@ from config.constants import (
     K_SIGNAL,
     K_STATS,
 )
+from data.fxcm_status_listener import FxcmFeedState, get_fxcm_feed_state
 from stage1.asset_monitoring import AssetMonitorStage1
 from UI.publish_full_state import publish_full_state
 from utils.utils import (
@@ -64,6 +68,57 @@ if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгів
 
 _SMC_ENGINE: SmcCoreEngine | None = None
 _SMC_TO_PLAIN: Callable[[Any], dict[str, Any] | None] | None = None
+
+
+def _fxcm_symbols() -> set[str]:
+    if not FXCM_FAST_SYMBOLS:
+        return set()
+    return {sym.lower() for sym in FXCM_FAST_SYMBOLS if sym}
+
+
+def _build_fxcm_status_payload(
+    symbol: str,
+    signal: str,
+    hint: str,
+    fx_state: FxcmFeedState,
+) -> dict[str, Any]:
+    payload = create_no_data_signal(symbol)
+    payload[K_SIGNAL] = signal
+    payload["trigger_reasons"] = [signal.lower()]
+    payload["state"] = ASSET_STATE["NO_DATA"]
+    hints = list(payload.get("hints") or [])
+    hints.append(hint)
+    payload["hints"] = hints
+    stats = payload.get(K_STATS)
+    if not isinstance(stats, dict):
+        stats = {}
+        payload[K_STATS] = stats
+    stats.update(
+        {
+            "fxcm_state": fx_state.market_state,
+            "fxcm_process_state": fx_state.process_state,
+            "fxcm_lag_seconds": fx_state.lag_seconds,
+            "fxcm_next_open_utc": fx_state.next_open_utc,
+            "fxcm_last_bar_close_ms": fx_state.last_bar_close_ms,
+        }
+    )
+    return payload
+
+
+def _evaluate_fxcm_gates(
+    symbol: str, fx_state: FxcmFeedState | None
+) -> dict[str, Any] | None:
+    if fx_state is None:
+        return None
+    if fx_state.market_state == "closed":
+        next_window = fx_state.next_open_utc or "невідомо"
+        hint = f"FXCM: ринок закритий, наступне відкриття {next_window}."
+        return _build_fxcm_status_payload(symbol, "FX_MARKET_CLOSED", hint, fx_state)
+    lag = fx_state.lag_seconds
+    if lag is not None and lag > FXCM_STALE_LAG_SECONDS:
+        hint = f"FXCM: фід неактивний {lag:.0f} сек, очікуємо оновлення."  # noqa: E501
+        return _build_fxcm_status_payload(symbol, "FX_FEED_STALE", hint, fx_state)
+    return None
 
 
 async def _get_smc_engine() -> SmcCoreEngine | None:
@@ -204,6 +259,10 @@ async def process_asset_batch(
             except Exception:
                 continue
 
+    fx_mode = settings.data_source == "fxcm"
+    fx_symbols = _fxcm_symbols() if fx_mode else set()
+    fx_state = get_fxcm_feed_state() if fx_mode else None
+
     for symbol in symbols:
         try:
             lower_symbol = symbol.lower()
@@ -251,6 +310,11 @@ async def process_asset_batch(
                 continue
 
             # Якщо дані є і їх достатньо, додаємо до ready_assets
+            if fx_mode and lower_symbol in fx_symbols:
+                gate_payload = _evaluate_fxcm_gates(symbol, fx_state)
+                if gate_payload is not None:
+                    state_manager.update_asset(symbol, gate_payload)
+                    continue
             df = await store.get_df(symbol, timeframe, limit=lookback)
             if df is None or df.empty or len(df) < 5:
                 state_manager.update_asset(symbol, create_no_data_signal(symbol))
@@ -342,7 +406,6 @@ async def screening_producer(
     assets: list[str],
     redis_conn: Redis[str],
     *,
-    reference_symbol: str = "XAUUSD",
     timeframe: str = DEFAULT_TIMEFRAME,
     lookback: int = DEFAULT_LOOKBACK,
     interval_sec: int = TRADE_REFRESH_INTERVAL,
@@ -366,9 +429,6 @@ async def screening_producer(
         assets_current = list(state_manager.state.keys())
     for sym in assets_current:
         state_manager.init_asset(sym)
-    ref = (reference_symbol or "XAUUSD").lower()
-    if ref not in state_manager.state:
-        state_manager.init_asset(ref)
     logger.info(f"Ініціалізовано стан для {len(assets_current)} активів")
 
     # Забезпечуємо доступ кешу до UnifiedDataStore через state_manager.cache (для публікацій у Redis)
@@ -409,7 +469,6 @@ async def screening_producer(
         except Exception as e:
             logger.error(f"Помилка оновлення активів: {str(e)}")
         ready_assets: list[str] = []
-        ref_ready = False
         for symbol in assets_current:
             try:
                 # Перевірка готовності даних для активу
@@ -419,16 +478,6 @@ async def screening_producer(
                     ready_assets.append(symbol)
             except Exception:
                 continue
-        try:
-            # Перевірка готовності даних для референсного активу
-            ref_df = await store.get_df(
-                reference_symbol.lower(), timeframe, limit=lookback
-            )
-            ref_ready = bool(
-                ref_df is not None and not ref_df.empty and len(ref_df) >= lookback
-            )
-        except Exception:
-            ref_ready = False
         ready_count = len(ready_assets)
         min_ready = max(1, int(len(assets_current) * min_ready_pct))
         if ready_count < min_ready:
@@ -457,8 +506,9 @@ async def screening_producer(
             # Переходимо до наступної ітерації while True
             continue
         logger.info(
-            f"📊 Дані готові для {ready_count}/{len(assets_current)} активів"
-            + (" (+reference ready)" if ref_ready else "")
+            "📊 Дані готові для %d/%d активів",
+            ready_count,
+            len(assets_current),
         )
         try:
             batch_size = int(SCREENING_BATCH_SIZE or 20)

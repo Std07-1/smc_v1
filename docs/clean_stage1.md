@@ -24,7 +24,7 @@
    C:/Aione_projects/smc_v1/.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
    ```
 
-3. **Перевірити .env** (Redis + Binance ключі). Без дійсних ключів Stage1 може працювати в режимі лише читання, але WS поток не стартує.
+3. **Перевірити .env** (Redis + FXCM креденшали). Без дійсних FXCM даних Stage1 працюватиме без стріму й показуватиме лише NO_DATA.
 4. **Запустити систему**:
 
    ```powershell
@@ -36,10 +36,10 @@
 
 ## Склад Stage1 після очищення
 
-- **`app/main.py`**: лише Stage1-оркестрація (bootstrap → preload → WSWorker → Screening Producer). Жодних імпортів `trend_breakout`.
-- **`app/screening_producer.py`**: асинхронний цикл збору сигналів з `AssetMonitorStage1` та публікації через `publish_full_state`. Параметри `enable_trend_breakout` / `trend_breakout_concurrency` видалені.
+- **`app/main.py`**: Stage1-оркестрація (bootstrap → FXCM ingest/status → Screening Producer). Жодних імпортів сторонніх стратегій чи крипто-прелоадерів.
+- **`app/screening_producer.py`**: асинхронний цикл збору сигналів з `AssetMonitorStage1` та публікації через `publish_full_state`. Працює виключно з FXCM whitelist.
 - **`app/asset_state_manager.py`**: структура стану активу містить тільки Stage1 поля (`signal`, `stats`, `tp/sl`, тригери). Ключ `trend_breakout` та повʼязані мерджі прибрано.
-- **`config/config.py`**: залишено `PRELOAD_1M_LOOKBACK_INIT` як єдиний контроль глибини історії; константи `TB_*` відсутні.
+- **`config/config.py`**: містить лише FXCM whitelist і Stage1 параметри; всі крипто/preload константи вилучено.
 
 ## Моніторинг та діагностика
 
@@ -66,8 +66,8 @@
    байткодів. Рішення: видалити `__pycache__`, перевірити імпорти.
 - `numpy-typing-compat` скаржиться на версію — нерівні версії `numpy`. Рішення:
    перевстановити залежності (`requirements*.txt`).
-- WSWorker не стартує — відсутні Redis/ключі або Binance stream недоступний.
-   Рішення: перевірити `.env`, мережу, статус Redis.
+- FXCM інжестор не стартує — відсутні Redis/креденшали або FXCM stream недоступний.
+   Рішення: перевірити `.env`, мережу, статус Redis/FXCM.
 
 ## Checklist перед продакшном
 

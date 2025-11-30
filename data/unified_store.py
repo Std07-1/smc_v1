@@ -35,6 +35,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from config.config import DATASTORE_BASE_DIR, NAMESPACE
+from data.fxcm_status_listener import get_fxcm_feed_state
 
 # ── Логування ──
 logger = logging.getLogger("app.data.unified_store")
@@ -926,6 +927,34 @@ class UnifiedDataStore:
         ):  # broad-except: fast-path оптимізація, fallback до загального merge
             pass
 
+    async def enforce_tail_limit(self, symbol: str, interval: str, limit: int) -> None:
+        """Обрізає історію символу до ``limit`` останніх барів у RAM/Redis/диску."""
+
+        if limit <= 0:
+            return
+        async with self._mtx:
+            current = self.ram.get(symbol, interval)
+            if current is None or len(current) <= limit:
+                return
+            trimmed = current.tail(limit).copy()
+            self.ram.put(symbol, interval, trimmed)
+            if len(trimmed):
+                ttl = self.cfg.intervals_ttl.get(
+                    interval, self.cfg.profile.warm_ttl_sec
+                )
+                last_bar = trimmed.iloc[-1].to_dict()
+                await self.redis.jset(
+                    "candles", symbol, interval, value=last_bar, ttl=ttl
+                )
+
+            if self.cfg.write_behind:
+                key = (symbol, interval)
+                if key not in self._flush_q:
+                    self._flush_q.append(key)
+                self._flush_pending[key] = trimmed
+            else:
+                await self.disk.save_bars(symbol, interval, trimmed)
+
     async def warmup(self, symbols: list[str], interval: str, bars_needed: int) -> None:
         """
         Прогріває RAM із диска (якщо є snapshot-и), встановлює TTL/пріоритети.
@@ -1149,13 +1178,36 @@ class UnifiedDataStore:
                 if (self._redis_hits + self._redis_miss)
                 else 0.0
             )
-            return {
+            snapshot = {
                 "ram_hit_ratio": round(ram_ratio, 6),
                 "redis_hit_ratio": round(redis_ratio, 6),
                 "bytes_in_ram": self.ram.stats.get("bytes_in_ram", 0),
                 "flush_backlog": len(self._flush_q),
                 "timestamp": int(time.time()),
             }
+            fxcm_block: dict[str, Any] = {
+                "market_state": "unknown",
+                "process_state": "unknown",
+                "lag_seconds": None,
+                "last_bar_close_ms": None,
+                "next_open_utc": None,
+            }
+            try:
+                fx_state = get_fxcm_feed_state()
+            except Exception:
+                fx_state = None
+            if fx_state is not None:
+                fxcm_block.update(
+                    {
+                        "market_state": fx_state.market_state,
+                        "process_state": fx_state.process_state,
+                        "lag_seconds": fx_state.lag_seconds,
+                        "last_bar_close_ms": fx_state.last_bar_close_ms,
+                        "next_open_utc": fx_state.next_open_utc,
+                    }
+                )
+            snapshot["fxcm"] = fxcm_block
+            return snapshot
         except (
             Exception
         ) as e:  # pragma: no cover  # broad-except: метрики не повинні кидати

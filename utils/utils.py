@@ -211,7 +211,7 @@ def ensure_timestamp_column(
                 elif 1e17 <= med < 1e20:
                     unit = "ns"
                 else:
-                    unit = "ms"  # дефолт безпечний для Binance
+                    unit = "ms"  # дефолт безпечний для FX feed
                 df["timestamp"] = pd.to_datetime(
                     v, unit=unit, errors="coerce", utc=True
                 )

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -676,6 +677,18 @@ async def publish_full_state(
         global _SEQ
         _SEQ = (_SEQ + 1) if _SEQ < 2**31 - 1 else 1
 
+        fxcm_summary: dict[str, Any] | None = None
+        metrics_snapshot_fn = getattr(cache_handler, "metrics_snapshot", None)
+        if callable(metrics_snapshot_fn):
+            try:
+                metrics_snapshot = metrics_snapshot_fn()
+                if isinstance(metrics_snapshot, dict):
+                    fxcm_candidate = metrics_snapshot.get("fxcm")
+                    if isinstance(fxcm_candidate, dict):
+                        fxcm_summary = dict(fxcm_candidate)
+            except Exception:
+                fxcm_summary = None
+
         payload = {
             "type": REDIS_CHANNEL_ASSET_STATE,
             "meta": {
@@ -690,6 +703,8 @@ async def publish_full_state(
             payload["analytics"] = analytics_summary
         if confidence_stats:
             payload["confidence_stats"] = confidence_stats
+        if isinstance(fxcm_summary, dict):
+            payload["fxcm"] = fxcm_summary
 
         try:
             if serialized_assets:
@@ -759,6 +774,16 @@ def _prepare_smc_hint(asset: dict[str, Any]) -> None:
     if not isinstance(plain_hint, dict):
         plain_hint = {"value": plain_hint}
 
+    reference_price = None
+    if isinstance(stats_obj, dict):
+        reference_price = safe_float(stats_obj.get("current_price"))
+        if reference_price is None:
+            reference_price = safe_float(stats_obj.get("price"))
+    if reference_price is None:
+        reference_price = _extract_reference_from_hint(plain_hint)
+
+    _normalize_smc_prices(plain_hint, reference_price)
+
     asset["smc"] = plain_hint
     asset["smc_hint"] = plain_hint
 
@@ -809,6 +834,162 @@ def _plain_smc_hint_via_core(hint_obj: Any) -> Any:
     except Exception:
         logger.exception("Не вдалося серіалізувати smc_hint через smc_core")
         return None
+
+
+def _extract_reference_from_hint(plain_hint: dict[str, Any]) -> float | None:
+    if not isinstance(plain_hint, dict):
+        return None
+    candidates: tuple[tuple[str, ...], ...] = (
+        ("structure", "meta", "snapshot_last_close"),
+        ("structure", "meta", "last_price"),
+        ("meta", "last_price"),
+    )
+    for path in candidates:
+        cursor: Any = plain_hint
+        for key in path:
+            if not isinstance(cursor, dict):
+                cursor = None
+                break
+            cursor = cursor.get(key)
+        ref = safe_float(cursor)
+        if ref is not None:
+            return ref
+    return None
+
+
+def _normalize_smc_prices(
+    plain_hint: dict[str, Any], reference_price: float | None
+) -> None:
+    ref = safe_float(reference_price)
+    if ref is None or ref == 0:
+        return
+    structure_block = plain_hint.get("structure")
+    if isinstance(structure_block, dict):
+        _normalize_structure_prices(structure_block, ref)
+    liquidity_block = plain_hint.get("liquidity")
+    if isinstance(liquidity_block, dict):
+        _normalize_liquidity_prices(liquidity_block, ref)
+    zones_block = plain_hint.get("zones")
+    if isinstance(zones_block, dict):
+        _normalize_zone_prices(zones_block, ref)
+
+
+def _normalize_structure_prices(structure: dict[str, Any], ref: float) -> None:
+    _normalize_list_fields(structure.get("swings"), ("price",), ref)
+    _normalize_list_fields(structure.get("ranges"), ("high", "low", "eq_level"), ref)
+    active_range = structure.get("active_range")
+    if isinstance(active_range, dict):
+        _normalize_fields(active_range, ("high", "low", "eq_level"), ref)
+    _normalize_list_fields(structure.get("events"), ("price_level",), ref)
+    _normalize_list_fields(structure.get("ote_zones"), ("ote_min", "ote_max"), ref)
+    _normalize_legs(structure.get("legs"), ref)
+
+
+def _normalize_liquidity_prices(liq: dict[str, Any], ref: float) -> None:
+    _normalize_list_fields(liq.get("pools"), ("level",), ref)
+    _normalize_list_fields(
+        liq.get("magnets"), ("price_min", "price_max", "center"), ref
+    )
+
+
+def _normalize_zone_prices(zones: dict[str, Any], ref: float) -> None:
+    for key in ("zones", "active_zones", "poi_zones"):
+        _normalize_list_fields(
+            zones.get(key), ("price_min", "price_max", "entry_hint", "stop_hint"), ref
+        )
+
+
+def _normalize_legs(legs: Any, ref: float) -> None:
+    if not isinstance(legs, list):
+        return
+    for leg in legs:
+        if not isinstance(leg, dict):
+            continue
+        for swing_key in ("from_swing", "to_swing"):
+            swing = leg.get(swing_key)
+            if isinstance(swing, dict):
+                _normalize_fields(swing, ("price",), ref)
+
+
+def _normalize_list_fields(items: Any, fields: tuple[str, ...], ref: float) -> None:
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if isinstance(item, dict):
+            _normalize_fields(item, fields, ref)
+
+
+def _normalize_fields(
+    target: dict[str, Any], fields: tuple[str, ...], ref: float
+) -> None:
+    for field in fields:
+        if field not in target:
+            continue
+        normalized = _maybe_rescale_price(target.get(field), ref)
+        if normalized is not None:
+            target[field] = normalized
+
+
+def _maybe_rescale_price(value: Any, reference: float) -> float | None:
+    price = safe_float(value)
+    if price is None:
+        return None
+    return _rescale_price(price, reference)
+
+
+def _rescale_price(price: float, reference: float) -> float:
+    ref_abs = abs(reference)
+    if ref_abs == 0:
+        return price
+    price_abs = abs(price)
+    if price_abs == 0:
+        return price
+    ratio = ref_abs / price_abs
+    if 0.2 <= ratio <= 5:
+        return price
+    if ratio > 5:
+        candidate = _apply_scale(price, ratio, multiply=True, reference=reference)
+        if candidate is not None:
+            return candidate
+    inv_ratio = price_abs / ref_abs
+    if inv_ratio > 5:
+        candidate = _apply_scale(price, inv_ratio, multiply=False, reference=reference)
+        if candidate is not None:
+            return candidate
+    return price
+
+
+def _apply_scale(
+    price: float, ratio: float, *, multiply: bool, reference: float
+) -> float | None:
+    power = _round_power_of_ten(ratio)
+    if power is None:
+        return None
+    scale = 10**power
+    candidate = price * scale if multiply else price / scale
+    if _is_within_magnitude(candidate, reference):
+        return candidate
+    return None
+
+
+def _round_power_of_ten(value: float) -> int | None:
+    if value <= 0:
+        return None
+    log_val = math.log10(value)
+    power = int(round(log_val))
+    if power == 0 or abs(power) > 6:
+        return None
+    if abs(log_val - power) > 0.2:
+        return None
+    return power
+
+
+def _is_within_magnitude(candidate: float, reference: float) -> bool:
+    ref_abs = abs(reference)
+    if ref_abs == 0:
+        return False
+    ratio = abs(candidate) / ref_abs
+    return 0.2 <= ratio <= 5
 
 
 def _to_plain_smc_liquidity(liq_state: Any | None) -> dict[str, Any] | None:

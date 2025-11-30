@@ -1,6 +1,6 @@
 # smc_v1 (AiOne_t Stage1 + SMC core)
 
-`smc_v1` — це оперативний стек Stage1 для моніторингу Binance Futures із вбудованим
+`smc_v1` — це оперативний стек Stage1 для моніторингу FX (FXCM feed) із вбудованим
 SMC-core (structure + liquidity + AMD). Проєкт фокусується на стабільній доставці
 джерельних даних (UnifiedDataStore), детермінованій структурній аналітиці та
 телеметрії для наступних шарів (Stage2/UI/Fusion).
@@ -10,7 +10,7 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 ## Архітектура
 
 - **data/** — `UnifiedDataStore`, WS-стрімер (`WSWorker`) та допоміжні утиліти.
-- **stage1/** — моніторинг активів (prefilter + AssetMonitorStage1), генерація сирих
+- **stage1/** — моніторинг активів (AssetMonitorStage1 + FX гейти), генерація сирих
   сигналів і станів для UI.
 - **smc_core/** + **smc_structure/** + **smc_liquidity/** — детермінований pipeline,
   що повертає `SmcHint` (structure/liquidity/zones/signals/meta).
@@ -19,14 +19,15 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 - **tests/** — pytest-набір для SMC (structure, liquidity, AMD, bridge, input adapter).
 
 Документацію по SMC знайдеш у `docs/smc_core_overview.md`, `docs/smc_structure.md`,
-`docs/smc_liquidity.md`.
+`docs/smc_liquidity.md`. Детальний контракт інтеграції FXCM описано в
+`docs/fxcm_integration.md`.
 
 ---
 
 ## Ключові можливості
 
 - Єдине джерело правди (Redis + JSONL snapshots) через `UnifiedDataStore`.
-- Prefilter активів + Stage1 тригери (vol spike, RSI, VWAP, breakout, volatility).
+- FXCM стрім + Stage1 тригери (vol spike, RSI, VWAP, breakout, volatility).
 - SMC-core з зафіксованими контрактами (structure/liquidity/zones/meta + bridge до
   Stage2).
 - Нативний UI канал (Redis pub/sub) для моніторингу ліквідності та стадій AMD.
@@ -38,7 +39,7 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 
 - Python **3.11.9** (див. `runtime.txt`).
 - Redis 6+ (локально чи віддалено) з правами на читання/запис.
-- Доступ до Binance Futures API (ключ/секрет) для WS та REST fallback.
+- Доступ до FXCM (token/username/password) + опційний HMAC секрет.
 - Залежності з `requirements.txt` (рекомендується окреме віртуальне середовище).
 
 ---
@@ -62,14 +63,16 @@ pip install -r requirements.txt
 
 1. Скопіюй `.env.example` (якщо є) або створи `.env` у корені:
 
-   ```dotenv
-   BINANCE_API_KEY=...
-   BINANCE_SECRET_KEY=...
-   REDIS_HOST=127.0.0.1
-   REDIS_PORT=6379
-   REDIS_PASSWORD=
-   LOG_LEVEL=INFO
-   ```
+  ```dotenv
+  FXCM_ACCESS_TOKEN=...
+  FXCM_USERNAME=...
+  FXCM_PASSWORD=...
+  FXCM_HMAC_SECRET=
+  REDIS_HOST=127.0.0.1
+  REDIS_PORT=6379
+  REDIS_PASSWORD=
+  LOG_LEVEL=INFO
+  ```
 
 2. Відредагуй `config/datastore.yaml` для директорій snapshot'ів, namespace та TTL.
 3. Бізнес-параметри Stage1/SMC живуть у `config/config.py` та `app/thresholds.py` —
@@ -79,7 +82,7 @@ pip install -r requirements.txt
 
 ## Запуск сервісів
 
-- **Повний Stage1 pipeline** (prefilter → WS → SMC → UI):
+- **Повний Stage1 pipeline** (FXCM ingest → Stage1 монітор → SMC → UI):
 
   ```powershell
   python -m app.main
