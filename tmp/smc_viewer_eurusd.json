@@ -1,7 +1,7 @@
 {
   "symbol": "EURUSD",
-  "payload_ts": "2025-11-30T02:01:52.682358Z",
-  "payload_seq": 8,
+  "payload_ts": "2025-11-30T02:05:29.482184Z",
+  "payload_seq": 26,
   "schema": null,
   "price": null,
   "session": null,
@@ -2276,7 +2276,7 @@
   "fxcm": {
     "market_state": "closed",
     "process_state": "idle",
-    "lag_seconds": 114530.6419160366,
+    "lag_seconds": 114746.207924366,
     "last_bar_close_ms": 1764353579999,
     "last_bar_close_utc": "2025-11-28 18:12:59Z",
     "next_open_utc": "2025-11-30T22:15:00+00:00"
