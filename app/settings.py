@@ -21,6 +21,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.config import (
     DATASTORE_BASE_DIR as CFG_DATASTORE_BASE_DIR,
+    FXCM_PRICE_TICK_CHANNEL,
+    FXCM_STATUS_CHANNEL,
     NAMESPACE as CFG_NAMESPACE,
 )
 
@@ -67,6 +69,8 @@ class Settings(BaseSettings):
     fxcm_hmac_required: bool = True  # чи вимагати HMAC-підписи від FXCM
     fxcm_heartbeat_channel: str = "fxcm:heartbeat"
     fxcm_market_status_channel: str = "fxcm:market_status"
+    fxcm_price_tick_channel: str = FXCM_PRICE_TICK_CHANNEL
+    fxcm_status_channel: str = FXCM_STATUS_CHANNEL
 
     # Проста валідація полів перенесена на рівень запуску/конфігів; додаткові
     # pydantic-валідатори не використовуємо тут для сумісності зі stubs mypy.
@@ -123,6 +127,8 @@ class Settings(BaseSettings):
     @field_validator(
         "fxcm_heartbeat_channel",
         "fxcm_market_status_channel",
+        "fxcm_price_tick_channel",
+        "fxcm_status_channel",
         mode="before",
     )
     @classmethod
@@ -134,11 +140,14 @@ class Settings(BaseSettings):
         text = str(v).strip()
         if text:
             return text
-        return (
-            "fxcm:heartbeat"
-            if info.field_name == "fxcm_heartbeat_channel"
-            else "fxcm:market_status"
-        )
+        default_map = {
+            "fxcm_heartbeat_channel": "fxcm:heartbeat",
+            "fxcm_market_status_channel": "fxcm:market_status",
+            "fxcm_price_tick_channel": FXCM_PRICE_TICK_CHANNEL,
+            "fxcm_status_channel": FXCM_STATUS_CHANNEL,
+        }
+        field_name = info.field_name or ""
+        return default_map.get(field_name, text)
 
 
 settings = Settings()  # буде валідовано під час імпорту

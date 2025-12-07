@@ -50,6 +50,7 @@ try:  # pragma: no cover - best-effort залежність
 except Exception:  # pragma: no cover
     _core_plain_smc_hint = None
 
+
 # ───────────────────────────── Логування ─────────────────────────────
 logger = logging.getLogger("ui.publish_full_state")
 if not logger.handlers:  # guard від повторної ініціалізації
@@ -66,7 +67,35 @@ class AssetStateManagerProto(Protocol):
         ...
 
 
-async def publish_full_state(
+def _format_price_for_symbol(value: Any, symbol_lower: str) -> str:
+    """Форматує ціну з урахуванням тікера; повертає '-' якщо неможливо."""
+
+    price = safe_float(value)
+    if price is None or price <= 0:
+        return "-"
+    try:
+        fmt_value = fmt_price_stage1(float(price), symbol_lower)
+    except Exception:
+        return "-"
+    if fmt_value == "-":
+        return "-"
+    return f"{fmt_value} USD"
+
+
+def _format_tick_age(age_sec: Any) -> str:
+    """Повертає компактний рядок для віку тіку в секундах."""
+
+    age = safe_float(age_sec)
+    if age is None or age < 0:
+        return "-"
+    if age < 1.0:
+        return f"{age * 1000:.0f} мс"
+    if age < 90.0:
+        return f"{age:.1f} с"
+    return f"{age / 60.0:.1f} хв"
+
+
+async def publish_full_state(  # type: ignore
     state_manager: AssetStateManagerProto,
     cache_handler: object,
     redis_conn: Redis[str],
@@ -222,9 +251,12 @@ async def publish_full_state(
 
             # ціна для UI: форматування виконується нижче через fmt_price_stage1
 
-            # нормалізуємо базові статс (лише якщо ключ існує; не вводимо штучні 0.0)
+            # нормалізуємо базові stats (лише якщо ключ існує; не вводимо штучні 0.0)
             if "stats" in asset:
-                for stat_key in [
+                stats_block = asset["stats"] if isinstance(asset["stats"], dict) else {}
+                if not isinstance(asset.get("stats"), dict):
+                    asset["stats"] = stats_block
+                float_keys = [
                     "current_price",
                     "atr",
                     "volume_mean",
@@ -232,38 +264,110 @@ async def publish_full_state(
                     "rsi",
                     "rel_strength",
                     "btc_dependency_score",
-                ]:
-                    if stat_key in asset["stats"]:
-                        try:
-                            val = asset["stats"][stat_key]
-                            asset["stats"][stat_key] = (
-                                float(val) if val not in [None, "", "NaN"] else None
-                            )
-                        except (TypeError, ValueError):  # narrow: очікувана валідація
-                            asset["stats"][stat_key] = None
+                    "bar_close_price",
+                    "live_price_mid",
+                    "live_price_bid",
+                    "live_price_ask",
+                    "live_price_spread",
+                    "tick_age_sec",
+                    "tick_ts",
+                    "tick_snap_ts",
+                ]
+                for stat_key in float_keys:
+                    if stat_key in stats_block:
+                        stats_block[stat_key] = safe_float(stats_block.get(stat_key))
+                if "tick_is_stale" in stats_block:
+                    stats_block["tick_is_stale"] = bool(
+                        stats_block.get("tick_is_stale")
+                    )
+                if "price_source" in stats_block and not isinstance(
+                    stats_block.get("price_source"), str
+                ):
+                    stats_block.pop("price_source", None)
 
             # ── UI flattening layer ────────────────────────────────────────
             stats = asset.get("stats") or {}
+            symbol_lower = str(asset.get("symbol") or "").lower()
             # Уніфіковані кореневі ключі, щоб UI не мав додаткових мапперів
             # Ціну ВСІГДА беремо зі stats.current_price (джерело правди).
-            cp = stats.get("current_price")
-            try:
-                cp_f = float(cp) if cp is not None else None
-            except Exception:
-                cp_f = None
+            cp_f = safe_float(stats.get("current_price"))
             if cp_f is not None and cp_f > 0:
                 asset["price"] = cp_f
-                try:
-                    fmt_value = fmt_price_stage1(
-                        float(asset["price"]), str(asset.get("symbol", "")).lower()
-                    )
-                    asset["price_str"] = f"{fmt_value} USD" if fmt_value != "-" else "-"
-                except Exception:
+                fmt_value = _format_price_for_symbol(cp_f, symbol_lower)
+                if fmt_value != "-":
+                    asset["price_str"] = fmt_value
+                else:
                     asset.pop("price_str", None)
             else:
-                # Поточна ціна невалідна → прибираємо застаріле форматування
                 asset.pop("price", None)
                 asset.pop("price_str", None)
+
+            price_source = stats.get("price_source")
+            if isinstance(price_source, str) and price_source.strip():
+                asset["price_source"] = price_source.strip()
+            else:
+                asset.pop("price_source", None)
+
+            live_mid = safe_float(stats.get("live_price_mid"))
+            if live_mid is not None and live_mid > 0:
+                asset["live_price_mid"] = live_mid
+                mid_str = _format_price_for_symbol(live_mid, symbol_lower)
+                if mid_str != "-":
+                    asset["live_price_mid_str"] = mid_str
+                else:
+                    asset.pop("live_price_mid_str", None)
+            else:
+                asset.pop("live_price_mid", None)
+                asset.pop("live_price_mid_str", None)
+
+            live_bid = safe_float(stats.get("live_price_bid"))
+            if live_bid is not None and live_bid > 0:
+                asset["live_price_bid"] = live_bid
+                bid_str = _format_price_for_symbol(live_bid, symbol_lower)
+                if bid_str != "-":
+                    asset["live_price_bid_str"] = bid_str
+                else:
+                    asset.pop("live_price_bid_str", None)
+            else:
+                asset.pop("live_price_bid", None)
+                asset.pop("live_price_bid_str", None)
+
+            live_ask = safe_float(stats.get("live_price_ask"))
+            if live_ask is not None and live_ask > 0:
+                asset["live_price_ask"] = live_ask
+                ask_str = _format_price_for_symbol(live_ask, symbol_lower)
+                if ask_str != "-":
+                    asset["live_price_ask_str"] = ask_str
+                else:
+                    asset.pop("live_price_ask_str", None)
+            else:
+                asset.pop("live_price_ask", None)
+                asset.pop("live_price_ask_str", None)
+
+            spread_val = safe_float(stats.get("live_price_spread"))
+            if spread_val is not None and spread_val >= 0:
+                asset["live_price_spread"] = spread_val
+                spread_str = _format_price_for_symbol(spread_val, symbol_lower)
+                if spread_str != "-":
+                    asset["live_price_spread_str"] = spread_str
+                else:
+                    asset.pop("live_price_spread_str", None)
+            else:
+                asset.pop("live_price_spread", None)
+                asset.pop("live_price_spread_str", None)
+
+            tick_age_val = safe_float(stats.get("tick_age_sec"))
+            if tick_age_val is not None and tick_age_val >= 0:
+                asset["tick_age_sec"] = tick_age_val
+                asset["tick_age_str"] = _format_tick_age(tick_age_val)
+            else:
+                asset.pop("tick_age_sec", None)
+                asset.pop("tick_age_str", None)
+
+            if "tick_is_stale" in stats:
+                asset["tick_is_stale"] = bool(stats.get("tick_is_stale"))
+            else:
+                asset.pop("tick_is_stale", None)
             # Raw volume_mean (кількість контрактів/штук) — оновлюємо КОЖЕН цикл
             vm = stats.get("volume_mean")
             try:
@@ -699,6 +803,8 @@ async def publish_full_state(
             "counters": counters,
             "assets": serialized_assets,
         }
+        if isinstance(fxcm_summary, dict):
+            payload["meta"]["fxcm"] = fxcm_summary
         if analytics_summary:
             payload["analytics"] = analytics_summary
         if confidence_stats:
@@ -741,9 +847,6 @@ async def publish_full_state(
 
     except Exception as e:  # broad except: публікація best-effort
         logger.error(f"Помилка публікації стану: {str(e)}")
-
-
-__all__ = ["publish_full_state"]
 
 
 def _prepare_smc_hint(asset: dict[str, Any]) -> None:
@@ -1065,3 +1168,6 @@ def _ts_to_iso(value: Any) -> str | None:
 
 
 # -*- coding: utf-8 -*-
+
+
+__all__ = ["publish_full_state"]

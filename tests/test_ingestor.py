@@ -106,7 +106,7 @@ def _run_process(
     store = FakeStore()
     rows, _, _ = asyncio.run(
         fxcm._process_payload(
-            store,
+            store,  # type: ignore
             payload,
             hmac_secret=secret,
             hmac_algo=algo,

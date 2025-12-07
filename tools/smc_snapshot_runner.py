@@ -5,12 +5,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from dataclasses import asdict, is_dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from redis.asyncio import Redis
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
 
 from app.settings import load_datastore_cfg, settings
 from config.config import SMC_BACKTEST_ENABLED
@@ -45,6 +51,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Ігнорувати прапор SMC_BACKTEST_ENABLED",
     )
+    parser.add_argument(
+        "--show-structure",
+        action="store_true",
+        help="Друкувати лише блок structure із SmcHint",
+    )
+    parser.add_argument(
+        "--show-liq",
+        action="store_true",
+        help="Друкувати лише блок liquidity із SmcHint",
+    )
+    parser.add_argument(
+        "--show-zones",
+        action="store_true",
+        help="Друкувати лише блок zones із SmcHint",
+    )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Скорочений вивід: лише meta/лічильники обраних секцій",
+    )
     return parser.parse_args()
 
 
@@ -68,7 +94,7 @@ async def main() -> None:
             context={"runner": "cli"},
         )
         hint = engine.process_snapshot(smc_input)
-        print(json.dumps(_to_plain(hint), ensure_ascii=False, indent=2))
+        _print_hint(hint, args)
     finally:
         await store.stop_maintenance()
         await redis.close()
@@ -110,6 +136,44 @@ def _to_plain(value: Any) -> Any:
     if isinstance(value, list):
         return [_to_plain(v) for v in value]
     return value
+
+
+def _print_hint(hint: Any, args: argparse.Namespace) -> None:
+    plain_hint = _to_plain(hint)
+    if not isinstance(plain_hint, dict):
+        print(json.dumps(plain_hint, ensure_ascii=False, indent=2))
+        return
+
+    sections: list[tuple[str, Any]] = []
+    if args.show_structure:
+        sections.append(("structure", plain_hint.get("structure")))
+    if args.show_liq:
+        sections.append(("liquidity", plain_hint.get("liquidity")))
+    if args.show_zones:
+        sections.append(("zones", plain_hint.get("zones")))
+
+    if not sections:
+        print(json.dumps(plain_hint, ensure_ascii=False, indent=2))
+        return
+
+    for name, payload in sections:
+        print(f"=== {name} ===")
+        data_to_print = payload
+        if args.summary_only and isinstance(payload, dict):
+            data_to_print = {
+                "section": name,
+                "meta": payload.get("meta"),
+            }
+            if name == "zones":
+                zones = payload.get("zones") or []
+                active = payload.get("active_zones") or []
+                poi = payload.get("poi_zones") or []
+                data_to_print["counts"] = {
+                    "zones": len(zones),
+                    "active": len(active),
+                    "poi": len(poi),
+                }
+        print(json.dumps(data_to_print, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

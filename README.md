@@ -33,6 +33,14 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 - Нативний UI канал (Redis pub/sub) для моніторингу ліквідності та стадій AMD.
 - QA-утиліти для локального прогону SMC на історії (без запуску Stage1).
 
+## Потік даних та холодний старт
+
+- `app.main` виконує `bootstrap()` → `UnifiedDataStore` → `run_fxcm_ingestor` / `run_fxcm_status_listener` → `screening_producer` → `UI.publish_full_state`.
+- `_warmup_datastore_from_snapshots()` підтягує останні JSONL-файли з `datastore/`, щоб мінімізувати cold-start часу читання.
+- Уся жива історія надходить **лише** через Redis-канали зовнішнього FXCM конектора (`fxcm:ohlcv`, `fxcm:heartbeat`, `fxcm:market_status`).
+- `_await_fxcm_history()` очікує поки стрім заповнить мінімальний `SCREENING_LOOKBACK` на `1m`; за потреби логи підказують, які символи ще не отримали дані.
+- Детальний конспект дивись у `docs/stage1_pipeline.md`, щоб не перечитувати `app/main.py` при перевірці cold-start.
+
 ---
 
 ## Системні вимоги

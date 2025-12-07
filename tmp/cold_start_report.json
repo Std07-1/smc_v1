@@ -1,0 +1,32 @@
+{
+  "generated_at": "2025-12-07T09:31:57.905479+00:00",
+  "interval": "1m",
+  "symbols": [
+    "xauusd"
+  ],
+  "summary": {
+    "total": 1,
+    "stale_symbols": [
+      "xauusd"
+    ],
+    "insufficient_symbols": [],
+    "max_age_seconds": 128757.899,
+    "min_rows_required": 300,
+    "stale_threshold": 3600
+  },
+  "entries": [
+    {
+      "symbol": "xauusd",
+      "interval": "1m",
+      "rows_in_ram": 3000,
+      "rows_on_disk": 3000,
+      "redis_ttl": null,
+      "last_open_time": 1764971160.0,
+      "age_seconds": 128757.899,
+      "ram_last_open_time": 1764971160.0,
+      "disk_last_open_time": 1764971160.0,
+      "redis_last_open_time": null,
+      "disk_modified_ts": 1765064612.0474372
+    }
+  ]
+}

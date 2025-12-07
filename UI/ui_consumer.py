@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 import os
 import time
 from collections import Counter
@@ -72,6 +73,9 @@ class UIConsumer:
         self._blink_state = False  # для миготіння pressure
         self._pressure_alert_active = False
         self._fxcm_state: dict[str, Any] | None = None
+        self._fxcm_meta_warned = False
+        self.tick_age_warn_sec = 2.5
+        self.tick_age_error_sec = 6.0
 
     # self._last_core_refresh: float = 0.0  # видалено: Core/Health більше не використовуються
 
@@ -103,11 +107,86 @@ class UIConsumer:
         }
         return icons.get(signal, "❓")
 
+    def _format_live_price_block(self, asset: dict[str, Any]) -> str:
+        mid_str = asset.get("live_price_mid_str")
+        bid_str = asset.get("live_price_bid_str")
+        ask_str = asset.get("live_price_ask_str")
+        spread_str = asset.get("live_price_spread_str")
+
+        def _valid(value: Any) -> bool:
+            return isinstance(value, str) and value.strip() and value.strip() != "-"  # type: ignore
+
+        primary = f"[bold]{mid_str}[/]" if _valid(mid_str) else ""
+        details: list[str] = []
+        if _valid(bid_str):
+            details.append(f"Bid {bid_str}")
+        if _valid(ask_str):
+            details.append(f"Ask {ask_str}")
+        if _valid(spread_str):
+            details.append(f"Δ {spread_str}")
+
+        if not primary and not details:
+            return "-"
+
+        block = primary or ""
+        if details:
+            detail_line = f"[dim]{' | '.join(details)}[/]"
+            block = f"{primary}\n{detail_line}" if primary else detail_line
+
+        if asset.get("tick_is_stale") and block:
+            block = f"{block} [red]STALE[/]"
+        return block or "-"
+
+    def _format_tick_age_block(self, asset: dict[str, Any]) -> str:
+        base = asset.get("tick_age_str")
+        display = base if isinstance(base, str) and base else "-"
+        tick_age_val = asset.get("tick_age_sec")
+        tick_age = None
+        if isinstance(tick_age_val, (int, float)):
+            try:
+                tick_age = float(tick_age_val)
+                if not math.isfinite(tick_age):
+                    tick_age = None
+            except Exception:
+                tick_age = None
+        stale = bool(asset.get("tick_is_stale"))
+        color = ""
+        if stale:
+            color = "red"
+        elif tick_age is not None:
+            if tick_age >= self.tick_age_error_sec:
+                color = "red"
+            elif tick_age >= self.tick_age_warn_sec:
+                color = "yellow"
+        if color and display != "-":
+            display = f"[{color}]{display}[/]"
+        if stale and display != "-":
+            display = f"{display} ⚠"
+        return display
+
     def _consume_fxcm_block(self, fxcm_payload: Any) -> None:
         """Оновлює кешований стан FXCM, якщо payload містить dict."""
 
         if isinstance(fxcm_payload, dict):
             self._fxcm_state = fxcm_payload
+
+    def _extract_meta_fxcm(self, payload: Any) -> dict[str, Any] | None:
+        if not isinstance(payload, dict):
+            return None
+        meta_block = payload.get("meta")
+        if isinstance(meta_block, dict):
+            fxcm_candidate = meta_block.get("fxcm")
+            if isinstance(fxcm_candidate, dict):
+                return fxcm_candidate
+        fxcm_fallback = payload.get("fxcm")
+        if isinstance(fxcm_fallback, dict):
+            if not self._fxcm_meta_warned:
+                ui_logger.warning(
+                    "Meta.fxcm відсутня; використовуємо fallback payload['fxcm']"
+                )
+                self._fxcm_meta_warned = True
+            return fxcm_fallback
+        return None
 
     def _format_fxcm_fragment(self) -> str:
         """Формує текстовий блок для відображення телеметрії FXCM."""
@@ -179,7 +258,6 @@ class UIConsumer:
         )
         pubsub = redis_client.pubsub()
 
-        # Спроба початкового снапшоту перед підпискою (cold start only)
         try:
             snapshot_raw = await redis_client.get(REDIS_SNAPSHOT_KEY)
             if snapshot_raw:
@@ -189,7 +267,7 @@ class UIConsumer:
                     if self._last_results:
                         self._display_results = self._last_results
                     self._last_counters = snap.get("counters", {}) or {}
-                    self._consume_fxcm_block(snap.get("fxcm"))
+                    self._consume_fxcm_block(self._extract_meta_fxcm(snap))
                     meta_ts = snap.get("meta", {}).get("ts")
                     meta_seq = snap.get("meta", {}).get("seq")
                     if meta_ts:
@@ -360,7 +438,7 @@ class UIConsumer:
                                                         self._last_seq,
                                                     )
                                                     self._consume_fxcm_block(
-                                                        snap.get("fxcm")
+                                                        self._extract_meta_fxcm(snap)
                                                     )
                                         except Exception:
                                             ui_logger.debug(
@@ -549,7 +627,7 @@ class UIConsumer:
                             incoming_counters = data.get("counters", {}) or {}
                             if isinstance(incoming_counters, dict):
                                 self._last_counters.update(incoming_counters)
-                            self._consume_fxcm_block(data.get("fxcm"))
+                            self._consume_fxcm_block(self._extract_meta_fxcm(data))
                             # Додатковий лог узгодженості
                             ui_logger.debug(
                                 "Post-assign last_results_len=%d counters_assets=%s display_len=%d",
@@ -823,6 +901,8 @@ class UIConsumer:
         columns = [
             ("Символ", "left"),
             ("Ціна", "right"),
+            ("FXCM ціни", "left"),
+            ("Tick лаг", "right"),
             ("Оборот USD", "right"),
             ("ATR%", "right"),
             ("RSI", "right"),
@@ -895,6 +975,15 @@ class UIConsumer:
             price_str = price_raw if isinstance(price_raw, str) else "-"
             if price_str not in ("-", "") and "USD" not in price_str:
                 price_str = f"{price_str} USD"
+            price_source = asset.get("price_source")
+            if isinstance(price_source, str) and price_source.strip():
+                label = price_source.strip()
+                if label == "price_stream":
+                    label = "live"
+                elif label == "bar_close":
+                    label = "bar"
+                if price_str != "-":
+                    price_str = f"{price_str} [dim]({label})[/]"
 
             # Render-only: беремо лише готовий volume_str
             volume_str = (
@@ -902,6 +991,8 @@ class UIConsumer:
                 if isinstance(asset.get("volume_str"), str)
                 else "-"
             )
+            live_price_block = self._format_live_price_block(asset)
+            tick_age_block = self._format_tick_age_block(asset)
             volume_z = stats.get("volume_z", 0.0) or 0.0
             if volume_str != "-" and volume_z > self.vol_z_threshold:
                 volume_str = f"[bold magenta]{volume_str}[/]"
@@ -985,6 +1076,8 @@ class UIConsumer:
             table.add_row(
                 symbol,
                 price_str,
+                live_price_block,
+                tick_age_block,
                 volume_str,
                 atr_str,
                 rsi_str,

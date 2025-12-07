@@ -126,6 +126,14 @@
 - Фокус: ризики (latency, PnL, winrate, фальшиві сигнали, стабільність).
 - Пропонуй 1–3 точкові покращення з мінімальними змінами.
 
+### 6.4 Шаблон плану (cold-start / QA)
+
+1. **History preparation**: `ensure_min_history` гарантує мінімальну кількість барів у `UnifiedDataStore` для кожного symbol/tf.
+2. **History QA**: `HistoryQaRunner` проходить історію через `smc_core`, записує `plain_smc_hint` у кеш `smc_history_*`.
+3. **Cold-start status**: контролюємо FSM `initializing → initial_load → qa_history → ready/error` та оновлюємо Redis/`meta.cold_start`.
+4. **UI**: `meta.fxcm` для телеметрії + `smc_history_*` як джерело історії структури/зон/ліквідності.
+5. **Live continuation**: live `smc_core` добудовує хвіст поверх кешу, не дублюючи історичні обчислення.
+
 ## 7. Специфіка команд PowerShell (Windows)
 
 - Приклади запуску Python-скриптів у VS Code (PowerShell):
@@ -144,7 +152,16 @@
 - Не додавати залежностей від зовнішніх сервісів у ядро стратегії.
 - Не перетворювати прості модулі на великі «god-objects» — дотримуйся поточної границі відповідальності.
 
+## 9. Cold-start та History QA
+
+- Cold-start = History QA. Прогрів означає: `ensure_min_history` підтвердив історію, History-runner прогнав її через `SmcCoreEngine`, а `smc_history_{symbol}_{tf}.jsonl` став джерелом правди для UI.
+- Заборонено використовувати `AssetMonitoring`/Stage1 для cold-start або будь-якого історичного QA. Всі режимі QA будуються на `smc_core` (engine + input_adapter).
+- Будь-який «QA-режим» — це History-runner: бере історичні бари з `UnifiedDataStore`, викликає `SmcCoreEngine.process_snapshot` по всій траєкторії, зберігає `plain_smc_hint` у кеш (JSONL/Redis).
+- `cold_start_status.state = "ready"` дозволено виставляти лише після комбо: `ensure_min_history` успішно відпрацював + History-runner завершився без критичних помилок і поклав кеш.
+- Після появи історичного кешу live-логіка зобов'язана використовувати його як базу й лише добудовувати хвіст. Ніяких паралельних розрахунків «з нуля».
+- Історичний контекст (структура/зони/ліквідність) — першокласна сутність. Усі нові документи й плани cold-start мають виходити з цієї моделі.
+
 ---
 
-**v3.0 • Оновлено:** 2025-11-21
+**v3.0 • Оновлено:** 2025-12-01
 **Автор:** [Std07-1]

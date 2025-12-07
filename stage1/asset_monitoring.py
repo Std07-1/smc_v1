@@ -8,7 +8,7 @@
     • нормалізація причин (`normalize_trigger_reasons`) і формування сигналу ALERT/NORMAL.
 
 Особливості:
-    • lazy ініціалізація порогів (Redis / дефолти);
+    • lazy ініціалізація порогів (in-memory дефолти);
     • динамічні RSI пороги (over/under) із історії;
     • можливість каліброваних параметрів через state_manager.
 """
@@ -16,6 +16,8 @@
 import asyncio
 import datetime as dt
 import logging
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -23,7 +25,6 @@ import pandas as pd
 from rich.console import Console
 from rich.logging import RichHandler
 
-from app.thresholds import Thresholds, load_thresholds
 from config.config import (  # додано USE_RSI_DIV, USE_VWAP_DEVIATION
     ASSET_TRIGGER_FLAGS,
     DIRECTIONAL_PARAMS,
@@ -62,6 +63,38 @@ if not logger.handlers:  # guard від подвійного підключен�
     logger.setLevel(logging.INFO)
     logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
     logger.propagate = False
+
+
+@dataclass
+class Stage1ThresholdProfile:
+    """Локальна in-memory копія порогів Stage1 без залежності від Redis."""
+
+    symbol: str
+    low_gate: float
+    high_gate: float
+    vol_z_threshold: float
+    vwap_deviation: float
+    min_atr_percent: float = 0.0
+    signal_thresholds: dict[str, Any] = field(default_factory=dict)
+    rsi_overbought: float | None = None
+    rsi_oversold: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "low_gate": float(self.low_gate),
+            "high_gate": float(self.high_gate),
+            "vol_z_threshold": float(self.vol_z_threshold),
+            "vwap_deviation": float(self.vwap_deviation),
+            "min_atr_percent": float(self.min_atr_percent),
+            "signal_thresholds": deepcopy(self.signal_thresholds),
+            "rsi_overbought": self.rsi_overbought,
+            "rsi_oversold": self.rsi_oversold,
+        }
+
+    def effective_thresholds(self, market_state: str | None = None) -> dict[str, Any]:
+        # Поки що повертаємо статичні пороги; можливі майбутні оверрайди по market_state
+        return self.to_dict()
 
 
 class AssetMonitorStage1:
@@ -114,7 +147,14 @@ class AssetMonitorStage1:
         self.enable_stats = enable_stats
         self.asset_stats: dict[str, dict[str, Any]] = {}
         self._low_atr_state: dict[str, dict[str, Any]] = {}
-        self._symbol_cfg: dict[str, Thresholds] = {}
+        self._symbol_cfg: dict[str, Stage1ThresholdProfile] = {}
+        self._base_thresholds = {
+            "low_gate": float(cfg.get("atr_low_gate", 0.0035)),
+            "high_gate": float(cfg.get("atr_high_gate", 0.015)),
+            "vwap_deviation": float(cfg.get("vwap_deviation", 0.02)),
+            "min_atr_percent": float(cfg.get("min_atr_percent", 0.0)),
+            "signal_thresholds": deepcopy(cfg.get("signal_thresholds") or {}),
+        }
         self.state_manager = state_manager
         # Статистики для anti-spam/визначення частоти тригерів можна додати тут, якщо потрібно
         self.feature_switches = dict(feature_switches) if feature_switches else {}
@@ -201,34 +241,30 @@ class AssetMonitorStage1:
             f"rsi_ob={rsi_overbought}, rsi_os={rsi_oversold}"
         )
 
-    async def ensure_symbol_cfg(self, symbol: str) -> Thresholds:
-        """
-        Завантажує індивідуальні пороги (з Redis або дефолтні).
-        Додає захист від ситуації, коли замість Thresholds приходить рядок (наприклад, symbol).
-        """
-        import traceback
+    def _get_symbol_threshold(self, symbol: str) -> Stage1ThresholdProfile:
+        """Ледачо створює in-memory профіль порогів для символу."""
 
-        if symbol not in self._symbol_cfg:
-            thr = await load_thresholds(symbol, self.cache_handler)
-            # Захист: якщо thr — це рядок, а не Thresholds
-            if isinstance(thr, str):
-                logger.error(
-                    f"[{symbol}] load_thresholds повернув рядок замість Thresholds: {thr}"
-                )
-                logger.error(traceback.format_stack())
-                raise TypeError(
-                    f"[{symbol}] load_thresholds повернув рядок замість Thresholds: {thr}"
-                )
-            if thr is None:
-                logger.warning(
-                    f"[{symbol}] Не знайдено порогів у Redis, використовую стандартні"
-                )
-                thr = Thresholds.from_mapping({"symbol": symbol, "config": {}})
-            self._symbol_cfg[symbol] = thr
-            logger.debug(
-                f"[{symbol}] Завантажено пороги: {getattr(thr, 'to_dict', lambda: thr)()}"
-            )
-        return self._symbol_cfg[symbol]
+        profile = self._symbol_cfg.get(symbol)
+        if profile is not None:
+            return profile
+        profile = Stage1ThresholdProfile(
+            symbol=symbol,
+            low_gate=self._base_thresholds["low_gate"],
+            high_gate=self._base_thresholds["high_gate"],
+            vol_z_threshold=self.vol_z_threshold,
+            vwap_deviation=self._base_thresholds["vwap_deviation"],
+            min_atr_percent=self._base_thresholds["min_atr_percent"],
+            signal_thresholds=deepcopy(self._base_thresholds["signal_thresholds"]),
+            rsi_overbought=self.rsi_overbought,
+            rsi_oversold=self.rsi_oversold,
+        )
+        self._symbol_cfg[symbol] = profile
+        logger.debug(
+            "[%s] Створено дефолтні Stage1 пороги: %s",
+            symbol,
+            profile.to_dict(),
+        )
+        return profile
 
     async def update_statistics(
         self,
@@ -394,8 +430,6 @@ class AssetMonitorStage1:
         Аналізує основні тригери та формує raw signal.
         Додає захист від ситуації, коли пороги некоректні (наприклад, рядок).
         """
-        import traceback
-
         # Нормалізація mutable default
         if trigger_reasons is None:
             trigger_reasons = []
@@ -469,16 +503,7 @@ class AssetMonitorStage1:
         anomalies: list[str] = []
         reasons: list[str] = []
 
-        thr = await self.ensure_symbol_cfg(symbol)
-        # Захист: якщо thr — це рядок, а не Thresholds
-        if isinstance(thr, str):
-            logger.error(
-                f"[{symbol}] ensure_symbol_cfg повернув рядок замість Thresholds: {thr}"
-            )
-            logger.error(traceback.format_stack())
-            raise TypeError(
-                f"[{symbol}] ensure_symbol_cfg повернув рядок замість Thresholds: {thr}"
-            )
+        thr = self._get_symbol_threshold(symbol)
         logger.debug(
             f"[{symbol}] Пороги: low={thr.low_gate*100:.2f}%, high={thr.high_gate*100:.2f}%"
         )

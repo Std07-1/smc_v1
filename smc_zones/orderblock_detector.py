@@ -1,4 +1,4 @@
-"""Детектор Order Block згідно з підетапом 4.2."""
+"""Детектор Order Block згідно з підетапом 4.2 (OB_v1)."""
 
 from __future__ import annotations
 
@@ -62,12 +62,16 @@ def detect_order_blocks(
         amplitude = abs(float(leg.to_swing.price) - float(leg.from_swing.price))
         if atr > 0 and amplitude < cfg.ob_leg_min_atr_mul * atr:
             continue
+        if amplitude <= 0:
+            continue
 
         candidate_pos = _find_ob_candidate(frame, start_pos, direction, cfg)
         if candidate_pos is None:
             continue
 
-        bos_event = _leg_bos_event(structure.events, leg, direction)
+        break_event = _leg_break_event(structure.events, leg, direction)
+        if break_event is None:
+            continue
         zone = _build_zone_from_row(
             snapshot=snapshot,
             frame=frame,
@@ -78,8 +82,7 @@ def detect_order_blocks(
             atr=atr,
             amplitude=amplitude,
             bar_count=bar_count,
-            has_bos=bos_event is not None,
-            bos_event=bos_event,
+            break_event=break_event,
             cfg=cfg,
         )
         if zone is None:
@@ -150,14 +153,16 @@ def _find_ob_candidate(
     return pre_start + rel_pos
 
 
-def _leg_bos_event(
+def _leg_break_event(
     events: list[SmcStructureEvent],
     leg: SmcStructureLeg,
     direction: Literal["LONG", "SHORT"],
 ) -> SmcStructureEvent | None:
     target_sig = _leg_signature(leg)
     for event in events:
-        if event.event_type != "BOS" or event.direction != direction:
+        if event.event_type not in {"BOS", "CHOCH"}:
+            continue
+        if event.direction != direction:
             continue
         if event.source_leg is None:
             continue
@@ -184,8 +189,7 @@ def _build_zone_from_row(
     atr: float,
     amplitude: float,
     bar_count: int,
-    has_bos: bool,
-    bos_event: SmcStructureEvent | None,
+    break_event: SmcStructureEvent | None,
     cfg: SmcCoreConfig,
 ) -> SmcZone | None:
     try:
@@ -200,9 +204,17 @@ def _build_zone_from_row(
     full_range = max(high - low, 1e-9)
     body_high = max(open_v, close_v)
     body_low = min(open_v, close_v)
-    body_pct = (body_high - body_low) / full_range
+    body_abs = body_high - body_low
+    body_pct = body_abs / full_range
     wick_top_pct = (high - body_high) / full_range
     wick_bottom_pct = (body_low - low) / full_range
+
+    if break_event is None:
+        return None
+    if body_abs < cfg.ob_body_min_pct * amplitude:
+        return None
+    if body_pct < cfg.ob_body_domination_pct:
+        return None
 
     zone_low = low
     zone_high = high
@@ -220,20 +232,17 @@ def _build_zone_from_row(
 
     strength = amplitude / max(atr, 1e-9) if atr > 0 else body_pct * 2.0
     strength = max(0.1, min(strength, 3.0))
-    confidence = 0.45 + 0.25 * min(body_pct, 1.0)
-    if has_bos:
-        confidence += 0.15
+    confidence = 0.45 + 0.25 * min(body_pct, 1.0) + 0.15
     confidence = max(0.2, min(confidence, 0.95))
 
-    quality = "STRONG" if has_bos else "WEAK"
-    role = _derive_role(direction, bias, has_bos)
+    quality = "STRONG"
+    role = _derive_role(direction, bias)
 
     origin_time = _extract_timestamp(row)
     leg_id = f"leg_{leg.from_swing.index}_{leg.to_swing.index}"
     zone_id = f"ob_{snapshot.symbol.lower()}_{snapshot.tf_primary}_{row_pos}_{leg.to_swing.index}"
-    reference_event_id = (
-        f"bos_{int(bos_event.time.value)}" if bos_event is not None else None
-    )
+    reference_event_id = f"structure_event_{int(break_event.time.value)}"
+    reference_event_type = break_event.event_type
 
     bias_value = bias if bias in {"LONG", "SHORT", "NEUTRAL"} else "UNKNOWN"
     bias_at_creation = cast(Literal["LONG", "SHORT", "NEUTRAL", "UNKNOWN"], bias_value)
@@ -267,7 +276,7 @@ def _build_zone_from_row(
             "entry_mode": entry_mode,
             "role": role,
             "bias_at_creation": bias_at_creation,
-            "has_bos": has_bos,
+            "reference_event_type": reference_event_type,
             "bar_count": bar_count,
             "amplitude": amplitude,
             "quality": quality,
@@ -277,10 +286,8 @@ def _build_zone_from_row(
 
 
 def _derive_role(
-    direction: Literal["LONG", "SHORT"], bias: str, has_bos: bool
+    direction: Literal["LONG", "SHORT"], bias: str
 ) -> Literal["PRIMARY", "COUNTERTREND", "NEUTRAL"]:
-    if not has_bos:
-        return "NEUTRAL"
     bias = bias.upper()
     if bias not in {"LONG", "SHORT"}:
         return "NEUTRAL"

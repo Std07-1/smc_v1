@@ -20,12 +20,11 @@ __all__ = [
     "FAST_SYMBOLS_TTL_AUTO",
     "FAST_SYMBOLS_TTL_MANUAL",
     "FXCM_FAST_SYMBOLS",
-    "FXCM_DUKA_WARMUP_ENABLED",
-    "FXCM_WARMUP_BARS",
-    "FXCM_STREAM_POLL_SECONDS",
-    "FXCM_STREAM_LOOKBACK_MINUTES",
-    "FXCM_STREAM_LIMIT",
     "FXCM_STALE_LAG_SECONDS",
+    "FXCM_PRICE_TICK_CHANNEL",
+    "FXCM_STATUS_CHANNEL",
+    "PRICE_TICK_STALE_SECONDS",
+    "PRICE_TICK_DROP_SECONDS",
     "REACTIVE_STAGE1",
     "SCREENING_LOOKBACK",
     "SCREENING_BATCH_SIZE",
@@ -55,11 +54,15 @@ __all__ = [
     "SMC_BACKTEST_ENABLED",
     "SMC_PIPELINE_ENABLED",
     "SMC_PIPELINE_CFG",
+    "HISTORY_QA_SYMBOLS",
+    "HISTORY_QA_WARMUP_BARS",
     "REDIS_CACHE_TTL",
     "UI_EXPERIMENTAL_VIEW_ENABLED",
     "UI_VIEWER_PROFILE",
     "DATASTORE_WARMUP_ENABLED",
     "DATASTORE_WARMUP_INTERVALS",
+    "COLD_START_STATUS_KEY",
+    "COLD_START_STATUS_TTL_SEC",
 ]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -130,6 +133,10 @@ REDIS_CHANNEL_ASSET_STATE: str = f"{NAMESPACE}:ui:asset_state"
 #: Ключ для зберігання останнього знімка стану (для «холодного» старту UI)
 REDIS_SNAPSHOT_KEY: str = f"{NAMESPACE}:ui:snapshot"
 
+#: Ключ для cold-start статусу Stage1 → UI
+COLD_START_STATUS_KEY: str = f"{NAMESPACE}:stage1:cold_start_status"
+COLD_START_STATUS_TTL_SEC: int = 15 * 60
+
 #: Канал для адмін-команд (узгоджено з AdminCfg.commands_channel)
 ADMIN_COMMANDS_CHANNEL: str = f"{NAMESPACE}:admin:commands"
 
@@ -174,18 +181,17 @@ FAST_SYMBOLS_TTL_AUTO = 15 * 60
 FAST_SYMBOLS_TTL_MANUAL = 60 * 60
 # Окремий whitelist для FXCM-режиму — не змішуємо з історичними крипто-юніверсами
 FXCM_FAST_SYMBOLS = [
-    "eurusd",  # у всій системі символи зберігаємо у lower-case
+    "xauusd",  # у всій системі символи зберігаємо у lower-case
 ]
 
-FXCM_DUKA_WARMUP_ENABLED = False
-# Коли True — автоматично підтягуємо історію з Dukascopy перед стартом Stage1
-# (корисно для cold-start без 3.7-конектора). За замовчуванням вимкнено, бо
-# FXCM конектор самостійно прогріває Redis.
-FXCM_WARMUP_BARS = 1000
-FXCM_STREAM_POLL_SECONDS = 5
-FXCM_STREAM_LOOKBACK_MINUTES = 15
-FXCM_STREAM_LIMIT = 3000
 FXCM_STALE_LAG_SECONDS = 120
+FXCM_PRICE_TICK_CHANNEL = "fxcm:price_tik"
+# Канал агрегованого статусу конектора FXCM (process/market/price/ohlcv/session)
+FXCM_STATUS_CHANNEL = "fxcm:status"
+# Скільки секунд mid вважається «свіжим» для UI/алгоритмів
+PRICE_TICK_STALE_SECONDS = 15
+# Коли вважати снапшот повністю протухлим і видаляти його з кешу
+PRICE_TICK_DROP_SECONDS = 120
 
 REACTIVE_STAGE1 = False
 SCREENING_LOOKBACK = 240
@@ -195,7 +201,7 @@ DEFAULT_TIMEFRAME = "1m"
 DEFAULT_LOOKBACK = 3
 DEFAULT_TIMEZONE = "UTC"
 MIN_READY_PCT = 0.6
-TRADE_REFRESH_INTERVAL = 30
+TRADE_REFRESH_INTERVAL = 3  # цикл Stage1 синхронізовано з 2–3 сек FXCM тиками
 ASSET_TRIGGER_FLAGS = {
     "volume_spike": False,
     "breakout": False,
@@ -210,6 +216,10 @@ STAGE1_MONITOR_PARAMS = {
     "rsi_oversold": 32.0,
     "dynamic_rsi_multiplier": 1.1,
     "min_reasons_for_alert": 2,
+    "atr_low_gate": 0.0035,
+    "atr_high_gate": 0.015,
+    "vwap_deviation": 0.02,
+    "min_atr_percent": 0.0008,
 }
 STAGE1_BEARISH_REASON_BONUS = 0.15
 STAGE1_BEARISH_TRIGGER_TAGS = (
@@ -238,7 +248,10 @@ SMC_PIPELINE_CFG: dict[str, Any] = {
     "limit": 300,
     "max_concurrency": 4,
     "log_latency": True,
+    "qa_warmup_bars": 49,
 }
+HISTORY_QA_SYMBOLS: list[str] | None = FXCM_FAST_SYMBOLS.copy()
+HISTORY_QA_WARMUP_BARS: int = int(SMC_PIPELINE_CFG.get("qa_warmup_bars", 50))
 INTERVAL_TTL_MAP = {
     "1m": 90,
     "3m": 3 * 60,

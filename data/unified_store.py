@@ -23,10 +23,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import time
 from collections import OrderedDict, deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
@@ -34,11 +37,16 @@ from redis.asyncio import Redis
 from rich.console import Console
 from rich.logging import RichHandler
 
-from config.config import DATASTORE_BASE_DIR, NAMESPACE
+from config.config import (
+    DATASTORE_BASE_DIR,
+    NAMESPACE,
+    PRICE_TICK_DROP_SECONDS,
+    PRICE_TICK_STALE_SECONDS,
+)
 from data.fxcm_status_listener import get_fxcm_feed_state
 
 # ── Логування ──
-logger = logging.getLogger("app.data.unified_store")
+logger = logging.getLogger("data.unified_store")
 if not logger.handlers:  # guard проти повторної ініціалізації
     logger.setLevel(logging.INFO)
     # show_path=True щоб у WARNING/ERROR було видно точний файл і рядок
@@ -63,6 +71,91 @@ REQUIRED_OHLCV_COLS = (
     "close_time",
 )
 MIN_COLUMNS: set[str] = set(REQUIRED_OHLCV_COLS)
+
+
+@dataclass
+class SnapshotStats:
+    """Метадані snapshot-файла без повного читання DataFrame."""
+
+    path: str
+    rows: int
+    last_open_time: float | None
+    modified_ts: float | None
+
+
+@dataclass
+class ColdStartCacheEntry:
+    """Стан кешів для символу/інтервалу під час cold-start аудиту."""
+
+    symbol: str
+    interval: str
+    rows_in_ram: int = 0
+    rows_on_disk: int = 0
+    redis_ttl: int | None = None
+    last_open_time: float | None = None
+    age_seconds: float | None = None
+    ram_last_open_time: float | None = None
+    disk_last_open_time: float | None = None
+    redis_last_open_time: float | None = None
+    disk_modified_ts: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Зручне серіалізоване представлення для UI/логів."""
+
+        return {
+            "symbol": self.symbol,
+            "interval": self.interval,
+            "rows_in_ram": self.rows_in_ram,
+            "rows_on_disk": self.rows_on_disk,
+            "redis_ttl": self.redis_ttl,
+            "last_open_time": self.last_open_time,
+            "age_seconds": self.age_seconds,
+            "ram_last_open_time": self.ram_last_open_time,
+            "disk_last_open_time": self.disk_last_open_time,
+            "redis_last_open_time": self.redis_last_open_time,
+            "disk_modified_ts": self.disk_modified_ts,
+        }
+
+
+def _normalize_epoch(value: Any) -> float | None:
+    """Конвертує різні представлення часу в секунди UNIX."""
+
+    if value is None:
+        return None
+    if isinstance(value, pd.Timestamp):
+        return float(value.timestamp())
+    if isinstance(value, (int, float)):
+        # Значення у мс/мкс/нс → приводимо до секунд.
+        if value > 1e12:  # мілісекунди або більше
+            return float(value) / 1000.0
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        txt = value.strip()
+        try:
+            return _normalize_epoch(float(txt))
+        except ValueError:
+            try:
+                return float(pd.Timestamp(txt).timestamp())
+            except Exception:
+                return None
+    return None
+
+
+def _coerce_float(value: Any) -> float | None:
+    """Безпечне приведення до float із фільтрацією NaN/inf."""
+
+    try:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            result = float(value)
+        else:
+            result = float(str(value))
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(result):
+        return None
+    return result
 
 
 @dataclass
@@ -329,6 +422,21 @@ class RamLayer:
             "lru_len": len(self._lru),
         }
 
+    def inspect_entry(self, symbol: str, interval: str) -> tuple[int, float | None]:
+        """Повертає (кількість рядків, ts останнього open_time) з RAM."""
+
+        item = self._store.get((symbol, interval))
+        if not item:
+            return 0, None
+        df, _ts, _ttl = item
+        if df is None or df.empty:
+            return 0, None
+        try:
+            val = df.iloc[-1].get("open_time")
+        except Exception:
+            val = None
+        return len(df), _normalize_epoch(val)
+
 
 # ── Redis Adapter ──
 class RedisAdapter:
@@ -366,15 +474,33 @@ class RedisAdapter:
                 if attempt == self.cfg.io_retry_attempts - 1:
                     logger.error(f"Redis SET failed for {key}: {e}", exc_info=True)
 
+    async def ttl(self, *parts: str) -> int | None:
+        key = k(self.cfg.namespace, *parts)
+        try:
+            ttl = await self.r.ttl(key)
+            if ttl is None or ttl < 0:
+                return None
+            return int(ttl)
+        except Exception as e:
+            logger.warning("Redis TTL failed for %s: %s", key, e)
+            return None
+
 
 # ── Disk Adapter ──
 class StorageAdapter:
     """Збереження на диск: Parquet (якщо доступний) або JSON. Async через виконавця."""
 
-    def __init__(self, base_dir: str, cfg: StoreConfig) -> None:
-        self.base_dir = base_dir
+    def __init__(self, base_dir: str | Path, cfg: StoreConfig) -> None:
+        self.base_dir = Path(base_dir)
         self.cfg = cfg
-        os.makedirs(self.base_dir, exist_ok=True)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    def snapshot_path(
+        self, symbol: str, interval: str, *, ext: str | None = None
+    ) -> Path:
+        context = f"bars_{interval}"
+        suffix = ext or ("parquet" if _HAS_PARQUET else "jsonl")
+        return self.base_dir / file_name(symbol, context, "snapshot", suffix)
 
     async def save_bars(self, symbol: str, interval: str, df: pd.DataFrame) -> str:
         """Зберігає історію барів. Контекст=f"bars_{interval}", event="snapshot"."""
@@ -492,14 +618,13 @@ class StorageAdapter:
     async def load_bars(self, symbol: str, interval: str) -> pd.DataFrame | None:
         """Завантажує історію барів, якщо файл існує."""
         context = f"bars_{interval}"
+        base_dir = str(self.base_dir)
         parquet = os.path.join(
-            self.base_dir, file_name(symbol, context, "snapshot", "parquet")
+            base_dir, file_name(symbol, context, "snapshot", "parquet")
         )
-        jsonl = os.path.join(
-            self.base_dir, file_name(symbol, context, "snapshot", "jsonl")
-        )
+        jsonl = os.path.join(base_dir, file_name(symbol, context, "snapshot", "jsonl"))
         legacy_json = os.path.join(
-            self.base_dir, file_name(symbol, context, "snapshot", "json")
+            base_dir, file_name(symbol, context, "snapshot", "json")
         )
         loop = asyncio.get_running_loop()
 
@@ -580,6 +705,77 @@ class StorageAdapter:
             return _postfix_df(df)
         return None
 
+    async def inspect_snapshot(
+        self, symbol: str, interval: str
+    ) -> SnapshotStats | None:
+        """Повертає кількість рядків і останній open_time без повного warmup."""
+
+        candidates: list[Path] = []
+        if _HAS_PARQUET:
+            candidates.append(self.snapshot_path(symbol, interval, ext="parquet"))
+        candidates.append(self.snapshot_path(symbol, interval, ext="jsonl"))
+        candidates.append(self.snapshot_path(symbol, interval, ext="json"))
+
+        target: Path | None = None
+        for path in candidates:
+            if path.exists():
+                target = path
+                break
+        if target is None:
+            return None
+
+        loop = asyncio.get_running_loop()
+
+        def _inspect(path: Path) -> SnapshotStats:
+            rows = 0
+            last_open: float | None = None
+            if path.suffix == ".jsonl":
+                last_line: str | None = None
+                with path.open("r", encoding="utf-8") as handle:
+                    for raw in handle:
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        rows += 1
+                        last_line = line
+                if last_line:
+                    try:
+                        payload = json.loads(last_line)
+                        last_open = _normalize_epoch(payload.get("open_time"))  # type: ignore[arg-type]
+                    except Exception:
+                        last_open = None
+            elif path.suffix == ".json":
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(payload, list):
+                        rows = len(payload)
+                        if rows:
+                            last_open = _normalize_epoch(payload[-1].get("open_time"))
+                    elif isinstance(payload, dict):
+                        rows = 1
+                        last_open = _normalize_epoch(payload.get("open_time"))
+                except Exception:
+                    rows = 0
+                    last_open = None
+            elif path.suffix == ".parquet":
+                try:
+                    df = pd.read_parquet(path)
+                    rows = len(df)
+                    if rows and "open_time" in df.columns:
+                        last_open = _normalize_epoch(df.iloc[-1]["open_time"])
+                except Exception:
+                    rows = 0
+                    last_open = None
+            stat = path.stat()
+            return SnapshotStats(
+                path=str(path),
+                rows=rows,
+                last_open_time=last_open,
+                modified_ts=stat.st_mtime,
+            )
+
+        return await loop.run_in_executor(None, _inspect, target)
+
 
 # ── Unified DataStore ──
 class UnifiedDataStore:
@@ -621,6 +817,17 @@ class UnifiedDataStore:
         self._ram_miss = 0
         self._redis_hits = 0
         self._redis_miss = 0
+        self._price_ticks: dict[str, dict[str, Any]] = {}
+        self._price_tick_stale_after = (
+            float(PRICE_TICK_STALE_SECONDS)
+            if PRICE_TICK_STALE_SECONDS is not None
+            else 0.0
+        )
+        self._price_tick_drop_after = (
+            float(PRICE_TICK_DROP_SECONDS)
+            if PRICE_TICK_DROP_SECONDS is not None
+            else 0.0
+        )
 
         self._mtx = asyncio.Lock()
         self._maint_task = None
@@ -688,6 +895,118 @@ class UnifiedDataStore:
         if isinstance(res, str) and res:
             return [res.lower()]
         return []
+
+    # ── FXCM price stream helpers ─────────────────────────────────────────
+
+    @staticmethod
+    def _normalize_price_tick(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+        if not isinstance(payload, Mapping):
+            return None
+        symbol_raw = payload.get("symbol")
+        symbol = str(symbol_raw or "").strip().lower()
+        if not symbol:
+            return None
+        bid = _coerce_float(payload.get("bid"))
+        ask = _coerce_float(payload.get("ask"))
+        mid = _coerce_float(payload.get("mid"))
+        if mid is None and bid is not None and ask is not None:
+            mid = (bid + ask) / 2.0
+        if mid is None:
+            return None
+        tick_ts = _coerce_float(payload.get("tick_ts"))
+        snap_ts = _coerce_float(payload.get("snap_ts"))
+        now = time.time()
+        if snap_ts is None:
+            snap_ts = tick_ts if tick_ts is not None else now
+        if tick_ts is None:
+            tick_ts = snap_ts
+        snapshot: dict[str, Any] = {
+            "symbol": symbol,
+            "bid": bid,
+            "ask": ask,
+            "mid": mid,
+            "tick_ts": tick_ts,
+            "snap_ts": snap_ts,
+        }
+        if bid is not None and ask is not None:
+            snapshot["spread"] = max(0.0, ask - bid)
+        return snapshot
+
+    def _prune_price_ticks(self) -> None:
+        """Видалити протухлі тики, щоб кеш не ріс безмежно."""
+
+        limit = self._price_tick_drop_after
+        if not limit or not self._price_ticks:
+            return
+        now = time.time()
+        to_drop: list[str] = []
+        for symbol, entry in self._price_ticks.items():
+            tick_ts = entry.get("tick_ts") or entry.get("_received_ts") or now
+            age = now - float(tick_ts)
+            if age > limit:
+                to_drop.append(symbol)
+        for symbol in to_drop:
+            self._price_ticks.pop(symbol, None)
+
+    def update_price_tick(self, payload: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Оновлює кеш живих тикових цін від FXCM."""
+
+        normalized = self._normalize_price_tick(payload)
+        if normalized is None:
+            return None
+        normalized["_received_ts"] = time.time()
+        self._price_ticks[normalized["symbol"]] = normalized
+        self._prune_price_ticks()
+        return dict(normalized)
+
+    def get_price_tick(
+        self,
+        symbol: str,
+        *,
+        include_age: bool = True,
+    ) -> dict[str, Any] | None:
+        """Повертає останній тиковий снапшот (або None, якщо немає даних)."""
+
+        if not symbol:
+            return None
+        entry = self._price_ticks.get(symbol.lower())
+        if not entry:
+            return None
+        now = time.time()
+        tick_ts = entry.get("tick_ts") or entry.get("_received_ts") or now
+        age = max(0.0, now - float(tick_ts))
+        drop_limit = self._price_tick_drop_after
+        if drop_limit and age > drop_limit:
+            self._price_ticks.pop(symbol.lower(), None)
+            return None
+        result = dict(entry)
+        if include_age:
+            result["age"] = age
+            stale_thr = self._price_tick_stale_after
+            result["is_stale"] = bool(stale_thr and age > stale_thr)
+        return result
+
+    def price_tick_overview(self) -> dict[str, Any]:
+        """Коротка телеметрія price_stream для metrics_snapshot."""
+
+        if not self._price_ticks:
+            return {"symbols": 0, "stale": 0, "max_age": None}
+        now = time.time()
+        stale_thr = self._price_tick_stale_after or 0.0
+        ages: list[float] = []
+        stale = 0
+        for entry in self._price_ticks.values():
+            tick_ts = entry.get("tick_ts") or entry.get("_received_ts") or now
+            age = max(0.0, now - float(tick_ts))
+            ages.append(age)
+            if stale_thr and age > stale_thr:
+                stale += 1
+        return {
+            "symbols": len(self._price_ticks),
+            "stale": stale,
+            "max_age": max(ages) if ages else None,
+            "min_age": min(ages) if ages else None,
+        }
 
     async def get_last(self, symbol: str, interval: str) -> dict[str, Any] | None:
         """
@@ -970,6 +1289,72 @@ class UnifiedDataStore:
             # Без нормалізації часу — кладемо як є
             self.ram.put(s, interval, self._dedup_sort(df))
 
+    # ── Cold-start helpers ────────────────────────────────────────────────
+
+    async def build_cold_start_report(
+        self, symbols: list[str], interval: str
+    ) -> list[ColdStartCacheEntry]:
+        """Повертає список `ColdStartCacheEntry` для аудиту кешів.
+
+        Використовується інструментом cold-start runner перед live запуском,
+        щоб оцінити глибину RAM/диску/Redis і вік останнього бару.
+        """
+
+        report: list[ColdStartCacheEntry] = []
+        now = time.time()
+        for symbol in symbols:
+            # RAM
+            ram_rows, ram_last = self.ram.inspect_entry(symbol, interval)
+
+            # Disk
+            disk_meta = await self.disk.inspect_snapshot(symbol, interval)
+
+            # Redis (останній бар + TTL)
+            redis_last_bar = await self.redis.jget(
+                "candles", symbol, interval, default=None
+            )
+            redis_last = (
+                _normalize_epoch(redis_last_bar.get("open_time"))
+                if isinstance(redis_last_bar, dict)
+                else None
+            )
+            redis_ttl = await self.redis.ttl("candles", symbol, interval)
+
+            last_open_time = max(
+                (
+                    ts
+                    for ts in (
+                        ram_last,
+                        redis_last,
+                        (disk_meta.last_open_time if disk_meta else None),
+                    )
+                    if ts is not None
+                ),
+                default=None,
+            )
+            age_seconds = (
+                round(max(0.0, now - last_open_time), 3)
+                if last_open_time is not None
+                else None
+            )
+
+            entry = ColdStartCacheEntry(
+                symbol=symbol,
+                interval=interval,
+                rows_in_ram=ram_rows,
+                rows_on_disk=disk_meta.rows if disk_meta else 0,
+                redis_ttl=redis_ttl,
+                last_open_time=last_open_time,
+                age_seconds=age_seconds,
+                ram_last_open_time=ram_last,
+                disk_last_open_time=disk_meta.last_open_time if disk_meta else None,
+                redis_last_open_time=redis_last,
+                disk_modified_ts=disk_meta.modified_ts if disk_meta else None,
+            )
+            report.append(entry)
+
+        return report
+
     # ── Фонова обслуга ──────────────────────────────────────────────────────
 
     async def _maintenance_loop(self) -> None:
@@ -1185,28 +1570,28 @@ class UnifiedDataStore:
                 "flush_backlog": len(self._flush_q),
                 "timestamp": int(time.time()),
             }
-            fxcm_block: dict[str, Any] = {
-                "market_state": "unknown",
-                "process_state": "unknown",
-                "lag_seconds": None,
-                "last_bar_close_ms": None,
-                "next_open_utc": None,
-            }
+            fxcm_block: dict[str, Any]
             try:
                 fx_state = get_fxcm_feed_state()
             except Exception:
                 fx_state = None
             if fx_state is not None:
-                fxcm_block.update(
-                    {
-                        "market_state": fx_state.market_state,
-                        "process_state": fx_state.process_state,
-                        "lag_seconds": fx_state.lag_seconds,
-                        "last_bar_close_ms": fx_state.last_bar_close_ms,
-                        "next_open_utc": fx_state.next_open_utc,
-                    }
-                )
+                fxcm_block = fx_state.to_metrics_dict()
+            else:
+                fxcm_block = {
+                    "market": "UNKNOWN",
+                    "market_state": "unknown",
+                    "process": "UNKNOWN",
+                    "process_state": "UNKNOWN",
+                    "lag_seconds": 0.0,
+                    "lag_human": "0s (0.0s)",
+                    "last_bar_close_ms": None,
+                    "last_close_utc": "-",
+                    "next_open_ms": None,
+                    "next_open_utc": "-",
+                }
             snapshot["fxcm"] = fxcm_block
+            snapshot["price_stream"] = self.price_tick_overview()
             return snapshot
         except (
             Exception
@@ -1221,4 +1606,5 @@ __all__ = [
     "StoreProfile",
     "UnifiedDataStore",
     "Priority",
+    "ColdStartCacheEntry",
 ]

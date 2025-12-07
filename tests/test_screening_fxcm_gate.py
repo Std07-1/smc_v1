@@ -26,3 +26,40 @@ def test_fxcm_gate_stale_feed() -> None:
     assert payload[K_SIGNAL] == "FX_FEED_STALE"
     stats = payload.get(K_STATS) or {}
     assert stats.get("fxcm_lag_seconds") == lag
+
+
+def test_fxcm_gate_price_down() -> None:
+    state = FxcmFeedState(
+        market_state="open",
+        process_state="stream",
+        price_state="down",
+        status_note="price stream paused",
+    )
+    payload = sp._evaluate_fxcm_gates("xauusd", state)
+    assert payload is not None
+    assert payload[K_SIGNAL] == "FX_PRICE_DOWN"
+    assert "price stream paused" in " ".join(payload.get("hints", []))
+
+
+def test_fxcm_gate_ohlcv_delayed() -> None:
+    state = FxcmFeedState(
+        market_state="open",
+        process_state="stream",
+        ohlcv_state="delayed",
+    )
+    payload = sp._evaluate_fxcm_gates("xauusd", state)
+    assert payload is not None
+    assert payload[K_SIGNAL] == "FX_OHLCV_DELAYED"
+
+
+def test_fxcm_gate_process_error_uses_note() -> None:
+    state = FxcmFeedState(
+        market_state="open",
+        process_state="error",
+        status_note="backoff 30s",
+    )
+    payload = sp._evaluate_fxcm_gates("xauusd", state)
+    assert payload is not None
+    assert payload[K_SIGNAL] == "FX_PROCESS_ERROR"
+    hint_text = " ".join(payload.get("hints", []))
+    assert "backoff 30s" in hint_text

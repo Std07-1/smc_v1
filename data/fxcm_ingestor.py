@@ -42,8 +42,11 @@ from typing import Any
 
 import pandas as pd
 from redis.asyncio import Redis
+from rich.console import Console
+from rich.logging import RichHandler
 
 from app.settings import settings
+from data.fxcm_status_listener import note_fxcm_bar_close
 from data.unified_store import UnifiedDataStore
 
 try:  # pragma: no cover - опціональна залежність
@@ -52,7 +55,10 @@ except Exception:  # pragma: no cover - у тестах/CI клієнта мож
     PromCounter = None
 
 logger = logging.getLogger("fxcm_ingestor")
-
+if not logger.handlers:  # guard від подвійного підключення
+    logger.setLevel(logging.INFO)
+    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
+    logger.propagate = False
 
 FXCM_OHLCV_CHANNEL = "fxcm:ohlcv"
 
@@ -298,6 +304,13 @@ async def _process_payload(
             exc,
         )
         return 0, None, None
+
+    try:
+        close_series = df["close_time"].dropna()
+        if not close_series.empty:
+            note_fxcm_bar_close(int(close_series.iloc[-1]))
+    except Exception:
+        pass
 
     return len(df), symbol_norm, interval_norm
 

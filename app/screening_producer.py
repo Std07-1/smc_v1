@@ -93,16 +93,43 @@ def _build_fxcm_status_payload(
     if not isinstance(stats, dict):
         stats = {}
         payload[K_STATS] = stats
-    stats.update(
-        {
-            "fxcm_state": fx_state.market_state,
-            "fxcm_process_state": fx_state.process_state,
-            "fxcm_lag_seconds": fx_state.lag_seconds,
-            "fxcm_next_open_utc": fx_state.next_open_utc,
-            "fxcm_last_bar_close_ms": fx_state.last_bar_close_ms,
-        }
-    )
+    stats.update(_serialize_fxcm_stats(fx_state))
     return payload
+
+
+def _serialize_fxcm_stats(fx_state: FxcmFeedState | None) -> dict[str, Any]:
+    if fx_state is None:
+        return {}
+    stats: dict[str, Any] = {
+        "fxcm_state": fx_state.market_state,
+        "fxcm_process_state": fx_state.process_state,
+        "fxcm_lag_seconds": fx_state.lag_seconds,
+        "fxcm_next_open_utc": fx_state.next_open_utc,
+        "fxcm_last_bar_close_ms": fx_state.last_bar_close_ms,
+    }
+    if fx_state.price_state:
+        stats["fxcm_price_state"] = fx_state.price_state
+    if fx_state.ohlcv_state:
+        stats["fxcm_ohlcv_state"] = fx_state.ohlcv_state
+    if fx_state.status_note:
+        stats["fxcm_status_note"] = fx_state.status_note
+    if fx_state.status_ts is not None:
+        stats["fxcm_status_ts"] = fx_state.status_ts
+    if fx_state.status_ts_iso:
+        stats["fxcm_status_ts_iso"] = fx_state.status_ts_iso
+    if fx_state.session_seconds_to_close is not None:
+        stats["fxcm_session_seconds_to_close"] = fx_state.session_seconds_to_close
+    if fx_state.session_seconds_to_next_open is not None:
+        stats["fxcm_session_seconds_to_next_open"] = (
+            fx_state.session_seconds_to_next_open
+        )
+    if fx_state.session_name:
+        stats["fxcm_session_name"] = fx_state.session_name
+    if fx_state.session_state:
+        stats["fxcm_session_state"] = fx_state.session_state
+    if fx_state.session:
+        stats["fxcm_session"] = fx_state.session
+    return stats
 
 
 def _evaluate_fxcm_gates(
@@ -110,13 +137,65 @@ def _evaluate_fxcm_gates(
 ) -> dict[str, Any] | None:
     if fx_state is None:
         return None
-    if fx_state.market_state == "closed":
-        next_window = fx_state.next_open_utc or "невідомо"
-        hint = f"FXCM: ринок закритий, наступне відкриття {next_window}."
+    base_note = (fx_state.status_note or "").strip()
+
+    def _hint_with_note(default_text: str) -> str:
+        if base_note and base_note.lower() != "ok":
+            return f"{default_text} ({base_note})"
+        return default_text
+
+    market_state = (fx_state.market_state or "").lower()
+    if market_state == "closed":
+        session_payload = fx_state.session or {}
+        next_window = (
+            fx_state.next_open_utc or session_payload.get("next_open_utc") or "невідомо"
+        )
+        hint = _hint_with_note(
+            f"FXCM: ринок закритий, наступне відкриття {next_window}."
+        )
         return _build_fxcm_status_payload(symbol, "FX_MARKET_CLOSED", hint, fx_state)
+
+    process_state = (fx_state.process_state or "").lower()
+    if process_state == "error":
+        hint = _hint_with_note("FXCM: процес конектора у стані error.")
+        return _build_fxcm_status_payload(symbol, "FX_PROCESS_ERROR", hint, fx_state)
+
+    price_state = (fx_state.price_state or "").lower()
+    if price_state == "down":
+        hint = _hint_with_note("FXCM: канал ціни недоступний, очікуємо відновлення.")
+        return _build_fxcm_status_payload(symbol, "FX_PRICE_DOWN", hint, fx_state)
+    if price_state == "stale":
+        lag_text = (
+            f"≈{fx_state.lag_seconds:.0f} сек"
+            if isinstance(fx_state.lag_seconds, (int, float))
+            else ""
+        )
+        default_hint = "FXCM: ціна не оновлюється, пауза перед обробкою."
+        if lag_text:
+            default_hint = f"FXCM: ціна не оновлювалась {lag_text}, очікуємо тики."
+        hint = _hint_with_note(default_hint)
+        return _build_fxcm_status_payload(symbol, "FX_PRICE_STALE", hint, fx_state)
+
+    ohlcv_state = (fx_state.ohlcv_state or "").lower()
+    if ohlcv_state == "down":
+        hint = _hint_with_note("FXCM: OHLCV канал недоступний, історія не оновлюється.")
+        return _build_fxcm_status_payload(symbol, "FX_OHLCV_DOWN", hint, fx_state)
+    if ohlcv_state == "delayed":
+        hint = _hint_with_note(
+            "FXCM: OHLCV бари затримуються, сигнал очікує свіжі дані."
+        )
+        return _build_fxcm_status_payload(
+            symbol,
+            "FX_OHLCV_DELAYED",
+            hint,
+            fx_state,
+        )
+
     lag = fx_state.lag_seconds
     if lag is not None and lag > FXCM_STALE_LAG_SECONDS:
-        hint = f"FXCM: фід неактивний {lag:.0f} сек, очікуємо оновлення."  # noqa: E501
+        hint = _hint_with_note(
+            f"FXCM: фід неактивний {lag:.0f} сек, очікуємо оновлення."
+        )
         return _build_fxcm_status_payload(symbol, "FX_FEED_STALE", hint, fx_state)
     return None
 
@@ -354,11 +433,35 @@ async def process_asset_batch(
             # ВАЖЛИВО: ці базові метрики ОНОВЛЮЄМО КОЖЕН ЦИКЛ (інакше UI «зависає» на першому значенні)
             # Раніше тут було set-if-missing, що призводило до застиглих price/volume/ts → повертаємо always-overwrite.
             if current_price is not None:
+                stats_container["bar_close_price"] = current_price
                 stats_container["current_price"] = current_price
+                stats_container["price_source"] = "bar_close"
             if volume_last is not None:
                 stats_container["volume"] = volume_last
             if last_ts_val is not None:
                 stats_container["timestamp"] = last_ts_val
+            # Додаємо live price зі стріму, якщо є
+            price_tick = store.get_price_tick(symbol)
+            if price_tick is not None:
+                live_mid = price_tick.get("mid")
+                live_bid = price_tick.get("bid")
+                live_ask = price_tick.get("ask")
+                tick_ts = price_tick.get("tick_ts")
+                snap_ts = price_tick.get("snap_ts")
+                tick_age = price_tick.get("age")
+                spread = price_tick.get("spread")
+                stats_container["live_price_mid"] = live_mid
+                stats_container["live_price_bid"] = live_bid
+                stats_container["live_price_ask"] = live_ask
+                stats_container["tick_ts"] = tick_ts
+                stats_container["tick_snap_ts"] = snap_ts
+                stats_container["tick_age_sec"] = tick_age
+                stats_container["tick_is_stale"] = price_tick.get("is_stale", False)
+                if spread is not None:
+                    stats_container["live_price_spread"] = spread
+                if live_mid is not None and not price_tick.get("is_stale", False):
+                    stats_container["current_price"] = float(live_mid)
+                    stats_container["price_source"] = "price_stream"
 
             # Нормалізуємо типи (існуючі метрики збережуться)
             normalized = normalize_result_types(signal)
@@ -531,7 +634,11 @@ async def screening_producer(
         await publish_full_state(state_manager, store, redis_conn)
 
         processing_time = time.time() - start_time
-        logger.info(f"⏳ Час обробки циклу: {processing_time:.2f} сек")
+        logger.info(
+            "⏳ Час обробки циклу: %.2f сек (ціль refresh=%s сек)",
+            processing_time,
+            interval_sec,
+        )
         sleep_time = (
             1
             if processing_time >= interval_sec

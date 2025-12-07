@@ -42,18 +42,17 @@
 - `docs/smc_structure.md`, `docs/smc_liquidity.md` — деталізують алгоритми
   всередині підмодулів.
 
-## Plain JSON контракт (UI schema 1.2)
+## Plain JSON контракт (AssetStateManager snapshot)
 
 - Stage1 (`app/screening_producer`) серіалізує `SmcHint` через
   `smc_core.serializers.to_plain_smc_hint`, тому у `asset["smc_hint"]` зберігається
   вже JSON-friendly dict без dataclass/Enum обʼєктів.
-- UI (`UI/publish_full_state._prepare_smc_hint`) споживає цей dict без трансформацій
-  і додає alias `asset["smc"]` (опційний блок; зʼявляється лише коли
-  `SMC_PIPELINE_ENABLED=True`). Далі блок дублюється у `smc_structure`,
-  `smc_liquidity`, `smc_zones`, а порожні частини очищуються.
+- Той самий dict дублюється в `asset["smc"]`, `smc_structure`, `smc_liquidity`,
+  `smc_zones` (за потреби). Навіть без UI-шару будь-який консюмер може взяти
+  `state_manager.state` та відправити його у Redis/REST без додаткової обробки.
 - Схема 1.2 гарантує, що `Enum` → `.name`, `datetime` → `isoformat()`, множини /
-  tuple → списки, а інші типи переводяться у рядки. Це дозволяє напряму кешувати
-  блок у Redis/UI без повторного серіалізатора.
+  tuple → списки, а інші типи переводяться у рядки. Це дозволяє зберігати snapshot
+  у будь-якому транспорті без повторного серіалізатора.
 
 Приклад останнього стейту активу в Redis (зріз полів):
 
@@ -108,7 +107,7 @@
 }
 ```
 
-Цей фрагмент описує мінімально необхідний контракт для Stage2/UI. Нові поля можна
+Цей фрагмент описує мінімально необхідний контракт для Stage2. Нові поля можна
 додавати у `smc_hint.meta` або підполя state-блоків, не змінюючи наявну структуру.
 
 ## Подальші кроки

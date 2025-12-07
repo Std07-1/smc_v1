@@ -1,0 +1,11 @@
+{
+  "symbol": "xauusd",
+  "primary_tf": "1m",
+  "bars_used": null,
+  "events_total": 0,
+  "bos": 0,
+  "choch": 0,
+  "liquidity_pools": 57,
+  "signals": 0,
+  "snapshot_file": "tmp/smc_snapshot_xauusd.json"
+}

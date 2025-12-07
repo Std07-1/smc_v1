@@ -16,6 +16,7 @@
 | `fxcm:ohlcv` | конектор | Потік OHLCV свічок. |
 | `fxcm:heartbeat` | конектор | Технічний стан стріму (`state`, `last_bar_close_ms`, `ts_utc`). |
 | `fxcm:market_status` | конектор | Статус ринку (`open/closed`, `next_open_utc`). |
+| `fxcm:price_tik` | конектор | Живі снепшоти bid/ask/mid із OfferTable (оновлення ~3 с). |
 
 ### 2.1 OHLCV payload
 
@@ -40,7 +41,37 @@
 
 Інжестор приводить `symbol`/`tf` до lower-case та викликає `UnifiedDataStore.put_bars`.
 
-### 2.2 `FxcmFeedState`
+### 2.2 Heartbeat payload (оновлений контракт)
+
+Heartbeat — єдине джерело правди про життєвий цикл стріму. Конектор публікує його у форматі `json.dumps(payload, separators=(",", ":"))`, забезпечуючи стабільні назви полів і повну back-compat.
+
+```json
+{
+   "type": "heartbeat",
+   "state": "warmup",                 // "warmup"|"warmup_cache"|"stream"|"idle"
+   "last_bar_close_ms": 1764002159999,
+   "context": {
+      "lag_seconds": 4.3,
+      "market_pause": false,
+      "market_pause_reason": null,      // "calendar"|"fxcm_unavailable"|...
+      "seconds_to_open": 0,
+      "next_open_utc": "2025-11-30T22:15:00Z",
+      "next_open_ms": 1764022500000,
+      "stream_targets": ["xauusd"],
+      "bars_published": 128
+   }
+}
+```
+
+Ключові поля для smc_v1:
+
+- `state` — FSM стріму: `warmup` (ручне дозавантаження), `warmup_cache` (bulk history), `stream` (бойовий режим), `idle` (ринок закритий або конектор чекає).
+- `last_bar_close_ms` — абсолютний timestamp останнього бару; використовується для cold-start/QA.
+- `context.lag_seconds` — миттєвий лаг між heartbeat та останнім баром.
+- `context.market_pause` + `context.market_pause_reason` — пояснюють, чому стрім стоїть (календар/аварія) без локальних евристик.
+- `context.seconds_to_open`/`next_open_*` — дають ETA відкриття без зовнішніх календарів.
+
+### 2.3 `FxcmFeedState`
 
 `data/fxcm_status_listener.py` підтримує єдиний стан:
 
@@ -58,6 +89,39 @@ class FxcmFeedState:
 
 Stage1 та UI спираються на ці значення, а не на локальний календар.
 
+### 2.4 Market status payload
+
+Окремий канал `fxcm:market_status` дублює календарну інформацію для легких консюмерів:
+
+```json
+{
+   "type": "market_status",
+   "state": "open",                    // "open"|"closed"
+   "next_open_utc": "2025-11-30T22:15:00Z",
+   "next_open_ms": 1764022500000,
+   "next_open_in_seconds": 5400
+}
+```
+
+AiOne_t має зберігати це у тій же `FxcmFeedState`, щоб координатор міг відрізнити «закрито за календарем» від «дані не рухаються під час open».
+
+### 2.5 Price stream payload (`fxcm:price_tik`)
+
+Price stream публікує максимум один снапшот на символ за цикл (орієнтовно кожні 3 секунди) та містить вже нормалізовані bid/ask/mid:
+
+```json
+{
+   "symbol": "XAUUSD",
+   "bid": 4209.62,
+   "ask": 4210.02,
+   "mid": 4209.82,
+   "tick_ts": 1764866660.0,
+   "snap_ts": 1764866661.0
+}
+```
+
+`run_fxcm_price_stream_listener` підписується на канал, нормалізує payload і оновлює кеш у `UnifiedDataStore.update_price_tick`. Stage1/UI використовують ці поля для живих цін у таблицях, оцінки спреду (`ask - bid`) та моніторингу тиші (`tick_age_sec = now - tick_ts`).
+
 ## 3. ENV / конфігурація
 
 | Змінна | Опис |
@@ -67,19 +131,20 @@ Stage1 та UI спираються на ці значення, а не на л�
 | `FXCM_HMAC_REQUIRED` | `true/false`, чи відкидати пакети без підпису. |
 | `FXCM_HEARTBEAT_CHANNEL` | Канал heartbeat (типово `fxcm:heartbeat`). |
 | `FXCM_MARKET_STATUS_CHANNEL` | Канал статусу (типово `fxcm:market_status`). |
+| `FXCM_PRICE_TICK_CHANNEL` | Канал живих mid/bid/ask (типово `fxcm:price_tik`). |
 | `FXCM_STALE_LAG_SECONDS` | Поріг лагу (типово `120` с). |
-| `FXCM_DUKA_WARMUP_ENABLED` | Чи підвантажувати історію з Dukascopy перед стартом (default `false`). |
 | `REDIS_HOST/PORT` | Повинні збігатися у конектора й AiOne_t. |
 
 ## 4. Пайплайн AiOne_t
 
 1. `app/main.py` запускає `run_fxcm_ingestor(...)` і `run_fxcm_status_listener(...)` в одному event loop.
-2. `screening_producer`:
+2. `run_fxcm_price_stream_listener` слухає `fxcm:price_tik` і оновлює кеш `UnifiedDataStore.update_price_tick`, щоб Stage1 бачила останній bid/ask/mid між закриттями барів.
+3. `screening_producer`:
    - Отримує `FxcmFeedState` через `get_fxcm_feed_state()`.
    - Якщо `market_state="closed"` → `FX_MARKET_CLOSED` сигнал (без помилки).
    - Якщо `lag_seconds > FXCM_STALE_LAG_SECONDS` → `FX_FEED_STALE`.
-3. `UnifiedDataStore.metrics_snapshot()` містить блок `"fxcm": {...}`.
-4. `UI/publish_full_state` додає той же блок у payload, щоб viewer показував банер стану.
+4. `UnifiedDataStore.metrics_snapshot()` містить блок `"fxcm": {...}` та коротку телеметрію `price_stream`.
+5. `UI/publish_full_state` додає ті самі блоки у payload, щоб viewer показував банер стану й live tick-метрики.
 
 ## 5. Runbook
 
@@ -101,7 +166,7 @@ Stage1 та UI спираються на ці значення, а не на л�
 3. **Перевірка**:
    - `redis-cli GET ai_one:ui:snapshot` → поле `fxcm` з актуальним станом.
    - `python -m tools.smc_snapshot_runner xauusd --tf 1m` (опційно) читає ті самі бари з `UnifiedDataStore`.
-   > Примітка: холодний старт через Dukascopy виконується лише якщо `FXCM_DUKA_WARMUP_ENABLED=true`. За замовчуванням покладаємося на прогрів самого конектора FXCM.
+   > Примітка: будь-який warmup/bar caching виконує саме зовнішній конектор; Stage1 не підтягує історію напряму з бірж.
 
 4. **Моніторинг**:
    - Prometheus: `ai_one_fxcm_feed_lag_seconds` та `ai_one_fxcm_feed_state`.
@@ -115,3 +180,27 @@ Stage1 та UI спираються на ці значення, а не на л�
 - Символи/таймфрейми лише у вигляді `xauusd`, `1m`, `5m` і т.д.
 
 Дотримання цих правил гарантує, що конектор та пайплайн працюють як єдиний FX data-layer із прозорою телеметрією.
+
+## 7. Використання телеметрії у smc_v1
+
+### 7.1 `fxcm_ingestor` / `fxcm_status_listener`
+
+- Визначити dataclass/Pydantic-модель heartbeat і оновлювати `FxcmFeedState` з полів: `last_bar_close_ms`, `context.lag_seconds`, `context.market_pause`, `context.market_pause_reason`, `context.seconds_to_open`, `context.stream_targets`, `context.bars_published`.
+- Для `fxcm:market_status` зберігати `state`, `next_open_ms`, `next_open_in_seconds` у тому ж стані, щоб coordinator мав одну точку доступу.
+- Це дозволяє відрізнити «lag через вихідні» (market_pause=true, reason="calendar") від реальної деградації (market_pause=false, `lag_seconds` росте) без додаткових евристик.
+
+### 7.2 Cold-start / historical coordinator
+
+- Комбінувати `last_bar_close_ms` + `lag_seconds` з heartbeat та `state` + `next_open_ms` з `fxcm:market_status`.
+- Якщо `market_status.state="closed"` і `market_pause_reason="calendar"`, stale-історія вважається нормою — координатор лише логуватиме стан.
+- Якщо `market_status.state="open"`, але `lag_seconds` > порога, coordinator може перевести `ai_one:stage1:cold_start_status` у `error/degraded`, вимкнути live-сигнали й вимагати backfill.
+
+### 7.3 UI / viewer
+
+- Показувати в банері `state=warmup|stream|idle`, `lag_seconds`, а також ознаку `market_pause` з причиною.
+- Використовувати `next_open_in_seconds` / `next_open_utc`, щоби рендерити зрозуміле повідомлення типу «ринок спить до 22:15 UTC».
+
+### 7.4 Канал warmup історії
+
+- Окремий `fxcm:ohlcv_warmup` зараз не потрібен: heartbeat вже містить `state="warmup"|"warmup_cache"`.
+- Stage1 може обмежувати production-сигнали доти, доки `state != "stream"` або `cold_start_status != "ready"`, використовуючи існуючі ключі Redis.

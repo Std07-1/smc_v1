@@ -1,0 +1,6008 @@
+﻿{
+  "structure": {
+    "primary_tf": "1m",
+    "trend": "RANGE",
+    "swings": [
+      {
+        "index": 19,
+        "time": "1970-01-01T00:29:24.564840+00:00",
+        "price": 4246.68,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 29,
+        "time": "1970-01-01T00:29:24.565440+00:00",
+        "price": 4240.38,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 32,
+        "time": "1970-01-01T00:29:24.565620+00:00",
+        "price": 4243.275,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 55,
+        "time": "1970-01-01T00:29:24.567000+00:00",
+        "price": 4217.87,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 58,
+        "time": "1970-01-01T00:29:24.567180+00:00",
+        "price": 4227.4,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 61,
+        "time": "1970-01-01T00:29:24.567360+00:00",
+        "price": 4223.56,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 64,
+        "time": "1970-01-01T00:29:24.567540+00:00",
+        "price": 4226.935,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 66,
+        "time": "1970-01-01T00:29:24.567660+00:00",
+        "price": 4223.96,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 70,
+        "time": "1970-01-01T00:29:24.567900+00:00",
+        "price": 4223.88,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 79,
+        "time": "1970-01-01T00:29:24.568440+00:00",
+        "price": 4231.45,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 84,
+        "time": "1970-01-01T00:29:24.568740+00:00",
+        "price": 4228.0,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 88,
+        "time": "1970-01-01T00:29:24.568980+00:00",
+        "price": 4233.105,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 92,
+        "time": "1970-01-01T00:29:24.569220+00:00",
+        "price": 4229.25,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 96,
+        "time": "1970-01-01T00:29:24.569460+00:00",
+        "price": 4233.885,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 109,
+        "time": "1970-01-01T00:29:24.570240+00:00",
+        "price": 4226.48,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 117,
+        "time": "1970-01-01T00:29:24.570720+00:00",
+        "price": 4234.85,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 124,
+        "time": "1970-01-01T00:29:24.571140+00:00",
+        "price": 4230.19,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 133,
+        "time": "1970-01-01T00:29:24.587820+00:00",
+        "price": 4254.17,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 138,
+        "time": "1970-01-01T00:29:24.588120+00:00",
+        "price": 4248.65,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 143,
+        "time": "1970-01-01T00:29:24.588420+00:00",
+        "price": 4255.64,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 148,
+        "time": "1970-01-01T00:29:24.588720+00:00",
+        "price": 4252.95,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 161,
+        "time": "1970-01-01T00:29:24.589500+00:00",
+        "price": 4258.61,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 166,
+        "time": "1970-01-01T00:29:24.589800+00:00",
+        "price": 4253.44,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 168,
+        "time": "1970-01-01T00:29:24.589920+00:00",
+        "price": 4255.92,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 177,
+        "time": "1970-01-01T00:29:24.590460+00:00",
+        "price": 4256.25,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 181,
+        "time": "1970-01-01T00:29:24.590700+00:00",
+        "price": 4251.83,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 183,
+        "time": "1970-01-01T00:29:24.590820+00:00",
+        "price": 4254.82,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 189,
+        "time": "1970-01-01T00:29:24.591180+00:00",
+        "price": 4248.44,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 196,
+        "time": "1970-01-01T00:29:24.591600+00:00",
+        "price": 4254.28,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 201,
+        "time": "1970-01-01T00:29:24.591900+00:00",
+        "price": 4248.63,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 202,
+        "time": "1970-01-01T00:29:24.591960+00:00",
+        "price": 4253.65,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 208,
+        "time": "1970-01-01T00:29:24.592320+00:00",
+        "price": 4251.13,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 212,
+        "time": "1970-01-01T00:29:24.592560+00:00",
+        "price": 4251.81,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 215,
+        "time": "1970-01-01T00:29:24.592740+00:00",
+        "price": 4256.08,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 222,
+        "time": "1970-01-01T00:29:24.593160+00:00",
+        "price": 4249.34,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 229,
+        "time": "1970-01-01T00:29:24.593640+00:00",
+        "price": 4249.39,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 232,
+        "time": "1970-01-01T00:29:24.593820+00:00",
+        "price": 4245.1,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 243,
+        "time": "1970-01-01T00:29:24.594480+00:00",
+        "price": 4255.36,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 245,
+        "time": "1970-01-01T00:29:24.594600+00:00",
+        "price": 4253.31,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 248,
+        "time": "1970-01-01T00:29:24.594780+00:00",
+        "price": 4255.08,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 253,
+        "time": "1970-01-01T00:29:24.595080+00:00",
+        "price": 4250.59,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 257,
+        "time": "1970-01-01T00:29:24.595320+00:00",
+        "price": 4257.09,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 260,
+        "time": "1970-01-01T00:29:24.595500+00:00",
+        "price": 4253.2,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 262,
+        "time": "1970-01-01T00:29:24.595620+00:00",
+        "price": 4256.98,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 266,
+        "time": "1970-01-01T00:29:24.597180+00:00",
+        "price": 4251.52,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 267,
+        "time": "1970-01-01T00:29:24.597240+00:00",
+        "price": 4251.52,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 271,
+        "time": "1970-01-01T00:29:24.597480+00:00",
+        "price": 4253.85,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 275,
+        "time": "1970-01-01T00:29:24.597720+00:00",
+        "price": 4244.07,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 279,
+        "time": "1970-01-01T00:29:24.597960+00:00",
+        "price": 4240.035,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 285,
+        "time": "1970-01-01T00:29:24.598320+00:00",
+        "price": 4248.21,
+        "kind": "HIGH",
+        "strength": 3
+      },
+      {
+        "index": 287,
+        "time": "1970-01-01T00:29:24.598920+00:00",
+        "price": 4242.86,
+        "kind": "LOW",
+        "strength": 3
+      },
+      {
+        "index": 294,
+        "time": "1970-01-01T00:29:24.599340+00:00",
+        "price": 4247.81,
+        "kind": "HIGH",
+        "strength": 3
+      }
+    ],
+    "legs": [
+      {
+        "from_swing": {
+          "index": 19,
+          "time": "1970-01-01T00:29:24.564840+00:00",
+          "price": 4246.68,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 29,
+          "time": "1970-01-01T00:29:24.565440+00:00",
+          "price": 4240.38,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "UNDEFINED"
+      },
+      {
+        "from_swing": {
+          "index": 29,
+          "time": "1970-01-01T00:29:24.565440+00:00",
+          "price": 4240.38,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 32,
+          "time": "1970-01-01T00:29:24.565620+00:00",
+          "price": 4243.275,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 32,
+          "time": "1970-01-01T00:29:24.565620+00:00",
+          "price": 4243.275,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 55,
+          "time": "1970-01-01T00:29:24.567000+00:00",
+          "price": 4217.87,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 55,
+          "time": "1970-01-01T00:29:24.567000+00:00",
+          "price": 4217.87,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 58,
+          "time": "1970-01-01T00:29:24.567180+00:00",
+          "price": 4227.4,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 58,
+          "time": "1970-01-01T00:29:24.567180+00:00",
+          "price": 4227.4,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 61,
+          "time": "1970-01-01T00:29:24.567360+00:00",
+          "price": 4223.56,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 61,
+          "time": "1970-01-01T00:29:24.567360+00:00",
+          "price": 4223.56,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 64,
+          "time": "1970-01-01T00:29:24.567540+00:00",
+          "price": 4226.935,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 64,
+          "time": "1970-01-01T00:29:24.567540+00:00",
+          "price": 4226.935,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 66,
+          "time": "1970-01-01T00:29:24.567660+00:00",
+          "price": 4223.96,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 66,
+          "time": "1970-01-01T00:29:24.567660+00:00",
+          "price": 4223.96,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 70,
+          "time": "1970-01-01T00:29:24.567900+00:00",
+          "price": 4223.88,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 70,
+          "time": "1970-01-01T00:29:24.567900+00:00",
+          "price": 4223.88,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 79,
+          "time": "1970-01-01T00:29:24.568440+00:00",
+          "price": 4231.45,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 79,
+          "time": "1970-01-01T00:29:24.568440+00:00",
+          "price": 4231.45,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 84,
+          "time": "1970-01-01T00:29:24.568740+00:00",
+          "price": 4228.0,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 84,
+          "time": "1970-01-01T00:29:24.568740+00:00",
+          "price": 4228.0,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 88,
+          "time": "1970-01-01T00:29:24.568980+00:00",
+          "price": 4233.105,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 88,
+          "time": "1970-01-01T00:29:24.568980+00:00",
+          "price": 4233.105,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 92,
+          "time": "1970-01-01T00:29:24.569220+00:00",
+          "price": 4229.25,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 92,
+          "time": "1970-01-01T00:29:24.569220+00:00",
+          "price": 4229.25,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 96,
+          "time": "1970-01-01T00:29:24.569460+00:00",
+          "price": 4233.885,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 96,
+          "time": "1970-01-01T00:29:24.569460+00:00",
+          "price": 4233.885,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 109,
+          "time": "1970-01-01T00:29:24.570240+00:00",
+          "price": 4226.48,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 109,
+          "time": "1970-01-01T00:29:24.570240+00:00",
+          "price": 4226.48,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 117,
+          "time": "1970-01-01T00:29:24.570720+00:00",
+          "price": 4234.85,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 117,
+          "time": "1970-01-01T00:29:24.570720+00:00",
+          "price": 4234.85,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 124,
+          "time": "1970-01-01T00:29:24.571140+00:00",
+          "price": 4230.19,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 124,
+          "time": "1970-01-01T00:29:24.571140+00:00",
+          "price": 4230.19,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 133,
+          "time": "1970-01-01T00:29:24.587820+00:00",
+          "price": 4254.17,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 133,
+          "time": "1970-01-01T00:29:24.587820+00:00",
+          "price": 4254.17,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 138,
+          "time": "1970-01-01T00:29:24.588120+00:00",
+          "price": 4248.65,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 138,
+          "time": "1970-01-01T00:29:24.588120+00:00",
+          "price": 4248.65,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 143,
+          "time": "1970-01-01T00:29:24.588420+00:00",
+          "price": 4255.64,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 143,
+          "time": "1970-01-01T00:29:24.588420+00:00",
+          "price": 4255.64,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 148,
+          "time": "1970-01-01T00:29:24.588720+00:00",
+          "price": 4252.95,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 148,
+          "time": "1970-01-01T00:29:24.588720+00:00",
+          "price": 4252.95,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 161,
+          "time": "1970-01-01T00:29:24.589500+00:00",
+          "price": 4258.61,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 161,
+          "time": "1970-01-01T00:29:24.589500+00:00",
+          "price": 4258.61,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 166,
+          "time": "1970-01-01T00:29:24.589800+00:00",
+          "price": 4253.44,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 166,
+          "time": "1970-01-01T00:29:24.589800+00:00",
+          "price": 4253.44,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 168,
+          "time": "1970-01-01T00:29:24.589920+00:00",
+          "price": 4255.92,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 168,
+          "time": "1970-01-01T00:29:24.589920+00:00",
+          "price": 4255.92,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 177,
+          "time": "1970-01-01T00:29:24.590460+00:00",
+          "price": 4256.25,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 177,
+          "time": "1970-01-01T00:29:24.590460+00:00",
+          "price": 4256.25,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 181,
+          "time": "1970-01-01T00:29:24.590700+00:00",
+          "price": 4251.83,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 181,
+          "time": "1970-01-01T00:29:24.590700+00:00",
+          "price": 4251.83,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 183,
+          "time": "1970-01-01T00:29:24.590820+00:00",
+          "price": 4254.82,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 183,
+          "time": "1970-01-01T00:29:24.590820+00:00",
+          "price": 4254.82,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 189,
+          "time": "1970-01-01T00:29:24.591180+00:00",
+          "price": 4248.44,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 189,
+          "time": "1970-01-01T00:29:24.591180+00:00",
+          "price": 4248.44,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 196,
+          "time": "1970-01-01T00:29:24.591600+00:00",
+          "price": 4254.28,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 196,
+          "time": "1970-01-01T00:29:24.591600+00:00",
+          "price": 4254.28,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 201,
+          "time": "1970-01-01T00:29:24.591900+00:00",
+          "price": 4248.63,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 201,
+          "time": "1970-01-01T00:29:24.591900+00:00",
+          "price": 4248.63,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 202,
+          "time": "1970-01-01T00:29:24.591960+00:00",
+          "price": 4253.65,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 202,
+          "time": "1970-01-01T00:29:24.591960+00:00",
+          "price": 4253.65,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 208,
+          "time": "1970-01-01T00:29:24.592320+00:00",
+          "price": 4251.13,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 208,
+          "time": "1970-01-01T00:29:24.592320+00:00",
+          "price": 4251.13,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 212,
+          "time": "1970-01-01T00:29:24.592560+00:00",
+          "price": 4251.81,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 212,
+          "time": "1970-01-01T00:29:24.592560+00:00",
+          "price": 4251.81,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 215,
+          "time": "1970-01-01T00:29:24.592740+00:00",
+          "price": 4256.08,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 215,
+          "time": "1970-01-01T00:29:24.592740+00:00",
+          "price": 4256.08,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 222,
+          "time": "1970-01-01T00:29:24.593160+00:00",
+          "price": 4249.34,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 222,
+          "time": "1970-01-01T00:29:24.593160+00:00",
+          "price": 4249.34,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 229,
+          "time": "1970-01-01T00:29:24.593640+00:00",
+          "price": 4249.39,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 229,
+          "time": "1970-01-01T00:29:24.593640+00:00",
+          "price": 4249.39,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 232,
+          "time": "1970-01-01T00:29:24.593820+00:00",
+          "price": 4245.1,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 232,
+          "time": "1970-01-01T00:29:24.593820+00:00",
+          "price": 4245.1,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 243,
+          "time": "1970-01-01T00:29:24.594480+00:00",
+          "price": 4255.36,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 243,
+          "time": "1970-01-01T00:29:24.594480+00:00",
+          "price": 4255.36,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 245,
+          "time": "1970-01-01T00:29:24.594600+00:00",
+          "price": 4253.31,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 245,
+          "time": "1970-01-01T00:29:24.594600+00:00",
+          "price": 4253.31,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 248,
+          "time": "1970-01-01T00:29:24.594780+00:00",
+          "price": 4255.08,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 248,
+          "time": "1970-01-01T00:29:24.594780+00:00",
+          "price": 4255.08,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 253,
+          "time": "1970-01-01T00:29:24.595080+00:00",
+          "price": 4250.59,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 253,
+          "time": "1970-01-01T00:29:24.595080+00:00",
+          "price": 4250.59,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 257,
+          "time": "1970-01-01T00:29:24.595320+00:00",
+          "price": 4257.09,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "HH"
+      },
+      {
+        "from_swing": {
+          "index": 257,
+          "time": "1970-01-01T00:29:24.595320+00:00",
+          "price": 4257.09,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 260,
+          "time": "1970-01-01T00:29:24.595500+00:00",
+          "price": 4253.2,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 260,
+          "time": "1970-01-01T00:29:24.595500+00:00",
+          "price": 4253.2,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 262,
+          "time": "1970-01-01T00:29:24.595620+00:00",
+          "price": 4256.98,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 262,
+          "time": "1970-01-01T00:29:24.595620+00:00",
+          "price": 4256.98,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 266,
+          "time": "1970-01-01T00:29:24.597180+00:00",
+          "price": 4251.52,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 266,
+          "time": "1970-01-01T00:29:24.597180+00:00",
+          "price": 4251.52,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 267,
+          "time": "1970-01-01T00:29:24.597240+00:00",
+          "price": 4251.52,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 267,
+          "time": "1970-01-01T00:29:24.597240+00:00",
+          "price": 4251.52,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 271,
+          "time": "1970-01-01T00:29:24.597480+00:00",
+          "price": 4253.85,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 271,
+          "time": "1970-01-01T00:29:24.597480+00:00",
+          "price": 4253.85,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 275,
+          "time": "1970-01-01T00:29:24.597720+00:00",
+          "price": 4244.07,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 275,
+          "time": "1970-01-01T00:29:24.597720+00:00",
+          "price": 4244.07,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 279,
+          "time": "1970-01-01T00:29:24.597960+00:00",
+          "price": 4240.035,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "LL"
+      },
+      {
+        "from_swing": {
+          "index": 279,
+          "time": "1970-01-01T00:29:24.597960+00:00",
+          "price": 4240.035,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 285,
+          "time": "1970-01-01T00:29:24.598320+00:00",
+          "price": 4248.21,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      },
+      {
+        "from_swing": {
+          "index": 285,
+          "time": "1970-01-01T00:29:24.598320+00:00",
+          "price": 4248.21,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 287,
+          "time": "1970-01-01T00:29:24.598920+00:00",
+          "price": 4242.86,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "label": "HL"
+      },
+      {
+        "from_swing": {
+          "index": 287,
+          "time": "1970-01-01T00:29:24.598920+00:00",
+          "price": 4242.86,
+          "kind": "LOW",
+          "strength": 3
+        },
+        "to_swing": {
+          "index": 294,
+          "time": "1970-01-01T00:29:24.599340+00:00",
+          "price": 4247.81,
+          "kind": "HIGH",
+          "strength": 3
+        },
+        "label": "LH"
+      }
+    ],
+    "ranges": [
+      {
+        "high": 4247.81,
+        "low": 4240.62,
+        "eq_level": 4244.215,
+        "start_time": "1970-01-01T00:29:24.598980+00:00",
+        "end_time": "1970-01-01T00:29:24.599640+00:00",
+        "state": "INSIDE"
+      }
+    ],
+    "active_range": {
+      "high": 4247.81,
+      "low": 4240.62,
+      "eq_level": 4244.215,
+      "start_time": "1970-01-01T00:29:24.598980+00:00",
+      "end_time": "1970-01-01T00:29:24.599640+00:00",
+      "state": "INSIDE"
+    },
+    "range_state": "INSIDE",
+    "events": [],
+    "ote_zones": [
+      {
+        "leg": {
+          "from_swing": {
+            "index": 232,
+            "time": "1970-01-01T00:29:24.593820+00:00",
+            "price": 4245.1,
+            "kind": "LOW",
+            "strength": 3
+          },
+          "to_swing": {
+            "index": 243,
+            "time": "1970-01-01T00:29:24.594480+00:00",
+            "price": 4255.36,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          "label": "HH"
+        },
+        "ote_min": 4247.2546,
+        "ote_max": 4248.9988,
+        "direction": "LONG",
+        "role": "NEUTRAL"
+      },
+      {
+        "leg": {
+          "from_swing": {
+            "index": 271,
+            "time": "1970-01-01T00:29:24.597480+00:00",
+            "price": 4253.85,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          "to_swing": {
+            "index": 275,
+            "time": "1970-01-01T00:29:24.597720+00:00",
+            "price": 4244.07,
+            "kind": "LOW",
+            "strength": 3
+          },
+          "label": "LL"
+        },
+        "ote_min": 4250.1336,
+        "ote_max": 4251.796200000001,
+        "direction": "SHORT",
+        "role": "NEUTRAL"
+      }
+    ],
+    "bias": "NEUTRAL",
+    "meta": {
+      "bar_count": 300,
+      "cfg_min_swing": 3,
+      "cfg_min_range_bars": 12,
+      "bos_min_move_atr_m1": 0.6,
+      "bos_min_move_pct_m1": 0.002,
+      "leg_min_amplitude_atr_m1": 0.8,
+      "ote_trend_only_m1": true,
+      "ote_max_active_per_side_m1": 1,
+      "atr_period": 14,
+      "atr_available": true,
+      "atr_last": 2.2221428571428987,
+      "atr_median": 1.3057142857142026,
+      "bias": "NEUTRAL",
+      "last_choch_ts": null,
+      "symbol": "xauusd",
+      "tf_input": "1m",
+      "snapshot_start_ts": "1970-01-01T00:29:24.563700+00:00",
+      "snapshot_end_ts": "1970-01-01T00:29:24.599640+00:00",
+      "swing_times": [
+        "1970-01-01T00:29:24.564840+00:00",
+        "1970-01-01T00:29:24.565440+00:00",
+        "1970-01-01T00:29:24.565620+00:00",
+        "1970-01-01T00:29:24.567000+00:00",
+        "1970-01-01T00:29:24.567180+00:00",
+        "1970-01-01T00:29:24.567360+00:00",
+        "1970-01-01T00:29:24.567540+00:00",
+        "1970-01-01T00:29:24.567660+00:00",
+        "1970-01-01T00:29:24.567900+00:00",
+        "1970-01-01T00:29:24.568440+00:00",
+        "1970-01-01T00:29:24.568740+00:00",
+        "1970-01-01T00:29:24.568980+00:00",
+        "1970-01-01T00:29:24.569220+00:00",
+        "1970-01-01T00:29:24.569460+00:00",
+        "1970-01-01T00:29:24.570240+00:00",
+        "1970-01-01T00:29:24.570720+00:00",
+        "1970-01-01T00:29:24.571140+00:00",
+        "1970-01-01T00:29:24.587820+00:00",
+        "1970-01-01T00:29:24.588120+00:00",
+        "1970-01-01T00:29:24.588420+00:00",
+        "1970-01-01T00:29:24.588720+00:00",
+        "1970-01-01T00:29:24.589500+00:00",
+        "1970-01-01T00:29:24.589800+00:00",
+        "1970-01-01T00:29:24.589920+00:00",
+        "1970-01-01T00:29:24.590460+00:00",
+        "1970-01-01T00:29:24.590700+00:00",
+        "1970-01-01T00:29:24.590820+00:00",
+        "1970-01-01T00:29:24.591180+00:00",
+        "1970-01-01T00:29:24.591600+00:00",
+        "1970-01-01T00:29:24.591900+00:00",
+        "1970-01-01T00:29:24.591960+00:00",
+        "1970-01-01T00:29:24.592320+00:00",
+        "1970-01-01T00:29:24.592560+00:00",
+        "1970-01-01T00:29:24.592740+00:00",
+        "1970-01-01T00:29:24.593160+00:00",
+        "1970-01-01T00:29:24.593640+00:00",
+        "1970-01-01T00:29:24.593820+00:00",
+        "1970-01-01T00:29:24.594480+00:00",
+        "1970-01-01T00:29:24.594600+00:00",
+        "1970-01-01T00:29:24.594780+00:00",
+        "1970-01-01T00:29:24.595080+00:00",
+        "1970-01-01T00:29:24.595320+00:00",
+        "1970-01-01T00:29:24.595500+00:00",
+        "1970-01-01T00:29:24.595620+00:00",
+        "1970-01-01T00:29:24.597180+00:00",
+        "1970-01-01T00:29:24.597240+00:00",
+        "1970-01-01T00:29:24.597480+00:00",
+        "1970-01-01T00:29:24.597720+00:00",
+        "1970-01-01T00:29:24.597960+00:00",
+        "1970-01-01T00:29:24.598320+00:00",
+        "1970-01-01T00:29:24.598920+00:00",
+        "1970-01-01T00:29:24.599340+00:00"
+      ]
+    }
+  },
+  "liquidity": {
+    "pools": [
+      {
+        "level": 4248.0308,
+        "liq_type": "EQH",
+        "strength": 75.0,
+        "n_touches": 25,
+        "first_time": "1970-01-01T00:29:24.564840+00:00",
+        "last_time": "1970-01-01T00:29:24.599340+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [
+          {
+            "index": 19,
+            "time": "1970-01-01T00:29:24.564840+00:00",
+            "price": 4246.68,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 32,
+            "time": "1970-01-01T00:29:24.565620+00:00",
+            "price": 4243.275,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 58,
+            "time": "1970-01-01T00:29:24.567180+00:00",
+            "price": 4227.4,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 64,
+            "time": "1970-01-01T00:29:24.567540+00:00",
+            "price": 4226.935,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 79,
+            "time": "1970-01-01T00:29:24.568440+00:00",
+            "price": 4231.45,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 88,
+            "time": "1970-01-01T00:29:24.568980+00:00",
+            "price": 4233.105,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 96,
+            "time": "1970-01-01T00:29:24.569460+00:00",
+            "price": 4233.885,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 117,
+            "time": "1970-01-01T00:29:24.570720+00:00",
+            "price": 4234.85,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 133,
+            "time": "1970-01-01T00:29:24.587820+00:00",
+            "price": 4254.17,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 143,
+            "time": "1970-01-01T00:29:24.588420+00:00",
+            "price": 4255.64,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 161,
+            "time": "1970-01-01T00:29:24.589500+00:00",
+            "price": 4258.61,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 168,
+            "time": "1970-01-01T00:29:24.589920+00:00",
+            "price": 4255.92,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 177,
+            "time": "1970-01-01T00:29:24.590460+00:00",
+            "price": 4256.25,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 183,
+            "time": "1970-01-01T00:29:24.590820+00:00",
+            "price": 4254.82,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 196,
+            "time": "1970-01-01T00:29:24.591600+00:00",
+            "price": 4254.28,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 202,
+            "time": "1970-01-01T00:29:24.591960+00:00",
+            "price": 4253.65,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 215,
+            "time": "1970-01-01T00:29:24.592740+00:00",
+            "price": 4256.08,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 229,
+            "time": "1970-01-01T00:29:24.593640+00:00",
+            "price": 4249.39,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 243,
+            "time": "1970-01-01T00:29:24.594480+00:00",
+            "price": 4255.36,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 248,
+            "time": "1970-01-01T00:29:24.594780+00:00",
+            "price": 4255.08,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 257,
+            "time": "1970-01-01T00:29:24.595320+00:00",
+            "price": 4257.09,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 262,
+            "time": "1970-01-01T00:29:24.595620+00:00",
+            "price": 4256.98,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 271,
+            "time": "1970-01-01T00:29:24.597480+00:00",
+            "price": 4253.85,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 285,
+            "time": "1970-01-01T00:29:24.598320+00:00",
+            "price": 4248.21,
+            "kind": "HIGH",
+            "strength": 3
+          },
+          {
+            "index": 294,
+            "time": "1970-01-01T00:29:24.599340+00:00",
+            "price": 4247.81,
+            "kind": "HIGH",
+            "strength": 3
+          }
+        ],
+        "meta": {
+          "source": "eq_cluster",
+          "cluster_size": 25
+        }
+      },
+      {
+        "level": 4241.925740740741,
+        "liq_type": "EQL",
+        "strength": 81.0,
+        "n_touches": 27,
+        "first_time": "1970-01-01T00:29:24.565440+00:00",
+        "last_time": "1970-01-01T00:29:24.598920+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [
+          {
+            "index": 29,
+            "time": "1970-01-01T00:29:24.565440+00:00",
+            "price": 4240.38,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 55,
+            "time": "1970-01-01T00:29:24.567000+00:00",
+            "price": 4217.87,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 61,
+            "time": "1970-01-01T00:29:24.567360+00:00",
+            "price": 4223.56,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 66,
+            "time": "1970-01-01T00:29:24.567660+00:00",
+            "price": 4223.96,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 70,
+            "time": "1970-01-01T00:29:24.567900+00:00",
+            "price": 4223.88,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 84,
+            "time": "1970-01-01T00:29:24.568740+00:00",
+            "price": 4228.0,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 92,
+            "time": "1970-01-01T00:29:24.569220+00:00",
+            "price": 4229.25,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 109,
+            "time": "1970-01-01T00:29:24.570240+00:00",
+            "price": 4226.48,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 124,
+            "time": "1970-01-01T00:29:24.571140+00:00",
+            "price": 4230.19,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 138,
+            "time": "1970-01-01T00:29:24.588120+00:00",
+            "price": 4248.65,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 148,
+            "time": "1970-01-01T00:29:24.588720+00:00",
+            "price": 4252.95,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 166,
+            "time": "1970-01-01T00:29:24.589800+00:00",
+            "price": 4253.44,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 181,
+            "time": "1970-01-01T00:29:24.590700+00:00",
+            "price": 4251.83,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 189,
+            "time": "1970-01-01T00:29:24.591180+00:00",
+            "price": 4248.44,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 201,
+            "time": "1970-01-01T00:29:24.591900+00:00",
+            "price": 4248.63,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 208,
+            "time": "1970-01-01T00:29:24.592320+00:00",
+            "price": 4251.13,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 212,
+            "time": "1970-01-01T00:29:24.592560+00:00",
+            "price": 4251.81,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 222,
+            "time": "1970-01-01T00:29:24.593160+00:00",
+            "price": 4249.34,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 232,
+            "time": "1970-01-01T00:29:24.593820+00:00",
+            "price": 4245.1,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 245,
+            "time": "1970-01-01T00:29:24.594600+00:00",
+            "price": 4253.31,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 253,
+            "time": "1970-01-01T00:29:24.595080+00:00",
+            "price": 4250.59,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 260,
+            "time": "1970-01-01T00:29:24.595500+00:00",
+            "price": 4253.2,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 266,
+            "time": "1970-01-01T00:29:24.597180+00:00",
+            "price": 4251.52,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 267,
+            "time": "1970-01-01T00:29:24.597240+00:00",
+            "price": 4251.52,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 275,
+            "time": "1970-01-01T00:29:24.597720+00:00",
+            "price": 4244.07,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 279,
+            "time": "1970-01-01T00:29:24.597960+00:00",
+            "price": 4240.035,
+            "kind": "LOW",
+            "strength": 3
+          },
+          {
+            "index": 287,
+            "time": "1970-01-01T00:29:24.598920+00:00",
+            "price": 4242.86,
+            "kind": "LOW",
+            "strength": 3
+          }
+        ],
+        "meta": {
+          "source": "eq_cluster",
+          "cluster_size": 27
+        }
+      },
+      {
+        "level": 4240.62,
+        "liq_type": "RANGE_EXTREME",
+        "strength": 7.190000000000509,
+        "n_touches": 1,
+        "first_time": "1970-01-01T00:29:24.598980+00:00",
+        "last_time": "1970-01-01T00:29:24.599640+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "range",
+          "side": "LOW"
+        }
+      },
+      {
+        "level": 4247.81,
+        "liq_type": "RANGE_EXTREME",
+        "strength": 7.190000000000509,
+        "n_touches": 1,
+        "first_time": "1970-01-01T00:29:24.598980+00:00",
+        "last_time": "1970-01-01T00:29:24.599640+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "range",
+          "side": "HIGH"
+        }
+      },
+      {
+        "level": 4246.68,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4240.38,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4243.275,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4217.87,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4227.4,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4223.56,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4226.935,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4223.96,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4223.88,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4231.45,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4228.0,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4233.105,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4229.25,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4233.885,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4226.48,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4234.85,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4230.19,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4254.17,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4248.65,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4255.64,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4252.95,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4258.61,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4253.44,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4255.92,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4256.25,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4251.83,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4254.82,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4248.44,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4254.28,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4248.63,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4253.65,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4251.13,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4251.81,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4256.08,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4249.34,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4249.39,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4245.1,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4255.36,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4253.31,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4255.08,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4250.59,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4257.09,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4253.2,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4256.98,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4251.52,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4253.85,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4244.07,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4240.035,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4248.21,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4242.86,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "swing",
+          "count": 40
+        }
+      },
+      {
+        "level": 4247.81,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "swing",
+          "count": 54
+        }
+      },
+      {
+        "level": 4247.81,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.7799999999997453,
+        "n_touches": 54,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "HIGH",
+          "level_source": "range",
+          "count": 54
+        }
+      },
+      {
+        "level": 4240.62,
+        "liq_type": "WICK_CLUSTER",
+        "strength": 0.5400000000008731,
+        "n_touches": 40,
+        "first_time": "1970-01-01T00:29:24.564060+00:00",
+        "last_time": "1970-01-01T00:29:24.599580+00:00",
+        "role": "NEUTRAL",
+        "source_swings": [],
+        "meta": {
+          "source": "wick_cluster",
+          "side": "LOW",
+          "level_source": "range",
+          "count": 40
+        }
+      }
+    ],
+    "magnets": [
+      {
+        "price_min": 4217.87,
+        "price_max": 4258.61,
+        "center": 4244.702834048083,
+        "liq_type": "RANGE_EXTREME",
+        "role": "NEUTRAL",
+        "pools": [
+          {
+            "level": 4217.87,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4223.56,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4223.88,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4223.96,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4226.48,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4226.935,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4227.4,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4228.0,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4229.25,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4230.19,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4231.45,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4233.105,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4233.885,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4234.85,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4240.035,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4240.38,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4240.62,
+            "liq_type": "RANGE_EXTREME",
+            "strength": 7.190000000000509,
+            "n_touches": 1,
+            "first_time": "1970-01-01T00:29:24.598980+00:00",
+            "last_time": "1970-01-01T00:29:24.599640+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "range",
+              "side": "LOW"
+            }
+          },
+          {
+            "level": 4240.62,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "range",
+              "count": 40
+            }
+          },
+          {
+            "level": 4241.925740740741,
+            "liq_type": "EQL",
+            "strength": 81.0,
+            "n_touches": 27,
+            "first_time": "1970-01-01T00:29:24.565440+00:00",
+            "last_time": "1970-01-01T00:29:24.598920+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [
+              {
+                "index": 29,
+                "time": "1970-01-01T00:29:24.565440+00:00",
+                "price": 4240.38,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 55,
+                "time": "1970-01-01T00:29:24.567000+00:00",
+                "price": 4217.87,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 61,
+                "time": "1970-01-01T00:29:24.567360+00:00",
+                "price": 4223.56,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 66,
+                "time": "1970-01-01T00:29:24.567660+00:00",
+                "price": 4223.96,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 70,
+                "time": "1970-01-01T00:29:24.567900+00:00",
+                "price": 4223.88,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 84,
+                "time": "1970-01-01T00:29:24.568740+00:00",
+                "price": 4228.0,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 92,
+                "time": "1970-01-01T00:29:24.569220+00:00",
+                "price": 4229.25,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 109,
+                "time": "1970-01-01T00:29:24.570240+00:00",
+                "price": 4226.48,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 124,
+                "time": "1970-01-01T00:29:24.571140+00:00",
+                "price": 4230.19,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 138,
+                "time": "1970-01-01T00:29:24.588120+00:00",
+                "price": 4248.65,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 148,
+                "time": "1970-01-01T00:29:24.588720+00:00",
+                "price": 4252.95,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 166,
+                "time": "1970-01-01T00:29:24.589800+00:00",
+                "price": 4253.44,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 181,
+                "time": "1970-01-01T00:29:24.590700+00:00",
+                "price": 4251.83,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 189,
+                "time": "1970-01-01T00:29:24.591180+00:00",
+                "price": 4248.44,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 201,
+                "time": "1970-01-01T00:29:24.591900+00:00",
+                "price": 4248.63,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 208,
+                "time": "1970-01-01T00:29:24.592320+00:00",
+                "price": 4251.13,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 212,
+                "time": "1970-01-01T00:29:24.592560+00:00",
+                "price": 4251.81,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 222,
+                "time": "1970-01-01T00:29:24.593160+00:00",
+                "price": 4249.34,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 232,
+                "time": "1970-01-01T00:29:24.593820+00:00",
+                "price": 4245.1,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 245,
+                "time": "1970-01-01T00:29:24.594600+00:00",
+                "price": 4253.31,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 253,
+                "time": "1970-01-01T00:29:24.595080+00:00",
+                "price": 4250.59,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 260,
+                "time": "1970-01-01T00:29:24.595500+00:00",
+                "price": 4253.2,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 266,
+                "time": "1970-01-01T00:29:24.597180+00:00",
+                "price": 4251.52,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 267,
+                "time": "1970-01-01T00:29:24.597240+00:00",
+                "price": 4251.52,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 275,
+                "time": "1970-01-01T00:29:24.597720+00:00",
+                "price": 4244.07,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 279,
+                "time": "1970-01-01T00:29:24.597960+00:00",
+                "price": 4240.035,
+                "kind": "LOW",
+                "strength": 3
+              },
+              {
+                "index": 287,
+                "time": "1970-01-01T00:29:24.598920+00:00",
+                "price": 4242.86,
+                "kind": "LOW",
+                "strength": 3
+              }
+            ],
+            "meta": {
+              "source": "eq_cluster",
+              "cluster_size": 27
+            }
+          },
+          {
+            "level": 4242.86,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4243.275,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4244.07,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4245.1,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4246.68,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4247.81,
+            "liq_type": "RANGE_EXTREME",
+            "strength": 7.190000000000509,
+            "n_touches": 1,
+            "first_time": "1970-01-01T00:29:24.598980+00:00",
+            "last_time": "1970-01-01T00:29:24.599640+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "range",
+              "side": "HIGH"
+            }
+          },
+          {
+            "level": 4247.81,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4247.81,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "range",
+              "count": 54
+            }
+          },
+          {
+            "level": 4248.0308,
+            "liq_type": "EQH",
+            "strength": 75.0,
+            "n_touches": 25,
+            "first_time": "1970-01-01T00:29:24.564840+00:00",
+            "last_time": "1970-01-01T00:29:24.599340+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [
+              {
+                "index": 19,
+                "time": "1970-01-01T00:29:24.564840+00:00",
+                "price": 4246.68,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 32,
+                "time": "1970-01-01T00:29:24.565620+00:00",
+                "price": 4243.275,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 58,
+                "time": "1970-01-01T00:29:24.567180+00:00",
+                "price": 4227.4,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 64,
+                "time": "1970-01-01T00:29:24.567540+00:00",
+                "price": 4226.935,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 79,
+                "time": "1970-01-01T00:29:24.568440+00:00",
+                "price": 4231.45,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 88,
+                "time": "1970-01-01T00:29:24.568980+00:00",
+                "price": 4233.105,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 96,
+                "time": "1970-01-01T00:29:24.569460+00:00",
+                "price": 4233.885,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 117,
+                "time": "1970-01-01T00:29:24.570720+00:00",
+                "price": 4234.85,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 133,
+                "time": "1970-01-01T00:29:24.587820+00:00",
+                "price": 4254.17,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 143,
+                "time": "1970-01-01T00:29:24.588420+00:00",
+                "price": 4255.64,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 161,
+                "time": "1970-01-01T00:29:24.589500+00:00",
+                "price": 4258.61,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 168,
+                "time": "1970-01-01T00:29:24.589920+00:00",
+                "price": 4255.92,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 177,
+                "time": "1970-01-01T00:29:24.590460+00:00",
+                "price": 4256.25,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 183,
+                "time": "1970-01-01T00:29:24.590820+00:00",
+                "price": 4254.82,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 196,
+                "time": "1970-01-01T00:29:24.591600+00:00",
+                "price": 4254.28,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 202,
+                "time": "1970-01-01T00:29:24.591960+00:00",
+                "price": 4253.65,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 215,
+                "time": "1970-01-01T00:29:24.592740+00:00",
+                "price": 4256.08,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 229,
+                "time": "1970-01-01T00:29:24.593640+00:00",
+                "price": 4249.39,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 243,
+                "time": "1970-01-01T00:29:24.594480+00:00",
+                "price": 4255.36,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 248,
+                "time": "1970-01-01T00:29:24.594780+00:00",
+                "price": 4255.08,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 257,
+                "time": "1970-01-01T00:29:24.595320+00:00",
+                "price": 4257.09,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 262,
+                "time": "1970-01-01T00:29:24.595620+00:00",
+                "price": 4256.98,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 271,
+                "time": "1970-01-01T00:29:24.597480+00:00",
+                "price": 4253.85,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 285,
+                "time": "1970-01-01T00:29:24.598320+00:00",
+                "price": 4248.21,
+                "kind": "HIGH",
+                "strength": 3
+              },
+              {
+                "index": 294,
+                "time": "1970-01-01T00:29:24.599340+00:00",
+                "price": 4247.81,
+                "kind": "HIGH",
+                "strength": 3
+              }
+            ],
+            "meta": {
+              "source": "eq_cluster",
+              "cluster_size": 25
+            }
+          },
+          {
+            "level": 4248.21,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4248.44,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4248.63,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4248.65,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4249.34,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4249.39,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4250.59,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4251.13,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4251.52,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4251.81,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4251.83,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4252.95,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4253.2,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4253.31,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4253.44,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.5400000000008731,
+            "n_touches": 40,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "LOW",
+              "level_source": "swing",
+              "count": 40
+            }
+          },
+          {
+            "level": 4253.65,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4253.85,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4254.17,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4254.28,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4254.82,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4255.08,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4255.36,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4255.64,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4255.92,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4256.08,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4256.25,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4256.98,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4257.09,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          },
+          {
+            "level": 4258.61,
+            "liq_type": "WICK_CLUSTER",
+            "strength": 0.7799999999997453,
+            "n_touches": 54,
+            "first_time": "1970-01-01T00:29:24.564060+00:00",
+            "last_time": "1970-01-01T00:29:24.599580+00:00",
+            "role": "NEUTRAL",
+            "source_swings": [],
+            "meta": {
+              "source": "wick_cluster",
+              "side": "HIGH",
+              "level_source": "swing",
+              "count": 54
+            }
+          }
+        ],
+        "meta": {
+          "pool_count": 57,
+          "source_types": [
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "RANGE_EXTREME",
+            "WICK_CLUSTER",
+            "EQL",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "RANGE_EXTREME",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "EQH",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER",
+            "WICK_CLUSTER"
+          ],
+          "symbol": "xauusd",
+          "bias": "NEUTRAL"
+        }
+      }
+    ],
+    "amd_phase": "NEUTRAL",
+    "meta": {
+      "bar_count": 500,
+      "symbol": "xauusd",
+      "primary_tf": "1m",
+      "pool_count": 57,
+      "magnet_count": 1,
+      "bias": "NEUTRAL",
+      "sfp_events": [],
+      "wick_clusters": [
+        {
+          "level": 4246.68,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4240.38,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4243.275,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4217.87,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4227.4,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4223.56,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4226.935,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4223.96,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4223.88,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4231.45,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4228.0,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4233.105,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4229.25,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4233.885,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4226.48,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4234.85,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4230.19,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4254.17,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4248.65,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4255.64,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4252.95,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4258.61,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4253.44,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4255.92,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4256.25,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4251.83,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4254.82,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4248.44,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4254.28,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4248.63,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4253.65,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4251.13,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4251.81,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4256.08,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4249.34,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4249.39,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4245.1,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4255.36,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4253.31,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4255.08,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4250.59,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4257.09,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4253.2,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4256.98,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4251.52,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4253.85,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4244.07,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4240.035,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4248.21,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4242.86,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4247.81,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "swing",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4247.81,
+          "side": "HIGH",
+          "count": 54,
+          "max_wick": 0.7799999999997453,
+          "source": "range",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        },
+        {
+          "level": 4240.62,
+          "side": "LOW",
+          "count": 40,
+          "max_wick": 0.5400000000008731,
+          "source": "range",
+          "first_ts": "1970-01-01T00:29:24.564060+00:00",
+          "last_ts": "1970-01-01T00:29:24.599580+00:00"
+        }
+      ],
+      "amd_reason": "╤Г╨╝╨╛╨▓╨╕ FSM ╨╜╨╡ ╨▓╨╕╨║╨╛╨╜╨░╨╜╤Ц"
+    }
+  },
+  "zones": {
+    "zones": [
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4239.9,
+        "price_max": 4240.155,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.363780",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.3027965284472074,
+        "confidence": 0.5578431372554264,
+        "components": [
+          "orderblock",
+          "leg_29_32"
+        ],
+        "zone_id": "ob_xauusd_1m_29_32",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_29_32",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.43137254902170585,
+          "wick_top_pct": 0.5686274509782941,
+          "wick_bottom_pct": 0.0,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 4,
+          "amplitude": 2.894999999999527,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4239.89,
+        "price_max": 4240.13,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.363840",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.554166666666193,
+        "components": [
+          "orderblock",
+          "leg_32_55"
+        ],
+        "zone_id": "ob_xauusd_1m_30_55",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_32_55",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.41666666666477187,
+          "wick_top_pct": 0.08333333333522812,
+          "wick_bottom_pct": 0.5,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 24,
+          "amplitude": 25.404999999999745,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4209.4,
+        "price_max": 4210.975,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.544140",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.5468253968253002,
+        "components": [
+          "orderblock",
+          "leg_55_58"
+        ],
+        "zone_id": "ob_xauusd_1m_52_58",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_55_58",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.3873015873012005,
+          "wick_top_pct": 0.39047619047644894,
+          "wick_bottom_pct": 0.22222222222235055,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 4,
+          "amplitude": 9.529999999999745,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4216.795,
+        "price_max": 4217.39,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.544500",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.7280617164894985,
+        "confidence": 0.5718487394957309,
+        "components": [
+          "orderblock",
+          "leg_58_61"
+        ],
+        "zone_id": "ob_xauusd_1m_58_61",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_58_61",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.48739495798292354,
+          "wick_top_pct": 0.3361344537825916,
+          "wick_bottom_pct": 0.1764705882344849,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 4,
+          "amplitude": 3.839999999999236,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4214.57,
+        "price_max": 4215.5,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.544560",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.5188042430086504,
+        "confidence": 0.6973404255318583,
+        "components": [
+          "orderblock",
+          "leg_61_64"
+        ],
+        "zone_id": "ob_xauusd_1m_59_64",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_61_64",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.9893617021274331,
+          "wick_top_pct": 0.010638297872566873,
+          "wick_bottom_pct": 0.0,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 4,
+          "amplitude": 3.375,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4217.32,
+        "price_max": 4217.77,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.544800",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.338797814207789,
+        "confidence": 0.6375000000001895,
+        "components": [
+          "orderblock",
+          "leg_64_66"
+        ],
+        "zone_id": "ob_xauusd_1m_63_66",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_64_66",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.750000000000758,
+          "wick_top_pct": 0.24999999999924208,
+          "wick_bottom_pct": 0.0,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 3,
+          "amplitude": 2.975000000000364,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4224.185,
+        "price_max": 4224.725,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.545220",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.5518518518519766,
+        "components": [
+          "orderblock",
+          "leg_70_79"
+        ],
+        "zone_id": "ob_xauusd_1m_70_79",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_70_79",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.40740740740790643,
+          "wick_top_pct": 0.10185185185239767,
+          "wick_bottom_pct": 0.49074074073969587,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 10,
+          "amplitude": 7.569999999999709,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4223.2,
+        "price_max": 4223.22,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.545760",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.552555448408761,
+        "confidence": 0.45781250000016654,
+        "components": [
+          "orderblock",
+          "leg_79_84"
+        ],
+        "zone_id": "ob_xauusd_1m_79_84",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_79_84",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.031250000000666134,
+          "wick_top_pct": 0.7812499999996003,
+          "wick_bottom_pct": 0.18749999999973355,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 6,
+          "amplitude": 3.449999999999818,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4222.71,
+        "price_max": 4223.67,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.546060",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.2973320475728882,
+        "confidence": 0.6605263157894212,
+        "components": [
+          "orderblock",
+          "leg_84_88"
+        ],
+        "zone_id": "ob_xauusd_1m_84_88",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_84_88",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.8421052631576847,
+          "wick_top_pct": 0.008771929824750356,
+          "wick_bottom_pct": 0.14912280701756486,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 5.104999999999563,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4223.26,
+        "price_max": 4223.67,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.546300",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.7348119575696843,
+        "confidence": 0.6680851063827832,
+        "components": [
+          "orderblock",
+          "leg_88_92"
+        ],
+        "zone_id": "ob_xauusd_1m_88_92",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_88_92",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.8723404255311327,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.1276595744688674,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 3.8549999999995634,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4223.64,
+        "price_max": 4224.06,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.546420",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.085824493731978,
+        "confidence": 0.6734042553190667,
+        "components": [
+          "orderblock",
+          "leg_92_96"
+        ],
+        "zone_id": "ob_xauusd_1m_90_96",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_92_96",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.8936170212762664,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.10638297872373363,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 4.635000000000218,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4224.9,
+        "price_max": 4225.1,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.546780",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.5374999999993179,
+        "components": [
+          "orderblock",
+          "leg_96_109"
+        ],
+        "zone_id": "ob_xauusd_1m_96_109",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_96_109",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.3499999999972715,
+          "wick_top_pct": 0.3000000000009095,
+          "wick_bottom_pct": 0.35000000000181897,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 14,
+          "amplitude": 7.405000000000655,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4222.45,
+        "price_max": 4222.47,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.547560",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.4738095238100394,
+        "components": [
+          "orderblock",
+          "leg_109_117"
+        ],
+        "zone_id": "ob_xauusd_1m_109_117",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_109_117",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.09523809524015758,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.9047619047598424,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 9,
+          "amplitude": 8.3700000000008,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4222.63,
+        "price_max": 4223.06,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.548040",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.097074895532288,
+        "confidence": 0.595348837209204,
+        "components": [
+          "orderblock",
+          "leg_117_124"
+        ],
+        "zone_id": "ob_xauusd_1m_117_124",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_117_124",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.5813953488368158,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.4186046511631842,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 8,
+          "amplitude": 4.660000000000764,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4222.01,
+        "price_max": 4222.24,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.548460",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.6553571428569398,
+        "components": [
+          "orderblock",
+          "leg_124_133"
+        ],
+        "zone_id": "ob_xauusd_1m_124_133",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_124_133",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.8214285714277594,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.17857142857224062,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 10,
+          "amplitude": 23.980000000000473,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4226.92,
+        "price_max": 4227.14,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.549000",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.4840887174543447,
+        "confidence": 0.4916666666667241,
+        "components": [
+          "orderblock",
+          "leg_133_138"
+        ],
+        "zone_id": "ob_xauusd_1m_133_138",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_133_138",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.16666666666689633,
+          "wick_top_pct": 0.6136363636361131,
+          "wick_bottom_pct": 0.21969696969699057,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 6,
+          "amplitude": 5.520000000000437,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4226.92,
+        "price_max": 4227.14,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.549000",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.4916666666667241,
+        "components": [
+          "orderblock",
+          "leg_138_143"
+        ],
+        "zone_id": "ob_xauusd_1m_133_143",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_138_143",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.16666666666689633,
+          "wick_top_pct": 0.6136363636361131,
+          "wick_bottom_pct": 0.21969696969699057,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 6,
+          "amplitude": 6.990000000000691,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4228.19,
+        "price_max": 4228.67,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.549540",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.210543233687124,
+        "confidence": 0.595833333333057,
+        "components": [
+          "orderblock",
+          "leg_143_148"
+        ],
+        "zone_id": "ob_xauusd_1m_142_148",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_143_148",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.583333333332228,
+          "wick_top_pct": 0.27083333333329385,
+          "wick_bottom_pct": 0.1458333333344781,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 6,
+          "amplitude": 2.6900000000005093,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4229.75,
+        "price_max": 4230.09,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.549780",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.5470909675344418,
+        "confidence": 0.5676470588233721,
+        "components": [
+          "orderblock",
+          "leg_148_161"
+        ],
+        "zone_id": "ob_xauusd_1m_146_161",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_148_161",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.47058823529348826,
+          "wick_top_pct": 0.5,
+          "wick_bottom_pct": 0.029411764706511762,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 14,
+          "amplitude": 5.6599999999998545,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4230.82,
+        "price_max": 4231.08,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.550680",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.326583092253284,
+        "confidence": 0.6666666666667171,
+        "components": [
+          "orderblock",
+          "leg_161_166"
+        ],
+        "zone_id": "ob_xauusd_1m_161_166",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_161_166",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.8666666666668688,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.13333333333313122,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 6,
+          "amplitude": 5.170000000000073,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4230.06,
+        "price_max": 4231.39,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.550800",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.1160398585665694,
+        "confidence": 0.534586466165384,
+        "components": [
+          "orderblock",
+          "leg_166_168"
+        ],
+        "zone_id": "ob_xauusd_1m_163_168",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_166_168",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.3383458646615359,
+          "wick_top_pct": 0.07518796992508968,
+          "wick_bottom_pct": 0.5864661654133745,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 3,
+          "amplitude": 2.480000000000473,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4230.88,
+        "price_max": 4231.47,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.551640",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.9890710382513617,
+        "confidence": 0.5855932203392117,
+        "components": [
+          "orderblock",
+          "leg_177_181"
+        ],
+        "zone_id": "ob_xauusd_1m_177_181",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_177_181",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.5423728813568467,
+          "wick_top_pct": 0.06779661016941314,
+          "wick_bottom_pct": 0.3898305084737402,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 4.420000000000073,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4224.61,
+        "price_max": 4225.77,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.551880",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.3455480552875654,
+        "confidence": 0.6370967741937594,
+        "components": [
+          "orderblock",
+          "leg_181_183"
+        ],
+        "zone_id": "ob_xauusd_1m_181_183",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_181_183",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.7483870967750378,
+          "wick_top_pct": 0.13548387096724224,
+          "wick_bottom_pct": 0.11612903225772002,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 3,
+          "amplitude": 2.9899999999997817,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4226.65,
+        "price_max": 4227.29,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.552000",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 2.871102539376402,
+        "confidence": 0.5789062499999056,
+        "components": [
+          "orderblock",
+          "leg_183_189"
+        ],
+        "zone_id": "ob_xauusd_1m_183_189",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_183_189",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.5156249999996225,
+          "wick_top_pct": 0.39062499999980016,
+          "wick_bottom_pct": 0.09375000000057732,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 7,
+          "amplitude": 6.380000000000109,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4231.5,
+        "price_max": 4232.28,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.552180",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 2.628093860495034,
+        "confidence": 0.6102564102564626,
+        "components": [
+          "orderblock",
+          "leg_189_196"
+        ],
+        "zone_id": "ob_xauusd_1m_186_196",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_189_196",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.6410256410258504,
+          "wick_top_pct": 0.3589743589741497,
+          "wick_bottom_pct": 0.0,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 8,
+          "amplitude": 5.8400000000001455,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4238.005,
+        "price_max": 4238.76,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.552780",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.5425908068143177,
+        "confidence": 0.5758278145695543,
+        "components": [
+          "orderblock",
+          "leg_196_201"
+        ],
+        "zone_id": "ob_xauusd_1m_196_201",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_196_201",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.5033112582782175,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.4966887417217825,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 6,
+          "amplitude": 5.649999999999636,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4241.74,
+        "price_max": 4243.09,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.563700",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 2.259080681452654,
+        "confidence": 0.6576923076923636,
+        "components": [
+          "orderblock",
+          "leg_201_202"
+        ],
+        "zone_id": "ob_xauusd_1m_200_202",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_201_202",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.8307692307694546,
+          "wick_top_pct": 0.07692307692307693,
+          "wick_bottom_pct": 0.09230769230746844,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 2,
+          "amplitude": 5.019999999999527,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4240.66,
+        "price_max": 4243.23,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.563820",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.1340405014462462,
+        "confidence": 0.5715953307393133,
+        "components": [
+          "orderblock",
+          "leg_202_208"
+        ],
+        "zone_id": "ob_xauusd_1m_202_208",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_202_208",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.4863813229572535,
+          "wick_top_pct": 0.23346303501926935,
+          "wick_bottom_pct": 0.2801556420234771,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 7,
+          "amplitude": 2.519999999999527,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4242.54,
+        "price_max": 4242.58,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.564360",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.9215686274507315,
+        "confidence": 0.4822580645161527,
+        "components": [
+          "orderblock",
+          "leg_212_215"
+        ],
+        "zone_id": "ob_xauusd_1m_211_215",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_212_215",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.12903225806461077,
+          "wick_top_pct": 0.5161290322584431,
+          "wick_bottom_pct": 0.35483870967694614,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 4,
+          "amplitude": 4.269999999999527,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4244.15,
+        "price_max": 4244.76,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.564600",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.6846153846157398,
+        "components": [
+          "orderblock",
+          "leg_215_222"
+        ],
+        "zone_id": "ob_xauusd_1m_215_222",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_215_222",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.9384615384629592,
+          "wick_top_pct": 0.046153846153480206,
+          "wick_bottom_pct": 0.015384615383560587,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 8,
+          "amplitude": 6.739999999999782,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4241.75,
+        "price_max": 4242.13,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.565380",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.9305689488909794,
+        "confidence": 0.5618421052625753,
+        "components": [
+          "orderblock",
+          "leg_229_232"
+        ],
+        "zone_id": "ob_xauusd_1m_228_232",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_229_232",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.44736842105030117,
+          "wick_top_pct": 0.39473684210658583,
+          "wick_bottom_pct": 0.157894736843113,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 4,
+          "amplitude": 4.289999999999964,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4240.6,
+        "price_max": 4240.7,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.565440",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.5055555555552749,
+        "components": [
+          "orderblock",
+          "leg_232_243"
+        ],
+        "zone_id": "ob_xauusd_1m_229_243",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_232_243",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.22222222222109939,
+          "wick_top_pct": 0.2888888888892482,
+          "wick_bottom_pct": 0.48888888888965243,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 12,
+          "amplitude": 10.259999999999309,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4232.79,
+        "price_max": 4233.385,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.566040",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 0.9225329476049269,
+        "confidence": 0.5718487394957309,
+        "components": [
+          "orderblock",
+          "leg_243_245"
+        ],
+        "zone_id": "ob_xauusd_1m_239_245",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_243_245",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.48739495798292354,
+          "wick_top_pct": 0.17647058823601344,
+          "wick_bottom_pct": 0.33613445378106305,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 3,
+          "amplitude": 2.0499999999992724,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4221.33,
+        "price_max": 4222.42,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.566580",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 2.02057216329141,
+        "confidence": 0.6742798353909496,
+        "components": [
+          "orderblock",
+          "leg_248_253"
+        ],
+        "zone_id": "ob_xauusd_1m_248_253",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_248_253",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.8971193415637984,
+          "wick_top_pct": 0.08230452674926075,
+          "wick_bottom_pct": 0.02057613168694091,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 6,
+          "amplitude": 4.489999999999782,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4224.1,
+        "price_max": 4224.13,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.566520",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.9251044680166602,
+        "confidence": 0.4636363636362434,
+        "components": [
+          "orderblock",
+          "leg_253_257"
+        ],
+        "zone_id": "ob_xauusd_1m_247_257",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_253_257",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.05454545454497349,
+          "wick_top_pct": 0.7454545454540343,
+          "wick_bottom_pct": 0.2000000000009922,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 6.5,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4218.37,
+        "price_max": 4220.35,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.567000",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 1.7505625200901178,
+        "confidence": 0.6396551724138622,
+        "components": [
+          "orderblock",
+          "leg_257_260"
+        ],
+        "zone_id": "ob_xauusd_1m_255_260",
+        "entry_mode": "BODY_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_257_260",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.7586206896554488,
+          "wick_top_pct": 0.049808429118473545,
+          "wick_bottom_pct": 0.19157088122607768,
+          "entry_mode": "BODY_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 4,
+          "amplitude": 3.8900000000003274,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4223.665,
+        "price_max": 4225.705,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.567240",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.701060752169574,
+        "confidence": 0.533333333333259,
+        "components": [
+          "orderblock",
+          "leg_260_262"
+        ],
+        "zone_id": "ob_xauusd_1m_259_262",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_260_262",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.3333333333330361,
+          "wick_top_pct": 0.11029411764723912,
+          "wick_bottom_pct": 0.5563725490197248,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 3,
+          "amplitude": 3.7799999999997453,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4224.71,
+        "price_max": 4224.97,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.567420",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 2.4570877531336017,
+        "confidence": 0.5365384615385288,
+        "components": [
+          "orderblock",
+          "leg_262_266"
+        ],
+        "zone_id": "ob_xauusd_1m_262_266",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_262_266",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.3461538461541152,
+          "wick_top_pct": 0.30769230769176953,
+          "wick_bottom_pct": 0.3461538461541152,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 5.459999999999127,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4223.96,
+        "price_max": 4223.98,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.567660",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.0485374477659393,
+        "confidence": 0.5749999999943156,
+        "components": [
+          "orderblock",
+          "leg_267_271"
+        ],
+        "zone_id": "ob_xauusd_1m_266_271",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_267_271",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.49999999997726263,
+          "wick_top_pct": 0.0,
+          "wick_bottom_pct": 0.5000000000227374,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 2.3299999999999272,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4224.155,
+        "price_max": 4224.575,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.567960",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.5392857142860237,
+        "components": [
+          "orderblock",
+          "leg_271_275"
+        ],
+        "zone_id": "ob_xauusd_1m_271_275",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_271_275",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.35714285714409455,
+          "wick_top_pct": 0.4404761904749015,
+          "wick_bottom_pct": 0.20238095238100395,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 9.780000000000655,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4228.995,
+        "price_max": 4229.34,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.568200",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 1.8158148505302767,
+        "confidence": 0.5369565217389871,
+        "components": [
+          "orderblock",
+          "leg_275_279"
+        ],
+        "zone_id": "ob_xauusd_1m_275_279",
+        "entry_mode": "WICK_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_275_279",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.34782608695594863,
+          "wick_top_pct": 0.34782608695594863,
+          "wick_bottom_pct": 0.3043478260881027,
+          "entry_mode": "WICK_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 5,
+          "amplitude": 4.0349999999998545,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4231.39,
+        "price_max": 4231.4,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.568440",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 3.0,
+        "confidence": 0.4916666666641403,
+        "components": [
+          "orderblock",
+          "leg_279_285"
+        ],
+        "zone_id": "ob_xauusd_1m_279_285",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_279_285",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.16666666665656116,
+          "wick_top_pct": 0.8333333333434388,
+          "wick_bottom_pct": 0.0,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 7,
+          "amplitude": 8.175000000000182,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4228.335,
+        "price_max": 4228.72,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.568620",
+        "direction": "LONG",
+        "role": "NEUTRAL",
+        "strength": 2.4075859852138763,
+        "confidence": 0.540909090909252,
+        "components": [
+          "orderblock",
+          "leg_285_287"
+        ],
+        "zone_id": "ob_xauusd_1m_282_287",
+        "entry_mode": "WICK_05",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_285_287",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.3636363636370079,
+          "wick_top_pct": 0.2597402597410574,
+          "wick_bottom_pct": 0.3766233766219347,
+          "entry_mode": "WICK_05",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 3,
+          "amplitude": 5.350000000000364,
+          "quality": "WEAK"
+        }
+      },
+      {
+        "zone_type": "ORDER_BLOCK",
+        "price_min": 4231.84,
+        "price_max": 4231.89,
+        "timeframe": "1m",
+        "origin_time": "1970-01-01T00:29:24.568920",
+        "direction": "SHORT",
+        "role": "NEUTRAL",
+        "strength": 2.2275795564130147,
+        "confidence": 0.47688172043019694,
+        "components": [
+          "orderblock",
+          "leg_287_294"
+        ],
+        "zone_id": "ob_xauusd_1m_287_294",
+        "entry_mode": "BODY_TOUCH",
+        "quality": "WEAK",
+        "reference_leg_id": "leg_287_294",
+        "reference_event_id": null,
+        "bias_at_creation": "NEUTRAL",
+        "notes": "",
+        "meta": {
+          "body_pct": 0.10752688172078764,
+          "wick_top_pct": 0.6344086021504955,
+          "wick_bottom_pct": 0.2580645161287168,
+          "entry_mode": "BODY_TOUCH",
+          "role": "NEUTRAL",
+          "bias_at_creation": "NEUTRAL",
+          "has_bos": false,
+          "bar_count": 8,
+          "amplitude": 4.950000000000728,
+          "quality": "WEAK"
+        }
+      }
+    ],
+    "active_zones": [],
+    "poi_zones": [],
+    "meta": {
+      "zone_count": 44,
+      "orderblocks_total": 44,
+      "orderblocks_primary": 0,
+      "orderblocks_countertrend": 0,
+      "orderblocks_long": 23,
+      "orderblocks_short": 21
+    }
+  },
+  "signals": [],
+  "meta": {
+    "snapshot_tf": "1m",
+    "last_price": 4244.79
+  }
+}
