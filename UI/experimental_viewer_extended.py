@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from rich.align import Align
@@ -39,15 +39,6 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         top_panels = [summary, session_block]
         if fxcm_panel is not None:
             top_panels.append(fxcm_panel)
-        meta_block = viewer_state.get("meta")
-        cold_meta = None
-        if isinstance(meta_block, dict):
-            cold_meta = meta_block.get("cold_start") or meta_block.get(
-                "cold_start_status"
-            )
-        cold_panel = self._build_cold_start_panel(cold_meta)
-        if cold_panel is not None:
-            top_panels.append(cold_panel)
         top_row = Columns(top_panels, expand=True)
 
         left_stack = Table.grid(expand=True)
@@ -399,58 +390,6 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             rows.append(("Note", str(status_note)))
 
         return rows
-
-    def _build_cold_start_panel(self, cold_meta: Any) -> Panel | None:
-        """Повертає панель cold-start статусу, якщо він ще не READY."""
-
-        if not isinstance(cold_meta, dict):
-            return None
-        state = str(cold_meta.get("state") or cold_meta.get("phase") or "").lower()
-        status = str(cold_meta.get("status") or "").lower()
-        if not state:
-            return None
-        if state == "ready" and status in {"", "success", "ok"}:
-            return None
-
-        def _is_error(value: str) -> bool:
-            return value in {"error", "failed", "timeout"}
-
-        if _is_error(state) or _is_error(status):
-            border_style = "red"
-        else:
-            border_style = "yellow"
-
-        ready = int(cold_meta.get("symbols_ready") or 0)
-        total = int(cold_meta.get("symbols_total") or 0)
-        ratio = f"{ready}/{total}" if total else str(ready)
-        lines = [
-            f"Cold-start: {state.upper()} ({status or 'pending'})",
-            f"Символів готово: {ratio}",
-        ]
-
-        pending_raw = cold_meta.get("symbols_pending")
-        if isinstance(pending_raw, (list, tuple)):
-            normalized = [str(sym).upper() for sym in pending_raw if sym]
-            if normalized:
-                limit = 5
-                visible = normalized[:limit]
-                remainder = len(normalized) - len(visible)
-                preview = ", ".join(visible)
-                if remainder > 0:
-                    preview += f" +{remainder}"
-                lines.append(f"Очікують: {preview}")
-
-        required_bars = cold_meta.get("required_bars")
-        if isinstance(required_bars, (int, float)):
-            lines.append(f"Мінімум барів: {int(required_bars)}")
-
-        report_ts = cold_meta.get("report_ts")
-        if isinstance(report_ts, (int, float)):
-            iso_value = datetime.fromtimestamp(float(report_ts), tz=UTC).isoformat()
-            lines.append(f"Оновлено: {self._format_ts(iso_value)}")
-
-        body = Text("\n".join(lines))
-        return Panel(body, border_style=border_style, title="Cold-start стан")
 
     def _is_probably_weekend(self, viewer_state: dict[str, Any]) -> bool:
         fxcm_state = viewer_state.get("fxcm")

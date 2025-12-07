@@ -34,14 +34,14 @@
 
 > Якщо стрім ще не вийшов на потрібний обсяг, Stage1 продовжує слухати канал і логувати `[FXCM Stream]` попередження до появи необхідної історії.
 
-Розширений проєкт cold-start пайплайна (cache audit → selective backfill → QA → live hand-off) задокументовано окремо у `docs/cold_start_pipeline.md`. Саме він є джерелом правди для подальшої реалізації автоматизованого прогріву.
+Повний опис послідовності warmup → ingest → UI зібрано нижче, щоб уникнути повторного читання `app/main.py` при кожному аудиті.
 
 ## 4. Основні налаштування
 
 | Файл | Поле | Призначення |
 | --- | --- | --- |
 | `config/config.py` | `FXCM_FAST_SYMBOLS` | whitelist Stage1 / список символів для інжесту |
-| `config/config.py` | `DATASTORE_WARMUP_*`, `SCREENING_LOOKBACK` | параметри cold-start поведінки |
+| `config/config.py` | `DATASTORE_WARMUP_*`, `SCREENING_LOOKBACK` | параметри warmup поведінки |
 | `app/settings.py` | `Settings.fxcm_*` | HMAC / канали / host Redis для інжестора |
 | `data/datastore.yaml` | `base_dir`, `namespace`, `write_behind` | структура файлів для snapshot warmup |
 
@@ -51,4 +51,4 @@
 - **Redis**: `ai_one:ui:snapshot`, `ai_one:ui:metrics`, Pub/Sub `fxcm:ohlcv` (для перевірки сирих пакетів).
 - **Prometheus**: якщо увімкнено, корисні `ai_one_fxcm_feed_lag_seconds`, `ai_one_fxcm_feed_state`.
 
-Ці нотатки достатні, щоб не поринати в код при повторній перевірці cold-start.
+Ці нотатки достатні, щоб не поринати в код при перевірці запуску пайплайна.

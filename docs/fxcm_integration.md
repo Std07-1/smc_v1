@@ -189,11 +189,11 @@ Price stream публікує максимум один снапшот на си
 - Для `fxcm:market_status` зберігати `state`, `next_open_ms`, `next_open_in_seconds` у тому ж стані, щоб coordinator мав одну точку доступу.
 - Це дозволяє відрізнити «lag через вихідні» (market_pause=true, reason="calendar") від реальної деградації (market_pause=false, `lag_seconds` росте) без додаткових евристик.
 
-### 7.2 Cold-start / historical coordinator
+### 7.2 Historical diagnostics
 
-- Комбінувати `last_bar_close_ms` + `lag_seconds` з heartbeat та `state` + `next_open_ms` з `fxcm:market_status`.
-- Якщо `market_status.state="closed"` і `market_pause_reason="calendar"`, stale-історія вважається нормою — координатор лише логуватиме стан.
-- Якщо `market_status.state="open"`, але `lag_seconds` > порога, coordinator може перевести `ai_one:stage1:cold_start_status` у `error/degraded`, вимкнути live-сигнали й вимагати backfill.
+- Комбінуйте `last_bar_close_ms` + `lag_seconds` з heartbeat та `state` + `next_open_ms` з `fxcm:market_status`, щоб розрізняти календарні паузи та реальні деградації стріму.
+- Якщо `market_status.state="closed"` і `market_pause_reason="calendar"`, stale-історія вважається нормою — достатньо попередження в логах.
+- Якщо `market_status.state="open"`, але `lag_seconds` росте, Stage1 має лише логувати та підсвічувати проблему у телеметрії, без додаткового Redis FSM.
 
 ### 7.3 UI / viewer
 
@@ -203,4 +203,4 @@ Price stream публікує максимум один снапшот на си
 ### 7.4 Канал warmup історії
 
 - Окремий `fxcm:ohlcv_warmup` зараз не потрібен: heartbeat вже містить `state="warmup"|"warmup_cache"`.
-- Stage1 може обмежувати production-сигнали доти, доки `state != "stream"` або `cold_start_status != "ready"`, використовуючи існуючі ключі Redis.
+- Stage1 може обмежувати production-сигнали доти, доки `state != "stream"`, використовуючи існуючі ключі Redis.

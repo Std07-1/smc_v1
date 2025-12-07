@@ -90,7 +90,7 @@
 **Використання даних**:
 
 - `UnifiedDataStore.metrics_snapshot()` у полі `fxcm` віддає `lag_seconds`, `market`/`process` та часові позначки, що UI відображає у телеметрії.
-- Stage1 не читає heartbeat напряму, але залежить від нього через cold-start статус (наприклад, `_update_cold_start_status` відображає `state="ready"` лише коли інжестор обробив всі символи).
+- Stage1 не читає heartbeat напряму, але залежить від нього через `FxcmFeedState`, що визначає коли стрім достатньо прогрітий для live-режиму.
 - Якщо `next_open_utc` у heartbeat дорівнює плейсхолдеру (`"-"`, `None`) і ринок **закритий**, UI автоматично підтягує значення з `session.next_open_*`; коли ж `market_state == "open"`, обидва viewer-и примусово показують `"-"`, щоб не вводити користувача в оману майбутнім слотом поки торги активні.
 
 ## 4. Контракт `fxcm:market_status`
@@ -142,7 +142,7 @@
 - **Синхронізація контрактів:** будь-яка зміна структури payload у конекторі потребує оновлення `FxcmHeartbeat`, `FxcmHeartbeatContext`, `FxcmMarketStatus` у `data/fxcm_models.py`. Інакше Pydantic кине ValidationError, який ми бачимо у логах `[FXCM_STATUS] Некоректний ... payload`.
 - **HMAC:** якщо вимкнути `FXCM_HMAC_REQUIRED`, пакети з підписом все одно приймаються, але логують попередження один раз (`_log_unexpected_sig_once`). Важливо синхронізувати налаштування на обох сторонах.
 - **Lag fallback:** навіть при втраті heartbeat `lag_seconds` розраховується як `now - last_bar_close_ms` (див. `FxcmFeedState.to_metrics_dict()`), тому важливо щоб `note_fxcm_bar_close()` продовжував отримувати час із `fxcm:ohlcv`.
-- **UI TTL:** `_cold_status_keepalive` в `app/main.py` продовжує дію ключа `COLD_START_STATUS_KEY`, щоб UI не повертав «UNKNOWN» після холодного старту; це залежить від валідного стану з каналів FXCM.
+- **UI TTL:** UI орієнтується лише на свіжість `ai_one:ui:snapshot` та `fxcm` метрики; спеціальний keepalive для cold-start більше не використовується.
 - **Моніторинг інжестора:** якщо у логах довго немає `[FXCM_INGEST]` або `rows` дорівнює 0, спершу перевіряємо `log_every_n` (можливо, повідомлення зашумлюють) і статус Redis Pub/Sub. Для діагностики можна тимчасово підняти `log_every_n` до 10–20, щоб бачити агреговані підтвердження без спаму.
 
 Таким чином, усі три канали формують замкнений цикл: OHLCV → Stage1, Heartbeat/MarketStatus → телеметрія та health. Доки ці контракти зберігають описану структуру, система підтримує прозору діагностику затримок, календарних пауз та якості даних.

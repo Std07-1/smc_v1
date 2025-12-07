@@ -83,40 +83,6 @@ class SnapshotStats:
     modified_ts: float | None
 
 
-@dataclass
-class ColdStartCacheEntry:
-    """Стан кешів для символу/інтервалу під час cold-start аудиту."""
-
-    symbol: str
-    interval: str
-    rows_in_ram: int = 0
-    rows_on_disk: int = 0
-    redis_ttl: int | None = None
-    last_open_time: float | None = None
-    age_seconds: float | None = None
-    ram_last_open_time: float | None = None
-    disk_last_open_time: float | None = None
-    redis_last_open_time: float | None = None
-    disk_modified_ts: float | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Зручне серіалізоване представлення для UI/логів."""
-
-        return {
-            "symbol": self.symbol,
-            "interval": self.interval,
-            "rows_in_ram": self.rows_in_ram,
-            "rows_on_disk": self.rows_on_disk,
-            "redis_ttl": self.redis_ttl,
-            "last_open_time": self.last_open_time,
-            "age_seconds": self.age_seconds,
-            "ram_last_open_time": self.ram_last_open_time,
-            "disk_last_open_time": self.disk_last_open_time,
-            "redis_last_open_time": self.redis_last_open_time,
-            "disk_modified_ts": self.disk_modified_ts,
-        }
-
-
 def _normalize_epoch(value: Any) -> float | None:
     """Конвертує різні представлення часу в секунди UNIX."""
 
@@ -1289,72 +1255,6 @@ class UnifiedDataStore:
             # Без нормалізації часу — кладемо як є
             self.ram.put(s, interval, self._dedup_sort(df))
 
-    # ── Cold-start helpers ────────────────────────────────────────────────
-
-    async def build_cold_start_report(
-        self, symbols: list[str], interval: str
-    ) -> list[ColdStartCacheEntry]:
-        """Повертає список `ColdStartCacheEntry` для аудиту кешів.
-
-        Використовується інструментом cold-start runner перед live запуском,
-        щоб оцінити глибину RAM/диску/Redis і вік останнього бару.
-        """
-
-        report: list[ColdStartCacheEntry] = []
-        now = time.time()
-        for symbol in symbols:
-            # RAM
-            ram_rows, ram_last = self.ram.inspect_entry(symbol, interval)
-
-            # Disk
-            disk_meta = await self.disk.inspect_snapshot(symbol, interval)
-
-            # Redis (останній бар + TTL)
-            redis_last_bar = await self.redis.jget(
-                "candles", symbol, interval, default=None
-            )
-            redis_last = (
-                _normalize_epoch(redis_last_bar.get("open_time"))
-                if isinstance(redis_last_bar, dict)
-                else None
-            )
-            redis_ttl = await self.redis.ttl("candles", symbol, interval)
-
-            last_open_time = max(
-                (
-                    ts
-                    for ts in (
-                        ram_last,
-                        redis_last,
-                        (disk_meta.last_open_time if disk_meta else None),
-                    )
-                    if ts is not None
-                ),
-                default=None,
-            )
-            age_seconds = (
-                round(max(0.0, now - last_open_time), 3)
-                if last_open_time is not None
-                else None
-            )
-
-            entry = ColdStartCacheEntry(
-                symbol=symbol,
-                interval=interval,
-                rows_in_ram=ram_rows,
-                rows_on_disk=disk_meta.rows if disk_meta else 0,
-                redis_ttl=redis_ttl,
-                last_open_time=last_open_time,
-                age_seconds=age_seconds,
-                ram_last_open_time=ram_last,
-                disk_last_open_time=disk_meta.last_open_time if disk_meta else None,
-                redis_last_open_time=redis_last,
-                disk_modified_ts=disk_meta.modified_ts if disk_meta else None,
-            )
-            report.append(entry)
-
-        return report
-
     # ── Фонова обслуга ──────────────────────────────────────────────────────
 
     async def _maintenance_loop(self) -> None:
@@ -1606,5 +1506,4 @@ __all__ = [
     "StoreProfile",
     "UnifiedDataStore",
     "Priority",
-    "ColdStartCacheEntry",
 ]

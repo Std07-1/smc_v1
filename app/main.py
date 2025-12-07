@@ -29,32 +29,15 @@ from redis.asyncio import Redis
 from rich.console import Console
 from rich.logging import RichHandler
 
-from app.cold_start import (
-    build_cold_start_report_payload,
-    build_status_payload,
-    ensure_min_history,
-    history_report_to_summary,
-    persist_cold_start_report,
-    qa_report_to_summary,
-)
-from app.history_qa_runner import HistoryQaConfig, run_history_qa_for_symbols
 from app.screening_producer import AssetStateManager, screening_producer
 from app.settings import load_datastore_cfg, settings
 from app.utils.helper import (
     store_to_dataframe,
 )
 from config.config import (
-    COLD_START_STATUS_KEY,
-    COLD_START_STATUS_TTL_SEC,
-    DATASTORE_WARMUP_ENABLED,
-    DATASTORE_WARMUP_INTERVALS,
     FAST_SYMBOLS_TTL_MANUAL,
     FXCM_FAST_SYMBOLS,
-    HISTORY_QA_SYMBOLS,
-    HISTORY_QA_WARMUP_BARS,
-    REACTIVE_STAGE1,
     SCREENING_LOOKBACK,
-    SMC_PIPELINE_CFG,
     STAGE1_MONITOR_PARAMS,
     TRADE_REFRESH_INTERVAL,
     UI_EXPERIMENTAL_VIEW_ENABLED,
@@ -66,7 +49,6 @@ from data.fxcm_ingestor import run_fxcm_ingestor
 from data.fxcm_price_stream import run_fxcm_price_stream_listener
 from data.fxcm_status_listener import run_fxcm_status_listener
 from data.unified_store import StoreConfig, StoreProfile, UnifiedDataStore
-from smc_core.engine import SmcCoreEngine
 from stage1.asset_monitoring import AssetMonitorStage1
 from UI.publish_full_state import publish_full_state
 from UI.ui_consumer import UIConsumer
@@ -90,22 +72,11 @@ if not logger.handlers:  # захист від повторної ініціал
 # ───────────────────────────── Глобальні змінні модуля ─────────────────────────────
 # Єдиний інстанс UnifiedDataStore (створюється в bootstrap)
 store: UnifiedDataStore | None = None
-_LATEST_COLD_STATUS: dict[str, object] | None = None
-
-# Повністю видалено калібрацію та RAMBuffer — єдиний шар даних UnifiedDataStore
 
 # ───────────────────────────── Шлях / каталоги ─────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 # Каталог зі статичними файлами (фронтенд WebApp)
 STATIC_DIR = BASE_DIR / "static"
-COLD_START_REPORT_PATH = BASE_DIR / "tmp" / "cold_start_report.json"
-COLD_START_STALE_THRESHOLD_SEC = 3600
-MAX_COLD_STATUS_ENTRIES = 8
-FXCM_HISTORY_TIMEOUT_SEC = 60
-HISTORY_REQUIRED_BARS = int(SMC_PIPELINE_CFG.get("limit", SCREENING_LOOKBACK))
-HISTORY_QA_LIMIT = int(SMC_PIPELINE_CFG.get("qa_history_limit", HISTORY_REQUIRED_BARS))
-HISTORY_QA_STEP = max(1, int(SMC_PIPELINE_CFG.get("qa_history_step", 1)))
-HISTORY_QA_MIN_BARS = max(10, int(SMC_PIPELINE_CFG.get("qa_history_min_bars", 50)))
 
 
 def _create_redis_client(*, decode_responses: bool = False) -> tuple[Redis, str]:
@@ -172,117 +143,6 @@ async def bootstrap() -> UnifiedDataStore:
     return store
 
 
-async def _warmup_datastore_from_snapshots(
-    target_store: UnifiedDataStore,
-) -> None:
-    """Завантажує останні снапшоти барів із диска, щоб прискорити холодний старт."""
-
-    if not DATASTORE_WARMUP_ENABLED:
-        logger.info("[Warmup] Пропущено (DATASTORE_WARMUP_ENABLED=False)")
-        return
-
-    intervals_cfg = DATASTORE_WARMUP_INTERVALS or {}
-    if not intervals_cfg:
-        logger.info("[Warmup] Пропущено (немає інтервалів у конфігу)")
-        return
-
-    base_dir = Path(target_store.cfg.base_dir)
-    if not base_dir.exists():
-        logger.warning(
-            "[Warmup] Каталог зі снапшотами відсутній: %s", base_dir.as_posix()
-        )
-        return
-
-    for interval, bars_needed in intervals_cfg.items():
-        symbols = _discover_snapshot_symbols(base_dir, interval)
-        if not symbols:
-            logger.debug(
-                "[Warmup] Снапшоти для інтервалу %s не знайдені у %s",
-                interval,
-                base_dir.as_posix(),
-            )
-            continue
-        bars = max(int(bars_needed), 0)
-        logger.info(
-            "[Warmup] Прогріваємо %s символів (%s) останніми %s барами",
-            len(symbols),
-            interval,
-            bars,
-        )
-        try:
-            await target_store.warmup(symbols, interval, bars)
-        except Exception:
-            logger.exception(
-                "[Warmup] Помилка під час прогріву інтервалу %s (symbols=%s)",
-                interval,
-                symbols[:4],
-            )
-
-
-def _discover_snapshot_symbols(base_dir: Path, interval: str) -> list[str]:
-    """Повертає список символів, для яких існують snapshot-файли певного інтервалу."""
-
-    marker = f"_bars_{interval}_snapshot"
-    symbols: set[str] = set()
-    for path in base_dir.rglob(f"*{marker}.*"):
-        if not path.is_file():
-            continue
-        name = path.name
-        if marker not in name:
-            continue
-        symbol = name.split(marker, 1)[0].strip().strip("_")
-        if symbol:
-            symbols.add(symbol.lower())
-    return sorted(symbols)
-
-
-async def _update_cold_start_status(
-    redis_conn: Redis | None,
-    payload: dict[str, object],
-) -> None:
-    """Оновлює Redis-статус cold-start без зриву пайплайна."""
-
-    if redis_conn is None:
-        return
-    global _LATEST_COLD_STATUS
-    try:
-        await redis_conn.set(
-            COLD_START_STATUS_KEY,
-            json.dumps(payload, ensure_ascii=False),
-            ex=COLD_START_STATUS_TTL_SEC,
-        )
-        _LATEST_COLD_STATUS = dict(payload)
-    except Exception as exc:  # pragma: no cover — best-effort метрика
-        logger.debug("[ColdStart] Не вдалося записати статус: %s", exc)
-
-
-async def _cold_status_keepalive(redis_conn: Redis | None) -> None:
-    """Періодично відновлює TTL cold-start статусу, щоб UI не бачив UNKNOWN."""
-
-    if redis_conn is None:
-        return
-    interval = max(30, int(COLD_START_STATUS_TTL_SEC * 0.4))
-    logger.info(
-        "[ColdStart] Запуск keepalive інтервал=%ss ttl=%s",
-        interval,
-        COLD_START_STATUS_TTL_SEC,
-    )
-    try:
-        while True:
-            await asyncio.sleep(interval)
-            if not _LATEST_COLD_STATUS:
-                continue
-            state_val = str(_LATEST_COLD_STATUS.get("state", "unknown"))
-            if not state_val or state_val.lower() == "unknown":
-                continue
-            await _update_cold_start_status(redis_conn, _LATEST_COLD_STATUS)
-    except asyncio.CancelledError:
-        logger.info("[ColdStart] Keepalive task зупинено")
-        raise
-    except Exception:
-        logger.warning("[ColdStart] Keepalive task впав", exc_info=True)
-
-
 def launch_ui_consumer() -> None:
     """Запускає відповідний UI-консюмер (стандартний або експериментальний)."""
 
@@ -342,14 +202,11 @@ async def noop_healthcheck() -> None:
 async def run_pipeline() -> None:
     """Основний асинхронний цикл застосунку (оркестрація компонентів)."""
     logger.info("[Pipeline] Старт run_pipeline() (FXCM режим)")
-
     tasks_to_run: list[asyncio.Task] = []
     fxcm_task: asyncio.Task | None = None
     fxcm_status_task: asyncio.Task | None = None
     price_stream_task: asyncio.Task | None = None
-    cold_keepalive_task: asyncio.Task | None = None
     redis_conn: Redis | None = None
-    cold_summary: dict[str, object] | None = None
 
     try:
         # 1. Ініціалізація сховища та Redis
@@ -358,14 +215,9 @@ async def run_pipeline() -> None:
 
         redis_conn, redis_conn_source = _create_redis_client(decode_responses=True)
         logger.info("[Pipeline] Redis async клієнт створено (%s)", redis_conn_source)
-        await _update_cold_start_status(
-            redis_conn,
-            build_status_payload(phase="initializing"),
-        )
-        cold_keepalive_task = asyncio.create_task(_cold_status_keepalive(redis_conn))
 
         launch_ui_consumer()
-        logger.info("[Pipeline] Спроба запуску UI consumer ініційована")
+        logger.info("[Pipeline] Запуск UI consumer")
 
         fast_symbols = [str(sym).lower() for sym in FXCM_FAST_SYMBOLS if sym]
         if not fast_symbols:
@@ -397,167 +249,6 @@ async def run_pipeline() -> None:
             len(fast_symbols),
             fast_symbols,
         )
-
-        await _update_cold_start_status(
-            redis_conn,
-            build_status_payload(phase="initial_load"),
-        )
-
-        history_report = None
-        cold_summary: dict[str, object] | None = None
-        qa_summary: dict[str, object] | None = None
-        cold_phase = "initial_load"
-        qa_report = None
-        cold_disk_payload: dict[str, object] | None = None
-        try:
-            history_report = await ensure_min_history(
-                ds,
-                fast_symbols,
-                interval=str(SMC_PIPELINE_CFG.get("tf_primary", "1m")),
-                required_bars=HISTORY_REQUIRED_BARS,
-                timeout_sec=FXCM_HISTORY_TIMEOUT_SEC,
-                sleep_sec=1.0,
-            )
-            if history_report.status == "success":
-                logger.info(
-                    "[ColdStart] Історія готова (%d/%d символів, >= %d барів)",
-                    history_report.symbols_ready,
-                    history_report.symbols_total,
-                    history_report.required_bars,
-                )
-            else:
-                logger.warning(
-                    "[ColdStart] Недостатньо історії (required=%d) для: %s",
-                    history_report.required_bars,
-                    history_report.symbols_pending,
-                )
-        except Exception:
-            logger.warning("[ColdStart] Перевірка історії не виконана", exc_info=True)
-        cold_summary = history_report_to_summary(history_report)
-        await _update_cold_start_status(
-            redis_conn,
-            build_status_payload(
-                phase="initial_load",
-                history=cold_summary,
-            ),
-        )
-
-        history_tf = str(SMC_PIPELINE_CFG.get("tf_primary", "1m"))
-        tfs_extra = tuple(SMC_PIPELINE_CFG.get("tfs_extra", ("5m", "15m", "1h")))
-        qa_symbols_source = HISTORY_QA_SYMBOLS or fast_symbols
-        qa_symbols = [str(sym).lower() for sym in qa_symbols_source if sym]
-        if not qa_symbols:
-            qa_symbols = list(fast_symbols)
-        if HISTORY_QA_SYMBOLS:
-            logger.info(
-                "[ColdStart] History QA symbols override (%d): %s",
-                len(qa_symbols),
-                qa_symbols,
-            )
-        else:
-            logger.info(
-                "[ColdStart] History QA символи збігаються з fast-списком (%d)",
-                len(qa_symbols),
-            )
-        history_qa_cfg = HistoryQaConfig(
-            tf_primary=history_tf,
-            tfs_extra=tfs_extra,
-            limit=HISTORY_QA_LIMIT,
-            step=HISTORY_QA_STEP,
-            min_bars_per_snapshot=HISTORY_QA_MIN_BARS,
-            warmup_bars=HISTORY_QA_WARMUP_BARS,
-        )
-        qa_engine = SmcCoreEngine()
-        try:
-            await _update_cold_start_status(
-                redis_conn,
-                build_status_payload(
-                    phase="qa_history",
-                    history=cold_summary,
-                ),
-            )
-            qa_report = await run_history_qa_for_symbols(
-                ds,
-                qa_symbols,
-                history_qa_cfg,
-                engine=qa_engine,
-            )
-            qa_summary = qa_report_to_summary(qa_report)
-            cold_phase = (
-                "ready"
-                if history_report is not None
-                and history_report.status == "success"
-                and qa_report.status == "success"
-                else "error"
-            )
-            if cold_phase == "ready":
-                try:
-                    cold_disk_payload, _ = await build_cold_start_report_payload(
-                        ds,
-                        fast_symbols,
-                        interval=history_tf,
-                        min_rows=HISTORY_REQUIRED_BARS,
-                        stale_threshold=COLD_START_STALE_THRESHOLD_SEC,
-                    )
-                    await asyncio.to_thread(
-                        persist_cold_start_report,
-                        COLD_START_REPORT_PATH,
-                        cold_disk_payload,
-                    )
-                    logger.info(
-                        "[ColdStart] JSON-звіт оновлено: %s",
-                        COLD_START_REPORT_PATH.as_posix(),
-                    )
-                except Exception:
-                    logger.warning(
-                        "[ColdStart] Не вдалося оновити cold_start_report.json",
-                        exc_info=True,
-                    )
-        except Exception:
-            logger.warning("[ColdStart] History QA не виконано", exc_info=True)
-            cold_phase = "error"
-        finally:
-            summary_payload: dict[str, object] | None = None
-            entries_payload: list[dict[str, object]] | None = None
-            if isinstance(cold_disk_payload, dict):
-                summary_value = cold_disk_payload.get("summary")
-                if isinstance(summary_value, dict):
-                    summary_payload = summary_value
-                entries_value = cold_disk_payload.get("entries")
-                if isinstance(entries_value, list):
-                    filtered_entries = [
-                        entry for entry in entries_value if isinstance(entry, dict)
-                    ]
-                    if filtered_entries:
-                        entries_payload = filtered_entries
-                if summary_payload is not None:
-                    stale_symbols = summary_payload.get("stale_symbols") or []
-                    insufficient_symbols = (
-                        summary_payload.get("insufficient_symbols") or []
-                    )
-                    if stale_symbols:
-                        cold_phase = "stale"
-                        logger.warning(
-                            "[ColdStart] Історія знайдена, але символи %s позначені як stale (age > %ss)",
-                            stale_symbols,
-                            COLD_START_STALE_THRESHOLD_SEC,
-                        )
-                    elif insufficient_symbols:
-                        cold_phase = "error"
-                        logger.warning(
-                            "[ColdStart] Недостатньо барів для символів %s попри успішний QA",
-                            insufficient_symbols,
-                        )
-            await _update_cold_start_status(
-                redis_conn,
-                build_status_payload(
-                    phase=cold_phase,
-                    history=cold_summary,
-                    qa=qa_summary,
-                    summary=summary_payload,
-                    entries=entries_payload,
-                ),
-            )
 
         for sym in fast_symbols:
             try:
@@ -717,55 +408,35 @@ async def run_pipeline() -> None:
         except Exception as e:
             logger.warning("[Pipeline] UIConsumer не ініціалізовано: %s", e)
 
-        try:
-            reactive_enabled = bool(REACTIVE_STAGE1)
-        except Exception:
-            reactive_enabled = False
-        logger.info("[Pipeline] REACTIVE_STAGE1=%s", reactive_enabled)
-
         prod = None
-        if not reactive_enabled:
-            if cold_phase != "ready":
-                logger.warning(
-                    "[Pipeline] Screening Producer -умовно- 'пропущено: cold_start_state=%s",
-                    cold_phase,
+        try:
+            logger.info("[Pipeline] Запуск Screening Producer (batch mode)")
+            prod = asyncio.create_task(
+                screening_producer(
+                    monitor=monitor,
+                    store=ds,
+                    store_fast_symbols=ds,
+                    assets=fast_symbols,
+                    redis_conn=redis_conn,
+                    timeframe="1m",
+                    lookback=SCREENING_LOOKBACK,
+                    interval_sec=TRADE_REFRESH_INTERVAL,
+                    state_manager=state_manager,
                 )
-                # else: зараз ця умова не потрібна, бо REACTIVE_STAGE1 завжди False
-                try:
-                    logger.info("[Pipeline] Запуск Screening Producer (batch mode)")
-                    prod = asyncio.create_task(
-                        screening_producer(
-                            monitor=monitor,
-                            store=ds,
-                            store_fast_symbols=ds,
-                            assets=fast_symbols,
-                            redis_conn=redis_conn,
-                            timeframe="1m",
-                            lookback=SCREENING_LOOKBACK,
-                            interval_sec=TRADE_REFRESH_INTERVAL,
-                            state_manager=state_manager,
-                        )
-                    )
-                    logger.info("[Pipeline] Screening Producer task створено")
-                except Exception as e:
-                    logger.error(
-                        "[Pipeline] Помилка запуску Screening Producer: %s",
-                        e,
-                        exc_info=True,
-                    )
+            )
+            logger.info("[Pipeline] Screening Producer task створено")
+        except Exception as e:
+            logger.error(
+                "[Pipeline] Помилка запуску Screening Producer: %s",
+                e,
+                exc_info=True,
+            )
 
         logger.info("[Pipeline] Публікація початкового стану в Redis...")
         try:
             await publish_full_state(state_manager, ds, redis_conn)
             logger.info("[Pipeline] Початковий стан опубліковано успішно")
-            await _update_cold_start_status(
-                redis_conn,
-                build_status_payload(
-                    phase=cold_phase,
-                    history=cold_summary,
-                    qa=qa_summary,
-                ),
-            )
+
         except Exception as e:
             logger.error(
                 "[Pipeline] Помилка публікації початкового стану: %s", e, exc_info=True
@@ -780,8 +451,6 @@ async def run_pipeline() -> None:
             tasks_to_run.append(fxcm_status_task)
         if price_stream_task is not None:
             tasks_to_run.append(price_stream_task)
-        if cold_keepalive_task is not None:
-            tasks_to_run.append(cold_keepalive_task)
 
         logger.info("[Pipeline] Запуск %d фон-виконавчих задач", len(tasks_to_run))
         logger.info(
@@ -794,13 +463,7 @@ async def run_pipeline() -> None:
     except asyncio.CancelledError:
         logger.info("[Pipeline] Завершення за скасуванням (CancelledError)")
         raise
-    except Exception:
-        logger.error("[Pipeline] run_pipeline error", exc_info=True)
-        if redis_conn is not None:
-            await _update_cold_start_status(
-                redis_conn,
-                build_status_payload(phase="error"),
-            )
+
     finally:
         to_cancel: list[asyncio.Task] = []
         for task in tasks_to_run:

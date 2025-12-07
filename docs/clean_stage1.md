@@ -40,7 +40,7 @@
 - `_warmup_datastore_from_snapshots()` читає `datastore/*_bars_<tf>_snapshot.jsonl`, якщо `DATASTORE_WARMUP_ENABLED=True`.
 - Live-історія потрапляє виключно з Redis-каналу `fxcm:ohlcv`; календар/heartbeat беруться з `fxcm:heartbeat` та `fxcm:market_status`.
 - `_await_fxcm_history()` перевіряє, що для кожного whitelisted символу є хоча б `SCREENING_LOOKBACK` барів `1m`; якщо бракує — система чекає живий стрім від зовнішнього конектора.
-- Оперативний конспект cold-start кроків → `docs/stage1_pipeline.md`.
+- Оперативний конспект warmup/ingest кроків → `docs/stage1_pipeline.md`.
 
 ## Склад Stage1 після очищення
 

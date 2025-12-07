@@ -126,13 +126,12 @@
 - Фокус: ризики (latency, PnL, winrate, фальшиві сигнали, стабільність).
 - Пропонуй 1–3 точкові покращення з мінімальними змінами.
 
-### 6.4 Шаблон плану (cold-start / QA)
+### 6.4 Шаблон плану запуску Stage1
 
-1. **History preparation**: `ensure_min_history` гарантує мінімальну кількість барів у `UnifiedDataStore` для кожного symbol/tf.
-2. **History QA**: `HistoryQaRunner` проходить історію через `smc_core`, записує `plain_smc_hint` у кеш `smc_history_*`.
-3. **Cold-start status**: контролюємо FSM `initializing → initial_load → qa_history → ready/error` та оновлюємо Redis/`meta.cold_start`.
-4. **UI**: `meta.fxcm` для телеметрії + `smc_history_*` як джерело історії структури/зон/ліквідності.
-5. **Live continuation**: live `smc_core` добудовує хвіст поверх кешу, не дублюючи історичні обчислення.
+1. **Bootstrap**: `bootstrap()` читає `datastore.yaml`, прогріває RAM через `_warmup_datastore_from_snapshots()` і готує `UnifiedDataStore`.
+2. **FXCM ingest**: стартуємо `run_fxcm_ingestor`, `run_fxcm_status_listener` і `run_fxcm_price_stream_listener`, переконуємось у наявності `FXCM_FAST_SYMBOLS`.
+3. **Stage1**: створюємо `AssetMonitorStage1`, `AssetStateManager`, запускаємо `screening_producer` та публікуємо початковий snapshot через `publish_full_state`.
+4. **Супровід**: вмикаємо `ui_metrics_publisher`, healthcheck, UI consumer та фіксуємо лаг/статус у логах.
 
 ## 7. Специфіка команд PowerShell (Windows)
 
@@ -152,14 +151,11 @@
 - Не додавати залежностей від зовнішніх сервісів у ядро стратегії.
 - Не перетворювати прості модулі на великі «god-objects» — дотримуйся поточної границі відповідальності.
 
-## 9. Cold-start та History QA
+## 9. Cold-start статус
 
-- Cold-start = History QA. Прогрів означає: `ensure_min_history` підтвердив історію, History-runner прогнав її через `SmcCoreEngine`, а `smc_history_{symbol}_{tf}.jsonl` став джерелом правди для UI.
-- Заборонено використовувати `AssetMonitoring`/Stage1 для cold-start або будь-якого історичного QA. Всі режимі QA будуються на `smc_core` (engine + input_adapter).
-- Будь-який «QA-режим» — це History-runner: бере історичні бари з `UnifiedDataStore`, викликає `SmcCoreEngine.process_snapshot` по всій траєкторії, зберігає `plain_smc_hint` у кеш (JSONL/Redis).
-- `cold_start_status.state = "ready"` дозволено виставляти лише після комбо: `ensure_min_history` успішно відпрацював + History-runner завершився без критичних помилок і поклав кеш.
-- Після появи історичного кешу live-логіка зобов'язана використовувати його як базу й лише добудовувати хвіст. Ніяких паралельних розрахунків «з нуля».
-- Історичний контекст (структура/зони/ліквідність) — першокласна сутність. Усі нові документи й плани cold-start мають виходити з цієї моделі.
+- Cold-start/History QA FSM повністю вимкнено й не підлягає відновленню без прямої команди.
+- Під час запуску покладаємось лише на live warmup з `UnifiedDataStore`; не створюй нові cold-start гілки чи кеші.
+- Для історичних експериментів використовуй окремі offline-скрипти, але не інтегруй їх у Stage1/UI пайплайн.
 
 ---
 

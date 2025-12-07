@@ -1,7 +1,6 @@
 """Центральне джерело конфігурації AiOne_t.
 
-У модулі зібрані константи Stage1 та допоміжні типи, необхідні для
-холодного старту без зовнішніх YAML/ENV.
+У модулі зібрані константи Stage1 та допоміжні типи.
 """
 
 from __future__ import annotations
@@ -61,8 +60,6 @@ __all__ = [
     "UI_VIEWER_PROFILE",
     "DATASTORE_WARMUP_ENABLED",
     "DATASTORE_WARMUP_INTERVALS",
-    "COLD_START_STATUS_KEY",
-    "COLD_START_STATUS_TTL_SEC",
 ]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -133,10 +130,6 @@ REDIS_CHANNEL_ASSET_STATE: str = f"{NAMESPACE}:ui:asset_state"
 #: Ключ для зберігання останнього знімка стану (для «холодного» старту UI)
 REDIS_SNAPSHOT_KEY: str = f"{NAMESPACE}:ui:snapshot"
 
-#: Ключ для cold-start статусу Stage1 → UI
-COLD_START_STATUS_KEY: str = f"{NAMESPACE}:stage1:cold_start_status"
-COLD_START_STATUS_TTL_SEC: int = 15 * 60
-
 #: Канал для адмін-команд (узгоджено з AdminCfg.commands_channel)
 ADMIN_COMMANDS_CHANNEL: str = f"{NAMESPACE}:admin:commands"
 
@@ -183,7 +176,8 @@ FAST_SYMBOLS_TTL_AUTO = 15 * 60
 FAST_SYMBOLS_TTL_MANUAL = 60 * 60
 # Окремий whitelist для FXCM-режиму — не змішуємо з історичними крипто-юніверсами
 FXCM_FAST_SYMBOLS = [
-    "xauusd",  # у всій системі символи зберігаємо у lower-case
+    "xauusd",
+    "xagusd",  # у всій системі символи зберігаємо у lower-case
 ]
 
 FXCM_STALE_LAG_SECONDS = 120
