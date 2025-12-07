@@ -59,7 +59,6 @@ __all__ = [
     "REDIS_CACHE_TTL",
     "UI_EXPERIMENTAL_VIEW_ENABLED",
     "UI_VIEWER_PROFILE",
-    "UI_VIEWER_SHOW_RAW",
     "DATASTORE_WARMUP_ENABLED",
     "DATASTORE_WARMUP_INTERVALS",
     "COLD_START_STATUS_KEY",
@@ -155,12 +154,8 @@ UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
 UI_EXPERIMENTAL_VIEW_ENABLED: bool = True
 # Профіль experimental viewer: "standard" (поточна версія) або "extended"
 UI_VIEWER_PROFILE: str = "extended"
-# Початковий режим extended viewer: 1 — основний, 2 — історія/QA
-UI_VIEWER_DEFAULT_MODE: int = 1
 # Чи вмикати альтернативний буфер термінала для viewer (екран без прокрутки)
 UI_VIEWER_ALT_SCREEN: bool = True
-# У QA-режимі показуємо RAW JSON панель за замовчуванням
-UI_VIEWER_SHOW_RAW: bool = True
 
 # Прогрів UnifiedDataStore при холодному старті (зчитуємо останні снапшоти)
 DATASTORE_WARMUP_ENABLED: bool = True

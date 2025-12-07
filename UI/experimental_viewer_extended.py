@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import math
-from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,7 +11,6 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from config.config import UI_VIEWER_DEFAULT_MODE, UI_VIEWER_SHOW_RAW
 from UI.experimental_viewer import SmcExperimentalViewer
 
 
@@ -23,34 +19,10 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
 
     WEEKEND_GUESS_THRESHOLD_SECONDS = 30 * 3600
 
-    def __init__(
-        self,
-        symbol: str,
-        snapshot_dir: str = "tmp",
-        *,
-        show_raw: bool | None = None,
-        view_mode: int | None = None,
-    ) -> None:
-        default_raw_flag = bool(UI_VIEWER_SHOW_RAW)
-        self._show_raw_panel = show_raw if show_raw is not None else default_raw_flag
-        initial_mode = view_mode if view_mode is not None else UI_VIEWER_DEFAULT_MODE
-        self._view_mode = self._normalize_mode(initial_mode)
-        self._history_buffer: deque[dict[str, Any]] = deque(maxlen=36)
+    def __init__(self, symbol: str, snapshot_dir: str = "tmp") -> None:
         super().__init__(symbol, snapshot_dir)
 
-    def set_view_mode(self, mode: int) -> None:
-        """Динамічно перемикає макет viewer (режими 1/2)."""
-
-        self._view_mode = self._normalize_mode(mode)
-
-    @staticmethod
-    def _normalize_mode(value: int | None) -> int:
-        return 2 if value == 2 else 1
-
     def render_panel(self, viewer_state: dict[str, Any]) -> Panel:
-        self._update_history_buffer(viewer_state)
-        if self._view_mode == 2:
-            return self._render_history_mode(viewer_state)
         return self._render_primary_mode(viewer_state)
 
     def _render_primary_mode(self, viewer_state: dict[str, Any]) -> Panel:
@@ -105,61 +77,6 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             border_style="magenta",
         )
 
-    def _render_history_mode(self, viewer_state: dict[str, Any]) -> Panel:
-        history_panel = self._build_history_panel()
-        raw_panel = self._build_raw_panel(viewer_state)
-
-        layout = Table.grid(expand=True)
-        if raw_panel is not None:
-            layout.add_row(Columns([history_panel, raw_panel], expand=True))
-        else:
-            layout.add_row(history_panel)
-
-        title = Text(
-            f"SMC Viewer · Extended · {viewer_state.get('symbol', '').upper()}",
-            style="bold green",
-        )
-        return Panel(
-            layout,
-            title=title,
-            subtitle="Режим 2 · Історія / QA",
-            border_style="green",
-        )
-
-    def _update_history_buffer(self, viewer_state: dict[str, Any]) -> None:
-        raw_ts = viewer_state.get("payload_ts")
-        meta_block = viewer_state.get("meta")
-        if not raw_ts and isinstance(meta_block, dict):
-            raw_ts = meta_block.get("payload_ts") or meta_block.get("ts")
-        ts_label = self._format_ts(raw_ts) if raw_ts else "-"
-        structure_label, structure_warn = self._structure_health_badge(
-            viewer_state.get("structure")
-        )
-        liquidity_label, liquidity_warn = self._liquidity_health_badge(
-            viewer_state.get("liquidity")
-        )
-        if self._history_buffer and self._history_buffer[-1].get("raw_ts") == raw_ts:
-            self._history_buffer[-1].update(
-                {
-                    "ts": ts_label,
-                    "structure": structure_label,
-                    "structure_warn": structure_warn,
-                    "liquidity": liquidity_label,
-                    "liquidity_warn": liquidity_warn,
-                }
-            )
-            return
-        self._history_buffer.append(
-            {
-                "raw_ts": raw_ts,
-                "ts": ts_label,
-                "structure": structure_label,
-                "structure_warn": structure_warn,
-                "liquidity": liquidity_label,
-                "liquidity_warn": liquidity_warn,
-            }
-        )
-
     # ── Додаткові блоки -----------------------------------------------------
     def _build_summary_table(self, viewer_state: dict[str, Any]) -> Table:
         table = Table(title="Структура", expand=True)
@@ -174,23 +91,20 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         table.add_row("Session", str(viewer_state.get("session") or "-"))
         table.add_row("Price", self._format_price(viewer_state.get("price")))
         table.add_row("Payload TS", self._format_ts(viewer_state.get("payload_ts")))
-        schema_value = viewer_state.get("schema")
-        if schema_value:
-            table.add_row("Schema", str(schema_value))
         return table
 
     def _build_session_block(self, viewer_state: dict[str, Any]) -> Panel:
-        table = Table(title="Сесія / ціна", expand=True)
+        table = Table(expand=True)
         table.add_column("Параметр", justify="right", style="bold cyan")
         table.add_column("Значення", justify="left")
         table.add_row("Символ", str(viewer_state.get("symbol", "-")).upper())
         table.add_row("Session", str(viewer_state.get("session") or "-").upper())
         table.add_row("Ціна", self._format_price(viewer_state.get("price")))
         table.add_row("Payload", self._format_ts(viewer_state.get("payload_ts")))
-        table.add_row("Schema", str(viewer_state.get("schema") or "-"))
         next_hint = self._session_next_open_hint(viewer_state)
         if next_hint:
             table.add_row("Наступне відкриття", next_hint)
+        table.add_row("Schema", str(viewer_state.get("schema") or "-"))
         return Panel(table, border_style="cyan", title="Session Block")
 
     def _session_next_open_hint(self, viewer_state: dict[str, Any]) -> str | None:
@@ -363,86 +277,6 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             )
         return Panel(table, border_style="magenta")
 
-    def _build_history_panel(self) -> Panel:
-        table = Table(title="Останні payload-и", expand=True)
-        table.add_column("TS", style="bold")
-        table.add_column("Структура")
-        table.add_column("Ліквідність")
-        if not self._history_buffer:
-            table.add_row("-", "даних поки немає", "-")
-        else:
-            for entry in reversed(self._history_buffer):
-                struct_style = "red" if entry.get("structure_warn") else "green"
-                liq_style = "red" if entry.get("liquidity_warn") else "green"
-                table.add_row(
-                    entry.get("ts", "-"),
-                    Text(entry.get("structure", "-"), style=struct_style),
-                    Text(entry.get("liquidity", "-"), style=liq_style),
-                )
-
-        latest = self._history_buffer[-1] if self._history_buffer else None
-        degraded = bool(
-            latest and (latest.get("structure_warn") or latest.get("liquidity_warn"))
-        )
-        status_text = (
-            Text("SMC degraded — перевірте дані", style="bold red")
-            if degraded
-            else Text("SMC метрики у нормі", style="bold green")
-        )
-        grid = Table.grid(expand=True)
-        grid.add_row(status_text)
-        grid.add_row(table)
-        border_style = "red" if degraded else "green"
-        return Panel(grid, border_style=border_style, title="Історія / QA")
-
-    def _build_raw_panel(self, viewer_state: dict[str, Any]) -> Panel | None:
-        if not self._show_raw_panel:
-            return None
-        snapshot = {
-            "structure": viewer_state.get("structure"),
-            "liquidity": viewer_state.get("liquidity"),
-            "zones": viewer_state.get("zones"),
-        }
-        try:
-            dumped = json.dumps(snapshot, ensure_ascii=False, indent=2, default=str)
-        except Exception:
-            dumped = str(snapshot)
-        preview_lines = dumped.splitlines()[:40]
-        body = Text("\n".join(preview_lines))
-        return Panel(body, border_style="white", title="RAW JSON (QA)")
-
-    def _structure_health_badge(self, structure: Any) -> tuple[str, bool]:
-        if not isinstance(structure, dict):
-            return ("немає структури", True)
-        fields = ("trend", "bias", "range_state")
-        missing = [
-            name
-            for name in fields
-            if self._is_placeholder_value(structure.get(name))
-            or self._is_nan(structure.get(name))
-        ]
-        if missing:
-            return (f"прогалини: {', '.join(missing)}", True)
-        return (str(structure.get("trend") or "OK"), False)
-
-    def _liquidity_health_badge(self, liquidity: Any) -> tuple[str, bool]:
-        if not isinstance(liquidity, dict):
-            return ("немає ліквідності", True)
-        pools = liquidity.get("pools")
-        if not isinstance(pools, list) or not pools:
-            return ("pool=0", True)
-        strength_values = [self._safe_float(pool.get("strength")) for pool in pools]
-        if any(value is None or self._is_nan(value) for value in strength_values):
-            return ("NaN strength", True)
-        return (f"{len(pools)} pools", False)
-
-    @staticmethod
-    def _is_nan(value: Any) -> bool:
-        try:
-            return isinstance(value, float) and math.isnan(value)
-        except Exception:
-            return False
-
     def _format_delta(
         self, target: Any, price_ref: float | None, *, prefix: bool = False
     ) -> str:
@@ -460,7 +294,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         return {"label": label, "price": price, "time": time_value}
 
     def _build_fxcm_panel(self, viewer_state: dict[str, Any]) -> Panel | None:
-        table = Table(title="FXCM телеметрія", expand=True)
+        table = Table(title="FXCM конектор", expand=True)
         table.add_column("Поле", justify="right", style="bold green")
         table.add_column("Значення", justify="left")
         for label, value in self._compose_fxcm_rows(viewer_state):

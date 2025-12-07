@@ -1,5 +1,5 @@
 {
-  "generated_at": "2025-12-07T13:54:35.649204+00:00",
+  "generated_at": "2025-12-07T17:31:15.138388+00:00",
   "interval": "1m",
   "symbols": [
     "xauusd"
@@ -10,7 +10,7 @@
       "xauusd"
     ],
     "insufficient_symbols": [],
-    "max_age_seconds": 144515.643,
+    "max_age_seconds": 157515.129,
     "min_rows_required": 300,
     "stale_threshold": 3600
   },
@@ -22,7 +22,7 @@
       "rows_on_disk": 3000,
       "redis_ttl": null,
       "last_open_time": 1764971160.0,
-      "age_seconds": 144515.643,
+      "age_seconds": 157515.129,
       "ram_last_open_time": 1764971160.0,
       "disk_last_open_time": 1764971160.0,
       "redis_last_open_time": null,
