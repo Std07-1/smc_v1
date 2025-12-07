@@ -16,6 +16,7 @@
 - Живі дані йдуть **виключно** з зовнішнього FXCM конектора через Redis канали `fxcm:ohlcv`, `fxcm:heartbeat`, `fxcm:market_status`.
 - `_await_fxcm_history()` очікує, поки стрім заповнить мінімум `SCREENING_LOOKBACK` барів на `1m`; якщо їх нема, Stage1 продовжує слухати канал, доки зовнішній конектор не надішле достатньо барів.
 - Будь-які прямі виклики біржових API/локальних warmup-скриптів у цьому репозиторії відсутні та вважаються поза межами Stage1.
+- **Freeze:** Stage1 та його тригери вважаються закритими; не вносимо змін без прямого доручення, базова логіка задокументована лише для діагностики.
 
 ## SMC API (Етап 1)
 
@@ -39,6 +40,9 @@
    `build_smc_input_from_store`, сторонні дані заборонені.
 - Вихід: `SmcHint.structure` (`SmcStructureState`) з trend/bias, діапазонами,
    BOS/CHOCH, OTE та `meta.last_choch_ts`.
+- `StructureEventHistory` тримає BOS/CHOCH до тижня (параметри в `SmcCoreConfig`),
+  логуючи додавання/очистку на рівні `symbol/tf`; `SmcStructureState.event_history`
+  споживається зоною OB_v1 та майбутніми детекторами.
 - Stage2/Stage3 споживають тільки OTE, де `role == "PRIMARY"` і напрямок
    збігається з `structure.bias`.
 - `role == "COUNTERTREND"` використовуємо виключно для QA/діагностики —
@@ -126,6 +130,8 @@
 ### 4.2 OrderBlock_v1 (у прогресі)
 
 - Детектор працює тільки по ногах зі `SmcStructureState`, що виконують умови: амплітуда ≥ `ob_leg_min_atr_mul * ATR`, тривалість ≤ `ob_leg_max_bars`, є BOS/CHOCH подія зі звʼязком `source_leg`.
+- Тепер OB_v1 використовує `structure.event_history`, тож навіть старі BOS/CHOCH
+   залишаються доступними для валідації break-подій на FX/XAU/XAG.
 - Свічка-прелюдія шукається в межах `ob_prelude_max_bars`; вимоги до тіла: `body_abs ≥ ob_body_min_pct * leg_amplitude`, `body_pct ≥ ob_body_domination_pct`. Великі тіні відсікаються.
 - Побудована зона має чіткі поля (`entry_mode`, `role`, `reference_event_type`) і потрапляє в `active_zones`, якщо `origin_time` в межах `cfg.max_lookback_bars` відносно останнього бара.
 - Meta `SmcZonesState` зберігає лічильники `orderblocks_primary/countertrend`, `active_zone_count`, `ob_params`. Тести: `tests/test_smc_zones_ob_basic.py` (PRIMARY long, COUNTERTREND, edge-кейси без BOS і з малим тілом).

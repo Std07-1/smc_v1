@@ -18,6 +18,8 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 - **tools/** — `smc_snapshot_runner` і дослідницькі скрипти для QA.
 - **tests/** — pytest-набір для SMC (structure, liquidity, AMD, bridge, input adapter).
 
+> ⚠️ Stage1 моніторинг і тригери вважаються закритим шаром: не додаємо нові фічі, не змінюємо пороги чи payload без окремого наказу. Поточна робота концентрується на SMC-core (structure/liquidity/zones).
+
 Документацію по SMC знайдеш у `docs/smc_core_overview.md`, `docs/smc_structure.md`,
 `docs/smc_liquidity.md`. Детальний контракт інтеграції FXCM описано в
 `docs/fxcm_integration.md`.
@@ -27,9 +29,11 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 ## Ключові можливості
 
 - Єдине джерело правди (Redis + JSONL snapshots) через `UnifiedDataStore`.
-- FXCM стрім + Stage1 тригери (vol spike, RSI, VWAP, breakout, volatility).
+- FXCM стрім + Stage1 тригери (vol spike, RSI, VWAP, breakout, volatility) **заморожені**: не розвиваємо їх без окремої директиви, фокус лише на SMC-core.
 - SMC-core з зафіксованими контрактами (structure/liquidity/zones/meta + bridge до
   Stage2).
+- Довготривала пам'ять BOS/CHOCH із діагностичним логуванням (StructureEventHistory),
+  яку використовують OB_v1 та майбутні зони.
 - Нативний UI канал (Redis pub/sub) для моніторингу ліквідності та стадій AMD.
 - QA-утиліти для локального прогону SMC на історії (без запуску Stage1).
 

@@ -14,6 +14,7 @@ from smc_core.smc_types import (
     SmcTrend,
 )
 from smc_structure import structure_engine
+from smc_structure.event_history import reset_structure_event_history
 
 
 def _structure_frame() -> pd.DataFrame:
@@ -219,3 +220,37 @@ def test_timestamp_meta_recovers_from_epoch_ms() -> None:
     assert state.meta["snapshot_start_ts"].year >= 2025
     assert state.swings
     assert state.swings[0].time.year >= 2025
+
+
+def test_event_history_persists_across_snapshots() -> None:
+    reset_structure_event_history()
+    frame = _structure_frame()
+    snapshot = SmcInput(
+        symbol="xauusd",
+        tf_primary="5m",
+        ohlc_by_tf={"5m": frame},
+        context={},
+    )
+    permissive_cfg = SmcCoreConfig(
+        min_swing_bars=1,
+        default_timeframes=("5m",),
+        bos_min_move_pct_m1=0.0,
+        bos_min_move_atr_m1=0.0,
+    )
+
+    state_first = smc_structure.compute_structure_state(snapshot, permissive_cfg)
+
+    assert len(state_first.events) > 0
+    assert len(state_first.event_history) >= len(state_first.events)
+
+    strict_cfg = SmcCoreConfig(
+        min_swing_bars=1,
+        default_timeframes=("5m",),
+        bos_min_move_pct_m1=0.5,
+        bos_min_move_atr_m1=5.0,
+    )
+
+    state_second = smc_structure.compute_structure_state(snapshot, strict_cfg)
+
+    assert state_second.events == []
+    assert len(state_second.event_history) >= len(state_first.event_history)

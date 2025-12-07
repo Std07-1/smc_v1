@@ -21,6 +21,7 @@ from smc_core.smc_types import (
 from utils.utils import ensure_timestamp_column
 
 from . import metrics, ote_engine, range_engine, structure_engine, swing_detector
+from .event_history import EVENT_HISTORY
 
 ATR_PERIOD_M1 = 14
 
@@ -38,6 +39,14 @@ def compute_structure_state(
     atr_series = metrics.compute_atr(df, ATR_PERIOD_M1)
     atr_last, atr_median = _extract_atr_stats(atr_series)
     events = structure_engine.detect_events(legs, df, atr_series, cfg)
+    events_history = EVENT_HISTORY.update_history(
+        symbol=snapshot.symbol,
+        timeframe=snapshot.tf_primary,
+        events=events,
+        snapshot_end_ts=snapshot_end_ts,
+        retention_minutes=cfg.structure_event_history_max_minutes,
+        max_entries=cfg.structure_event_history_max_entries,
+    )
     bias, last_choch_ts = _derive_bias(trend, events)
     active_range, range_state = range_engine.detect_active_range(
         df, cfg.min_range_bars, cfg.eq_tolerance_pct
@@ -61,6 +70,7 @@ def compute_structure_state(
         active_range=active_range,
         range_state=range_state,
         events=events,
+        event_history=events_history,
         ote_zones=ote_zones,
         bias=bias,
         meta={
@@ -83,6 +93,8 @@ def compute_structure_state(
             "snapshot_start_ts": snapshot_start_ts,
             "snapshot_end_ts": snapshot_end_ts,
             "swing_times": [swing.time for swing in swings],
+            "events_retained_total": len(events_history),
+            "events_recent_total": len(events),
         },
     )
 

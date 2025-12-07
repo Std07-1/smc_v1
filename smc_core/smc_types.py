@@ -195,6 +195,7 @@ class SmcStructureState:
     - ``bias`` — торгова упередженість: останній CHOCH → LONG/SHORT, fallback на ``trend``.
     - ``ranges``/``active_range``/``range_state`` — геометрія діапазону та відхилень.
     - ``events`` — список BOS/CHOCH із мітками часу для Stage2 telemetry.
+    - ``event_history`` — довга пам'ять BOS/CHOCH (до тижня) для зон/QA.
     - ``ote_zones`` — OTE-рівні з ролями PRIMARY/COUNTERTREND/NEUTRAL.
 
     ``meta`` зберігає службові дані: ``atr_period``, ``atr_available``, ``atr_last``,
@@ -210,6 +211,7 @@ class SmcStructureState:
     active_range: SmcRange | None = None
     range_state: SmcRangeState = SmcRangeState.NONE
     events: list[SmcStructureEvent] = field(default_factory=list)
+    event_history: list[SmcStructureEvent] = field(default_factory=list)
     ote_zones: list[SmcOteZone] = field(default_factory=list)
     bias: Literal["LONG", "SHORT", "NEUTRAL"] = "NEUTRAL"
     meta: dict[str, Any] = field(default_factory=dict)

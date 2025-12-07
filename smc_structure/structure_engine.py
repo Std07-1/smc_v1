@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 import pandas as pd
@@ -13,6 +14,8 @@ from smc_core.smc_types import (
     SmcSwing,
     SmcTrend,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 def build_legs(swings: Sequence[SmcSwing]) -> list[SmcStructureLeg]:
@@ -93,6 +96,16 @@ def detect_events(
     if df is not None and "close" in df.columns:
         closes = df["close"].astype(float)
 
+    LOGGER.debug(
+        "Старт обробки BOS/CHOCH",
+        extra={
+            "legs": len(legs),
+            "has_atr": atr_series is not None,
+            "bos_min_move_atr_m1": cfg.bos_min_move_atr_m1,
+            "bos_min_move_pct_m1": cfg.bos_min_move_pct_m1,
+        },
+    )
+
     for leg in legs:
         if leg.label == "UNDEFINED":
             continue
@@ -137,7 +150,20 @@ def detect_events(
                     source_leg=leg,
                 )
             )
-
+            LOGGER.debug(
+                "Сформовано структуру подій",
+                extra={
+                    "event_type": event_type,
+                    "direction": direction,
+                    "price": float(leg.to_swing.price),
+                    "time": str(leg.to_swing.time),
+                    "leg_label": leg.label,
+                },
+            )
+    LOGGER.debug(
+        "Завершено обробку BOS/CHOCH",
+        extra={"events_total": len(events)},
+    )
     return events
 
 

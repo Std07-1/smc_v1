@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+import logging
+from typing import Any, Literal, cast
 
 import pandas as pd
+from rich.console import Console
+from rich.logging import RichHandler
 
 from smc_core.config import SmcCoreConfig
 from smc_core.smc_types import (
@@ -16,6 +19,14 @@ from smc_core.smc_types import (
     SmcZoneType,
 )
 
+# ───────────────────────────── Логування ─────────────────────────────
+logger = logging.getLogger("smc_zones.orderblock_detector")
+if not logger.handlers:  # захист від повторної ініціалізації
+    logger.setLevel(logging.DEBUG)
+    # show_path=True для відображення файлу/рядка у WARN/ERROR
+    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=True))
+    logger.propagate = False
+
 
 def detect_order_blocks(
     snapshot: SmcInput,
@@ -25,20 +36,43 @@ def detect_order_blocks(
     """Шукає базові Order Block-и по структурі та імпульсним ногам."""
 
     if structure is None or not structure.legs:
+        logger.debug(
+            "OB_v1: пропуск — немає структури чи ніг",
+            extra={"symbol": snapshot.symbol, "tf": snapshot.tf_primary},
+        )
         return []
-
     frame = snapshot.ohlc_by_tf.get(snapshot.tf_primary)
     if frame is None or frame.empty:
+        logger.debug(
+            "OB_v1: пропуск — порожній фрейм",
+            extra={"symbol": snapshot.symbol, "tf": snapshot.tf_primary},
+        )
         return []
     required_cols = {"open", "close", "high", "low"}
     if not required_cols.issubset(frame.columns):
+        logger.warning(
+            "OB_v1: пропуск — відсутні стовпці %s",
+            required_cols - set(frame.columns),
+            extra={"symbol": snapshot.symbol, "tf": snapshot.tf_primary},
+        )
         return []
 
     atr = float(
         structure.meta.get("atr_last") or structure.meta.get("atr_median") or 0.0
     )
     bias = str(structure.meta.get("bias") or structure.bias or "NEUTRAL").upper()
+    structure_events = list(structure.event_history or structure.events or [])
     zones: list[SmcZone] = []
+
+    logger.debug(
+        "OB_v1: старт детекції",
+        extra={
+            "symbol": snapshot.symbol,
+            "tf": snapshot.tf_primary,
+            "legs": len(structure.legs),
+            "bias": bias,
+        },
+    )
 
     for _, leg in enumerate(structure.legs):
         direction = _leg_direction(leg)
@@ -57,20 +91,41 @@ def detect_order_blocks(
             continue
         bar_count = end_pos - start_pos + 1
         if bar_count > cfg.ob_leg_max_bars:
+            logger.debug(
+                "OB_v1: нога %s пропущена — тривалість %s > %s (цінa %.4f→%.4f, час %s→%s)",
+                leg.label,
+                bar_count,
+                cfg.ob_leg_max_bars,
+                float(leg.from_swing.price),
+                float(leg.to_swing.price),
+                _format_ts(leg.from_swing.time),
+                _format_ts(leg.to_swing.time),
+            )
             continue
 
         amplitude = abs(float(leg.to_swing.price) - float(leg.from_swing.price))
         if atr > 0 and amplitude < cfg.ob_leg_min_atr_mul * atr:
+            logger.debug(
+                "OB_v1: нога %s пропущена — амплітуда %.4f < порога (цінa %.4f→%.4f, час %s→%s)",
+                leg.label,
+                amplitude,
+                float(leg.from_swing.price),
+                float(leg.to_swing.price),
+                _format_ts(leg.from_swing.time),
+                _format_ts(leg.to_swing.time),
+            )
             continue
         if amplitude <= 0:
             continue
 
         candidate_pos = _find_ob_candidate(frame, start_pos, direction, cfg)
         if candidate_pos is None:
+            logger.debug("OB_v1: не знайдено candlestick для ноги %s", leg.label)
             continue
 
-        break_event = _leg_break_event(structure.events, leg, direction)
+        break_event = _leg_break_event(structure_events, leg, direction)
         if break_event is None:
+            logger.debug("OB_v1: немає break події для ноги %s", leg.label)
             continue
         zone = _build_zone_from_row(
             snapshot=snapshot,
@@ -86,10 +141,29 @@ def detect_order_blocks(
             cfg=cfg,
         )
         if zone is None:
+            logger.debug("OB_v1: побудова зони провалена для ноги %s", leg.label)
             continue
 
+        logger.info(
+            "OB_v1: створено зону",
+            extra={
+                "symbol": snapshot.symbol,
+                "tf": snapshot.tf_primary,
+                "zone_id": zone.zone_id,
+                "direction": zone.direction,
+                "role": zone.role,
+            },
+        )
         zones.append(zone)
 
+    logger.debug(
+        "OB_v1: завершено детекцію",
+        extra={
+            "symbol": snapshot.symbol,
+            "tf": snapshot.tf_primary,
+            "zones_total": len(zones),
+        },
+    )
     return zones
 
 
@@ -283,6 +357,15 @@ def _build_zone_from_row(
         }
     )
     return zone
+
+
+def _format_ts(value: Any) -> str:
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    try:
+        return pd.Timestamp(value).isoformat()
+    except Exception:
+        return str(value)
 
 
 def _derive_role(

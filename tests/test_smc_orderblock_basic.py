@@ -15,6 +15,7 @@ from smc_core.smc_types import (
     SmcSwing,
     SmcZoneType,
 )
+from smc_structure.event_history import EVENT_HISTORY, reset_structure_event_history
 from smc_zones.orderblock_detector import detect_order_blocks
 
 BASE_TS = pd.Timestamp("2024-01-01T00:00:00Z")
@@ -58,6 +59,7 @@ def _structure(
     legs: list[tuple[SmcSwing, SmcSwing, SmcStructureLegLabel]],
     events: list[SmcStructureEvent],
     bias: SmcBias,
+    event_history: list[SmcStructureEvent] | None = None,
 ) -> SmcStructureState:
 
     swings = {leg[0].index: leg[0] for leg in legs}
@@ -68,8 +70,23 @@ def _structure(
         leg_objs.append(
             SmcStructureLeg(from_swing=swing_from, to_swing=swing_to, label=label)
         )
-    # align events with actual leg instances
-    remapped_events: list[SmcStructureEvent] = []
+    remapped_events = _remap_events(events, leg_objs)
+    remapped_history = _remap_events(event_history or [], leg_objs)
+    return SmcStructureState(
+        primary_tf="5m",
+        swings=list(swings.values()),
+        legs=leg_objs,
+        events=remapped_events,
+        event_history=remapped_history,
+        bias=bias,
+        meta={"bias": bias, "atr_last": 1.2},
+    )
+
+
+def _remap_events(
+    events: list[SmcStructureEvent], leg_objs: list[SmcStructureLeg]
+) -> list[SmcStructureEvent]:
+    remapped: list[SmcStructureEvent] = []
     for event in events:
         source_leg = getattr(event, "source_leg", None)
         if source_leg is None:
@@ -85,7 +102,7 @@ def _structure(
         )
         if matching_leg is None:
             continue
-        remapped_events.append(
+        remapped.append(
             SmcStructureEvent(
                 event_type=event.event_type,
                 direction=event.direction,
@@ -94,35 +111,71 @@ def _structure(
                 source_leg=matching_leg,
             )
         )
-    return SmcStructureState(
-        primary_tf="5m",
-        swings=list(swings.values()),
-        legs=leg_objs,
-        events=remapped_events,
-        bias=bias,
-        meta={"bias": bias, "atr_last": 1.2},
-    )
+    return remapped
 
 
-def test_orderblock_long_basic() -> None:
+def _long_setup() -> tuple[
+    SmcInput,
+    tuple[SmcSwing, SmcSwing, SmcStructureLegLabel],
+    SmcStructureEvent,
+]:
     values = [
-        (101.0, 101.2, 100.3, 100.6),
-        (100.6, 100.7, 99.5, 99.8),
-        (99.8, 100.0, 98.9, 99.1),
-        (99.1, 99.2, 98.6, 98.8),
-        (98.8, 100.8, 98.7, 100.4),
-        (100.4, 102.2, 100.3, 101.9),
-        (101.9, 103.5, 101.7, 103.0),
+        (101.0, 101.8, 100.4, 100.6),
+        (100.6, 101.2, 99.6, 100.1),
+        (102.0, 102.4, 97.8, 98.1),
+        (98.1, 98.6, 97.4, 98.3),
+        (98.3, 100.2, 98.1, 99.8),
+        (99.8, 102.6, 99.8, 102.4),
+        (102.4, 104.5, 101.9, 104.1),
     ]
     snapshot = _make_snapshot(values)
-    leg = (_swing(3, 98.6, "LOW"), _swing(6, 103.5, "HIGH"), "HL")
+    swing_from = _swing(3, 97.4, "LOW")
+    swing_to = _swing(6, 104.5, "HIGH")
+    leg = (swing_from, swing_to, "HL")
     bos_event = SmcStructureEvent(
         event_type="BOS",
         direction="LONG",
-        price_level=103.0,
+        price_level=104.1,
         time=_ts(6),
-        source_leg=SmcStructureLeg(from_swing=leg[0], to_swing=leg[1], label="HL"),
+        source_leg=SmcStructureLeg(
+            from_swing=swing_from, to_swing=swing_to, label="HL"
+        ),
     )
+    return snapshot, leg, bos_event
+
+
+def _short_setup() -> tuple[
+    SmcInput,
+    tuple[SmcSwing, SmcSwing, SmcStructureLegLabel],
+    SmcStructureEvent,
+]:
+    values = [
+        (98.1, 98.7, 97.5, 98.3),
+        (98.3, 99.2, 97.9, 98.8),
+        (97.8, 103.6, 97.6, 103.1),
+        (103.1, 103.7, 102.4, 102.9),
+        (103.3, 102.1, 100.8, 101.2),
+        (101.2, 99.4, 97.9, 98.5),
+        (98.5, 96.8, 95.9, 96.4),
+    ]
+    snapshot = _make_snapshot(values)
+    swing_from = _swing(3, 103.7, "HIGH")
+    swing_to = _swing(6, 95.9, "LOW")
+    leg = (swing_from, swing_to, "LH")
+    bos_event = SmcStructureEvent(
+        event_type="BOS",
+        direction="SHORT",
+        price_level=96.4,
+        time=_ts(6),
+        source_leg=SmcStructureLeg(
+            from_swing=swing_from, to_swing=swing_to, label="LH"
+        ),
+    )
+    return snapshot, leg, bos_event
+
+
+def test_orderblock_long_basic() -> None:
+    snapshot, leg, bos_event = _long_setup()
     structure = _structure([leg], [bos_event], bias="LONG")
 
     zones = detect_order_blocks(snapshot, structure, SmcCoreConfig())
@@ -132,29 +185,11 @@ def test_orderblock_long_basic() -> None:
     assert zone.zone_type is SmcZoneType.ORDER_BLOCK
     assert zone.direction == "LONG"
     assert zone.role == "PRIMARY"
-    assert zone.meta["quality"] == "STRONG"
-    assert zone.entry_mode in {"BODY_05", "BODY_TOUCH", "WICK_05", "WICK_TOUCH"}
+    assert zone.meta["reference_event_type"] == "BOS"
 
 
 def test_orderblock_short_basic() -> None:
-    values = [
-        (105.0, 105.3, 104.9, 105.2),
-        (105.2, 105.5, 105.0, 105.4),
-        (105.4, 105.6, 105.2, 105.5),
-        (105.5, 105.7, 104.4, 104.8),
-        (104.8, 105.0, 103.8, 103.9),
-        (103.9, 104.1, 102.5, 102.8),
-        (102.8, 103.0, 101.5, 101.9),
-    ]
-    snapshot = _make_snapshot(values)
-    leg = (_swing(2, 105.5, "HIGH"), _swing(6, 101.5, "LOW"), "LH")
-    bos_event = SmcStructureEvent(
-        event_type="BOS",
-        direction="SHORT",
-        price_level=101.9,
-        time=_ts(6),
-        source_leg=SmcStructureLeg(from_swing=leg[0], to_swing=leg[1], label="LH"),
-    )
+    snapshot, leg, bos_event = _short_setup()
     structure = _structure([leg], [bos_event], bias="SHORT")
 
     zones = detect_order_blocks(snapshot, structure, SmcCoreConfig())
@@ -163,104 +198,111 @@ def test_orderblock_short_basic() -> None:
     zone = zones[0]
     assert zone.direction == "SHORT"
     assert zone.role == "PRIMARY"
-    assert zone.meta["quality"] == "STRONG"
+    assert zone.meta["reference_event_type"] == "BOS"
 
 
-def test_orderblock_weak_without_bos() -> None:
-    values = [
-        (101.0, 101.2, 100.3, 100.6),
-        (100.6, 100.7, 99.5, 99.8),
-        (99.8, 100.0, 98.9, 99.1),
-        (99.1, 99.2, 98.6, 98.8),
-        (98.8, 100.8, 98.7, 100.4),
-        (100.4, 102.2, 100.3, 101.9),
-        (101.9, 103.5, 101.7, 103.0),
-    ]
-    snapshot = _make_snapshot(values)
-    leg = (_swing(3, 98.6, "LOW"), _swing(6, 103.5, "HIGH"), "HL")
+def test_orderblock_requires_break_event() -> None:
+    snapshot, leg, _ = _long_setup()
     structure = _structure([leg], [], bias="LONG")
 
     zones = detect_order_blocks(snapshot, structure, SmcCoreConfig())
 
-    assert len(zones) == 1
-    zone = zones[0]
-    assert zone.role == "NEUTRAL"
-    assert zone.meta["quality"] == "WEAK"
+    assert zones == [], "Без BOS/CHOCH зона не створюється"
 
 
 def test_orderblock_role_aligns_with_bias() -> None:
-    values = [
-        (101.0, 101.2, 100.3, 100.6),
-        (100.6, 100.7, 99.5, 99.8),
-        (99.8, 100.0, 98.9, 99.1),
-        (99.1, 99.2, 98.6, 98.8),
-        (98.8, 100.8, 98.7, 100.4),
-        (100.4, 102.2, 100.3, 101.9),
-        (101.9, 103.5, 101.7, 103.0),
-        (103.0, 103.2, 101.4, 101.8),
-        (101.8, 101.9, 99.8, 100.2),
-        (100.2, 100.4, 98.9, 99.4),
-    ]
-    snapshot = _make_snapshot(values)
-    long_leg = (_swing(3, 98.6, "LOW"), _swing(6, 103.5, "HIGH"), "HL")
-    short_leg = (_swing(6, 103.5, "HIGH"), _swing(9, 98.9, "LOW"), "LH")
-    long_event = SmcStructureEvent(
-        event_type="BOS",
-        direction="LONG",
-        price_level=103.0,
-        time=_ts(6),
-        source_leg=SmcStructureLeg(
-            from_swing=long_leg[0], to_swing=long_leg[1], label="HL"
-        ),
-    )
-    short_event = SmcStructureEvent(
-        event_type="BOS",
-        direction="SHORT",
-        price_level=99.4,
-        time=_ts(9),
-        source_leg=SmcStructureLeg(
-            from_swing=short_leg[0], to_swing=short_leg[1], label="LH"
-        ),
-    )
-    structure = _structure(
-        [long_leg, short_leg], [long_event, short_event], bias="LONG"
-    )
+    snapshot, leg, bos_event = _long_setup()
+    primary_structure = _structure([leg], [bos_event], bias="LONG")
+    counter_structure = _structure([leg], [bos_event], bias="SHORT")
 
-    zones = detect_order_blocks(snapshot, structure, SmcCoreConfig())
+    primary_zone = detect_order_blocks(snapshot, primary_structure, SmcCoreConfig())[0]
+    counter_zone = detect_order_blocks(snapshot, counter_structure, SmcCoreConfig())[0]
 
-    assert len(zones) == 2
-    long_zone = next(z for z in zones if z.direction == "LONG")
-    short_zone = next(z for z in zones if z.direction == "SHORT")
-    assert long_zone.role == "PRIMARY"
-    assert short_zone.role == "COUNTERTREND"
+    assert primary_zone.role == "PRIMARY"
+    assert counter_zone.role == "COUNTERTREND"
 
 
 def test_orderblock_detects_bos_with_leg_copy() -> None:
-    values = [
-        (100.0, 100.2, 99.4, 99.8),
-        (99.8, 100.1, 98.8, 99.0),
-        (99.0, 100.5, 98.6, 100.1),
-        (100.1, 102.4, 100.0, 101.8),
-    ]
-    snapshot = _make_snapshot(values)
-    leg = (_swing(1, 98.8, "LOW"), _swing(3, 102.4, "HIGH"), "HL")
-    bos_event = SmcStructureEvent(
-        event_type="BOS",
-        direction="LONG",
-        price_level=101.8,
-        time=_ts(3),
+    snapshot, leg, bos_event = _long_setup()
+    copied_event = SmcStructureEvent(
+        event_type=bos_event.event_type,
+        direction=bos_event.direction,
+        price_level=bos_event.price_level,
+        time=bos_event.time,
         source_leg=SmcStructureLeg(
-            from_swing=_swing(1, 98.8, "LOW"),
-            to_swing=_swing(3, 102.4, "HIGH"),
-            label="HL",
+            from_swing=_swing(leg[0].index, leg[0].price, "LOW"),
+            to_swing=_swing(leg[1].index, leg[1].price, "HIGH"),
+            label=leg[2],
         ),
     )
-    # Події містять копію ноги, але _structure має зіставити її з leg_objs
-    structure = _structure([leg], [bos_event], bias="LONG")
+    structure = _structure([leg], [copied_event], bias="LONG")
 
     zones = detect_order_blocks(snapshot, structure, SmcCoreConfig())
 
     assert zones, "Очікуємо знайдену зону"
     zone = zones[0]
     assert zone.role == "PRIMARY"
-    assert zone.meta["has_bos"] is True
+    assert zone.meta["reference_event_type"] == "BOS"
+
+
+def test_orderblock_uses_event_history() -> None:
+    reset_structure_event_history()
+    cfg = SmcCoreConfig(
+        structure_event_history_max_minutes=120,
+        structure_event_history_max_entries=10,
+    )
+    snapshot, leg, bos_event = _long_setup()
+    EVENT_HISTORY.update_history(
+        symbol="TEST",
+        timeframe="5m",
+        events=[bos_event],
+        snapshot_end_ts=bos_event.time,
+        retention_minutes=cfg.structure_event_history_max_minutes,
+        max_entries=cfg.structure_event_history_max_entries,
+    )
+    history = EVENT_HISTORY.get_history("TEST", "5m")
+    structure = _structure([leg], [], bias="LONG", event_history=history)
+    assert not structure.events, "Структура імітує новий снапшот без свіжих подій"
+
+    zones = detect_order_blocks(snapshot, structure, cfg)
+
+    assert len(zones) == 1
+    zone = zones[0]
+    assert zone.role == "PRIMARY"
+    assert zone.reference_event_id is not None
+    assert zone.meta.get("reference_event_type") == "BOS"
+
+
+def test_orderblock_expires_with_ttl() -> None:
+    reset_structure_event_history()
+    cfg = SmcCoreConfig(
+        structure_event_history_max_minutes=30,
+        structure_event_history_max_entries=5,
+    )
+    snapshot, leg, bos_event = _long_setup()
+    EVENT_HISTORY.update_history(
+        symbol="TEST",
+        timeframe="5m",
+        events=[bos_event],
+        snapshot_end_ts=bos_event.time,
+        retention_minutes=cfg.structure_event_history_max_minutes,
+        max_entries=cfg.structure_event_history_max_entries,
+    )
+    expiry_ts = bos_event.time + pd.Timedelta(
+        minutes=cfg.structure_event_history_max_minutes + 5
+    )
+    EVENT_HISTORY.update_history(
+        symbol="TEST",
+        timeframe="5m",
+        events=[],
+        snapshot_end_ts=expiry_ts,
+        retention_minutes=cfg.structure_event_history_max_minutes,
+        max_entries=cfg.structure_event_history_max_entries,
+    )
+    history = EVENT_HISTORY.get_history("TEST", "5m")
+    assert not history, "Подія повинна вийти за TTL та зникнути"
+
+    structure = _structure([leg], [], bias="LONG", event_history=history)
+    zones = detect_order_blocks(snapshot, structure, cfg)
+
+    assert not zones, "OB не повинен відновлюватись після TTL"

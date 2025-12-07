@@ -164,7 +164,7 @@ FAST_SYMBOLS_TTL_MANUAL = 60 * 60
 # Окремий whitelist для FXCM-режиму — не змішуємо з історичними крипто-юніверсами
 FXCM_FAST_SYMBOLS = [
     "xauusd",
-    "xagusd",  # у всій системі символи зберігаємо у lower-case
+    # "xagusd",  # у всій системі символи зберігаємо у lower-case
 ]
 
 FXCM_STALE_LAG_SECONDS = 120
