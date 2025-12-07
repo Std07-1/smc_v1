@@ -79,6 +79,38 @@
 - Stage2 споживає лише PRIMARY-ролі та bridge `smc_core.liquidity_bridge.build_liquidity_hint`.
 - Перед змінами перевіряти документацію та оновлювати її синхронно зі змінами в коді.
 
+### Підсумок аудиту SMC v1 • 2025-12-7 (етапи 1–3)
+
+#### Етап 1. Каркас та типи
+
+- `SmcCoreEngine.process_snapshot()` єдину точку входу: читає `snapshot.tf_primary`, викликає `smc_structure`, `smc_liquidity`, `smc_zones`, повертає `SmcHint`.
+- Типи `SmcInput`, `SmcStructureState`, `SmcLiquidityState`, `SmcZonesState`, `SmcHint`, `SmcTrend`, `SmcRangeState`, `SmcLiquidityType`, `SmcAmdPhase`, `SmcZoneType` описані в `smc_types.py`.
+- `SmcCoreConfig` містить усі пороги (swing, range, BOS/CHOCH, OTE, OrderBlock) й синхронізований з документацією.
+
+#### Етап 2. Структура
+
+- `compute_structure_state` виконує обрізання історії, детектор свінгів, побудову HH/HL/LH/LL ніг, розрахунок ATR, BOS/CHOCH, bias, активного ренджу та OTE‑зон.
+- `structure_engine.build_legs` реалізує логіку HH/HL/LH/LL.
+- Детектор BOS/CHOCH перевіряє умову `max(ATR * bos_min_move_atr_m1, |close| * bos_min_move_pct_m1)` і визначає тип події за попереднім bias.
+- `ote_engine.build_ote_zones` генерує зони лише для ніг з амплітудою ≥ `leg_min_amplitude_atr_m1`, використовує фіболевелі 0.62–0.79, ролі PRIMARY/COUNTERTREND прив’язані до bias.
+
+#### Етап 3. Ліквідність та AMD
+
+- `compute_liquidity_state` працює з `tf_primary`, створює EQ‑пули (`build_eq_pools_from_swings`), TLQ/SLQ, range/session‑пули, викликає `sfp_wick` і формує магніти та AMD‑фазу.
+- EQH/EQL кластери вимірюють допуск `eq_tolerance_pct`, вимагають ≥2 свінги.
+- TLQ/SLQ базуються на bias і останньому свінгу; range і session пули відповідають верхній/нижній межам активного діапазону та рівням `pdh/pdl`.
+- `sfp_wick.py` детектує sweep (пробій >0.2 % з протилежним закриттям) і wick‑кластери (фітиль ≥2.5× тіла).
+- Магніти агрегують пули, наслідують найвищий пріоритет типу/ролі; ролі PRIMARY/COUNTERTREND/NEUTRAL узгоджені зі структурою.
+- FSM AMD: `ACCUMULATION` (ціна в ренджі, спокійний ATR, без нових BOS), `MANIPULATION` (відхилення + sweep), `DISTRIBUTION` (BOS у напрямку тренду, домінують TLQ/SLQ), інакше `NEUTRAL`.
+
+#### Висновки
+
+- Документація точно відповідає реалізації етапів 1–3; ключові механізми та пороги конфігуровані через `SmcCoreConfig`.
+- Вся логіка працює виключно на `snapshot.tf_primary`, без прихованих перемикань таймфреймів.
+- Ролі OTE/пулів/магнітів узгоджені, що гарантує консистентність між структурою й ліквідністю.
+- Каркас `SmcZonesState` уже інтегрований у `SmcCoreEngine`, тож етапи 1–3 готові до розширення Stage 4.
+- Документація залишається джерелом істини для подальшої розробки зон та наступних підсистем.
+
 ## Етап 4 (`smc_zones`) — перезапуск із фокусом на OB_v1
 
 - Stage1–3 завершено й задокументовано; `SmcCoreEngine.process_snapshot(...)` уже викликає `smc_zones.compute_zones_state(...)`, тому каркас і типи SmcZone зобовʼязані залишатися стабільними.

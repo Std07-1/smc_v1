@@ -3,8 +3,10 @@
 import copy
 
 import pytest
+from rich.panel import Panel
 
 from UI.experimental_viewer import SmcExperimentalViewer
+from UI.experimental_viewer_extended import SmcExperimentalViewerExtended
 
 
 def _sample_asset() -> dict:
@@ -70,6 +72,21 @@ def _sample_asset() -> dict:
                     }
                 ],
             },
+            "zones": {
+                "zones": [
+                    {
+                        "zone_type": "ORDER_BLOCK",
+                        "price_min": 2371.0,
+                        "price_max": 2373.0,
+                        "entry_hint": 2372.0,
+                        "role": "PRIMARY",
+                        "strength": 4.2,
+                        "quality": "MEDIUM",
+                    }
+                ],
+                "active_zones": [],
+                "meta": {},
+            },
         },
     }
 
@@ -88,6 +105,41 @@ def test_build_state_returns_compact_sections(tmp_path) -> None:
 
     viewer.dump_snapshot(state)
     assert viewer.snapshot_path.exists()
+
+
+def test_extended_viewer_renders_with_heatmap(tmp_path) -> None:
+    viewer = SmcExperimentalViewerExtended(
+        "xauusd", snapshot_dir=str(tmp_path), show_raw=True
+    )
+    asset = _sample_asset()
+    payload_meta = {"ts": "2025-11-25T12:10:00Z", "seq": 99}
+
+    state = viewer.build_state(asset, payload_meta)
+    panel = viewer.render_panel(state)
+
+    assert isinstance(panel, Panel)
+
+
+def test_extended_viewer_switches_between_modes(tmp_path) -> None:
+    viewer = SmcExperimentalViewerExtended("xauusd", snapshot_dir=str(tmp_path))
+    asset = _sample_asset()
+    payload_meta = {"ts": "2025-11-25T12:10:00Z", "seq": 111}
+
+    state = viewer.build_state(asset, payload_meta)
+    first_panel = viewer.render_panel(state)
+    assert isinstance(first_panel, Panel)
+    subtitle_text = first_panel.subtitle or ""
+    if hasattr(subtitle_text, "plain"):
+        subtitle_text = subtitle_text.plain  # type: ignore[assignment]
+    assert "Режим 1" in str(subtitle_text)
+
+    viewer.set_view_mode(2)
+    second_panel = viewer.render_panel(state)
+    subtitle_text = second_panel.subtitle or ""
+    if hasattr(subtitle_text, "plain"):
+        subtitle_text = subtitle_text.plain  # type: ignore[assignment]
+    assert "Режим 2" in str(subtitle_text)
+    assert viewer._history_buffer  # history має наповнюватися
 
 
 def test_price_fallbacks_to_price_str(tmp_path) -> None:

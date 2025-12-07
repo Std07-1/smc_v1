@@ -9,6 +9,8 @@ import asyncio
 import json
 import logging
 import os
+import sys
+from contextlib import suppress
 from typing import Any
 
 import redis.asyncio as redis
@@ -21,10 +23,17 @@ from config.config import (
     FXCM_FAST_SYMBOLS,
     REDIS_CHANNEL_ASSET_STATE,
     REDIS_SNAPSHOT_KEY,
+    UI_VIEWER_ALT_SCREEN,
+    UI_VIEWER_DEFAULT_MODE,
     UI_VIEWER_PROFILE,
 )
 from UI.experimental_viewer import SmcExperimentalViewer
 from UI.experimental_viewer_extended import SmcExperimentalViewerExtended
+
+try:  # Windows-only / миттєве читання натискань клавіш
+    import msvcrt  # type: ignore
+except ImportError:  # pragma: no cover - у posix середовищах відсутній
+    msvcrt = None
 
 logger = logging.getLogger("ui_consumer_experimental")
 logger.setLevel(logging.INFO)
@@ -50,6 +59,13 @@ class ExperimentalUIConsumer:
         self.console = Console(stderr=False, force_terminal=True)
         self.viewer_profile = (viewer_profile or UI_VIEWER_PROFILE).lower()
         self.viewer = self._create_viewer(snapshot_dir)
+        self._active_mode = UI_VIEWER_DEFAULT_MODE
+        if isinstance(self.viewer, SmcExperimentalViewerExtended):
+            self.viewer.set_view_mode(self._active_mode)
+            self.console.log(
+                "Гарячі клавіші viewer: [1] Основний · [2] Історія/QA",
+                style="cyan",
+            )
 
     async def redis_consumer(
         self,
@@ -78,34 +94,46 @@ class ExperimentalUIConsumer:
         logger.debug("SMC experimental viewer підписано на канал %s", channel)
 
         await asyncio.sleep(loading_delay)
-        with Live(
-            placeholder,
-            console=self.console,
-            refresh_per_second=refresh_rate,
-            screen=False,
-        ) as live:
-            while True:
-                message = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=1.0
-                )
-                if not message:
-                    await asyncio.sleep(smooth_delay)
-                    continue
-                try:
-                    data = json.loads(message.get("data"))
-                except Exception:
-                    logger.debug(
-                        "Не вдалося розпарсити payload experimental UI", exc_info=True
+        mode_task: asyncio.Task[None] | None = None
+        if isinstance(self.viewer, SmcExperimentalViewerExtended):
+            mode_task = asyncio.create_task(self._keyboard_mode_watcher())
+        try:
+            with Live(
+                placeholder,
+                console=self.console,
+                refresh_per_second=refresh_rate,
+                screen=bool(
+                    UI_VIEWER_ALT_SCREEN
+                ),  # False → ctrl+scroll та «три крапки»
+            ) as live:
+                while True:
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=1.0
                     )
-                    continue
-                asset = self._extract_asset(data)
-                if asset is None:
-                    continue
-                viewer_state = self.viewer.build_state(
-                    asset, data.get("meta") or {}, data.get("fxcm")
-                )
-                live.update(self.viewer.render_panel(viewer_state))
-                self.viewer.dump_snapshot(viewer_state)
+                    if not message:
+                        await asyncio.sleep(smooth_delay)
+                        continue
+                    try:
+                        data = json.loads(message.get("data"))
+                    except Exception:
+                        logger.debug(
+                            "Не вдалося розпарсити payload experimental UI",
+                            exc_info=True,
+                        )
+                        continue
+                    asset = self._extract_asset(data)
+                    if asset is None:
+                        continue
+                    viewer_state = self.viewer.build_state(
+                        asset, data.get("meta") or {}, data.get("fxcm")
+                    )
+                    live.update(self.viewer.render_panel(viewer_state), refresh=True)
+                    self.viewer.dump_snapshot(viewer_state)
+        finally:
+            if mode_task is not None:
+                mode_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await mode_task
 
     async def _hydrate_from_snapshot(self, redis_client: redis.Redis) -> None:
         try:
@@ -148,6 +176,40 @@ class ExperimentalUIConsumer:
     def _create_viewer(self, snapshot_dir: str) -> SmcExperimentalViewer:
         if self.viewer_profile == "extended":
             return SmcExperimentalViewerExtended(
-                symbol=self.symbol, snapshot_dir=snapshot_dir
+                symbol=self.symbol,
+                snapshot_dir=snapshot_dir,
+                view_mode=UI_VIEWER_DEFAULT_MODE,
             )
         return SmcExperimentalViewer(symbol=self.symbol, snapshot_dir=snapshot_dir)
+
+    async def _keyboard_mode_watcher(self) -> None:
+        if not isinstance(self.viewer, SmcExperimentalViewerExtended):
+            return
+        loop = asyncio.get_running_loop()
+        try:
+            while True:
+                key = await loop.run_in_executor(None, self._blocking_read_key)
+                if key not in {"1", "2"}:
+                    continue
+                next_mode = 2 if key == "2" else 1
+                if next_mode == self._active_mode:
+                    continue
+                self._active_mode = next_mode
+                self.viewer.set_view_mode(next_mode)
+                self.console.log(
+                    f"Режим viewer → {next_mode}",
+                    style="bold green",
+                )
+        except asyncio.CancelledError:  # завершення Live
+            raise
+
+    @staticmethod
+    def _blocking_read_key() -> str | None:
+        if msvcrt is not None:
+            char = msvcrt.getwch()
+            if char in {"\x00", "\xe0"}:  # службові клавіші, ігноруємо
+                msvcrt.getwch()
+                return None
+            return char
+        # POSIX / fallback — потребує підтвердження Enter
+        return sys.stdin.read(1)
