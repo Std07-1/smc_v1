@@ -51,15 +51,10 @@ __all__ = [
     "PROM_GAUGES_ENABLED",
     "PROM_HTTP_PORT",
     "SMC_BACKTEST_ENABLED",
-    "SMC_PIPELINE_ENABLED",
-    "SMC_PIPELINE_CFG",
-    "HISTORY_QA_SYMBOLS",
-    "HISTORY_QA_WARMUP_BARS",
+    "SMC_RUNTIME_PARAMS",
     "REDIS_CACHE_TTL",
     "UI_EXPERIMENTAL_VIEW_ENABLED",
     "UI_VIEWER_PROFILE",
-    "DATASTORE_WARMUP_ENABLED",
-    "DATASTORE_WARMUP_INTERVALS",
 ]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -150,14 +145,6 @@ UI_VIEWER_PROFILE: str = "extended"
 # Чи вмикати альтернативний буфер термінала для viewer (екран без прокрутки)
 UI_VIEWER_ALT_SCREEN: bool = True
 
-# Прогрів UnifiedDataStore при холодному старті (зчитуємо останні снапшоти)
-DATASTORE_WARMUP_ENABLED: bool = True
-DATASTORE_WARMUP_INTERVALS: dict[str, int] = {
-    "5m": 1500,
-    "1m": 1800,
-}
-
-
 # ── Підготовчі прапорці для WS gap‑бекфілу (за замовчуванням вимкнено) ──
 WS_GAP_BACKFILL: dict[str, int | bool] = {
     "enabled": True,
@@ -236,18 +223,15 @@ PROM_HTTP_PORT = 9108
 # SMC snapshot / backtest режим (CLI-утиліти)
 SMC_BACKTEST_ENABLED: bool = False
 
-# SMC у бойовому пайплайні Stage1 → UI (фіче-флаг; за замовчуванням вимкнено)
-SMC_PIPELINE_ENABLED: bool = True
-SMC_PIPELINE_CFG: dict[str, Any] = {
+# Робочі параметри SmcCore у Stage1 → UI
+SMC_RUNTIME_PARAMS: dict[str, Any] = {
+    "enabled": True,
     "tf_primary": "1m",
     "tfs_extra": ("5m", "15m", "1h"),
     "limit": 300,
     "max_concurrency": 4,
     "log_latency": True,
-    "qa_warmup_bars": 49,
 }
-HISTORY_QA_SYMBOLS: list[str] | None = FXCM_FAST_SYMBOLS.copy()
-HISTORY_QA_WARMUP_BARS: int = int(SMC_PIPELINE_CFG.get("qa_warmup_bars", 50))
 INTERVAL_TTL_MAP = {
     "1m": 90,
     "3m": 3 * 60,

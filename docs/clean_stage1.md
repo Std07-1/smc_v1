@@ -37,7 +37,7 @@
 
 ## Холодний старт і прогрів даних
 
-- `_warmup_datastore_from_snapshots()` читає `datastore/*_bars_<tf>_snapshot.jsonl`, якщо `DATASTORE_WARMUP_ENABLED=True`.
+- `_warmup_datastore_from_snapshots()` читає `datastore/*_bars_<tf>_snapshot.jsonl` автоматично під час bootstrap (окремий прапор не використовується).
 - Live-історія потрапляє виключно з Redis-каналу `fxcm:ohlcv`; календар/heartbeat беруться з `fxcm:heartbeat` та `fxcm:market_status`.
 - `_await_fxcm_history()` перевіряє, що для кожного whitelisted символу є хоча б `SCREENING_LOOKBACK` барів `1m`; якщо бракує — система чекає живий стрім від зовнішнього конектора.
 - Оперативний конспект warmup/ingest кроків → `docs/stage1_pipeline.md`.
@@ -84,5 +84,5 @@
 - [ ] Redis канал `ai_one:ui:asset_state` оновлюється (можна перевірити через `redis-cli MONITOR`).
 - [ ] UI consumer підхоплює schema версії `1.2` (поля `smc_hint` / `smc_structure` /
    `smc_liquidity` / `smc_zones` + новий alias `smc` доступні лише коли
-   `SMC_PIPELINE_ENABLED=True`).
+   `SMC_RUNTIME_PARAMS["enabled"]=True`).
 - [ ] Усі зміни задокументовані та покриті таргетними тестами.

@@ -102,7 +102,7 @@ pip install -r requirements.txt
   python -m UI.ui_consumer_entry
   ```
 
-  UI payload зараз у схемі `1.2`: коли `SMC_PIPELINE_ENABLED=True`, кожен актив
+  UI payload зараз у схемі `1.2`: коли `SMC_RUNTIME_PARAMS["enabled"]=True`, кожен актив
   отримає опційний alias `smc` (plain JSON), який дублює `smc_hint` і використовується
   консольним клієнтом для швидкого відображення тренду/ренджу/AMD без додаткових
   розрахунків.

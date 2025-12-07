@@ -6,7 +6,7 @@
 
 1. **Bootstrap**
    - `bootstrap()` читає `datastore.yaml`, створює `StoreConfig` і єдиний інстанс `UnifiedDataStore`.
-   - Якщо `DATASTORE_WARMUP_ENABLED=True`, викликається `_warmup_datastore_from_snapshots()` та підтягуються локальні JSONL снапшоти.
+   - `_warmup_datastore_from_snapshots()` виконується одразу після старту, прогріваючи RAM+Redis локальними JSONL снапшотами.
 2. **FXCM ingest та статус**
    - `run_fxcm_ingestor()` підписується на Redis-канал `fxcm:ohlcv` і кожен пакет від зовнішнього FXCM конектора пише у `UnifiedDataStore.put_bars()`.
    - `run_fxcm_status_listener()` слухає `fxcm:heartbeat`, `fxcm:market_status` **та `fxcm:status`** (агрегований процес/market/price/ohlcv), формуючи `FxcmFeedState` для UI/Stage1.
@@ -29,7 +29,7 @@
 
 | Крок | Що відбувається | Що контролює |
 | --- | --- | --- |
-| Snapshot warmup | `_warmup_datastore_from_snapshots()` прогріває RAM+Redis останніми файлами `datastore/*_bars_<tf>_snapshot.jsonl`. | `DATASTORE_WARMUP_ENABLED`, `DATASTORE_WARMUP_INTERVALS` |
+| Snapshot warmup | `_warmup_datastore_from_snapshots()` прогріває RAM+Redis останніми файлами `datastore/*_bars_<tf>_snapshot.jsonl`. | Bootstrap (`datastore.yaml`) |
 | Очікування стріму | `_await_fxcm_history()` чекає, поки `fxcm:ohlcv` заповнить мінімум `SCREENING_LOOKBACK` барів (`1m`) для whitelisted символів. | `SCREENING_LOOKBACK` |
 
 > Якщо стрім ще не вийшов на потрібний обсяг, Stage1 продовжує слухати канал і логувати `[FXCM Stream]` попередження до появи необхідної історії.
@@ -41,7 +41,7 @@
 | Файл | Поле | Призначення |
 | --- | --- | --- |
 | `config/config.py` | `FXCM_FAST_SYMBOLS` | whitelist Stage1 / список символів для інжесту |
-| `config/config.py` | `DATASTORE_WARMUP_*`, `SCREENING_LOOKBACK` | параметри warmup поведінки |
+| `config/config.py` | `SCREENING_LOOKBACK` | мінімальний обсяг історії для Stage1 |
 | `app/settings.py` | `Settings.fxcm_*` | HMAC / канали / host Redis для інжестора |
 | `data/datastore.yaml` | `base_dir`, `namespace`, `write_behind` | структура файлів для snapshot warmup |
 

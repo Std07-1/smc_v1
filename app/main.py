@@ -15,12 +15,12 @@
 """
 
 import asyncio
-import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,7 @@ from rich.logging import RichHandler
 
 from app.screening_producer import AssetStateManager, screening_producer
 from app.settings import load_datastore_cfg, settings
+from app.telemetry import publish_ui_metrics
 from app.utils.helper import (
     store_to_dataframe,
 )
@@ -99,6 +100,60 @@ def _create_redis_client(*, decode_responses: bool = False) -> tuple[Redis, str]
         kwargs["decode_responses"] = True
     client = Redis(**kwargs)
     return client, f"{settings.redis_host}:{settings.redis_port}"
+
+
+def _start_fxcm_tasks(store_handler: UnifiedDataStore) -> list[asyncio.Task[Any]]:
+    """Запускає інжестор, статус- та price-stream лістенери FXCM."""
+
+    tasks: list[asyncio.Task[Any]] = []
+
+    def _launch(
+        factory: Callable[[], Coroutine[Any, Any, Any]],
+        success_msg: str,
+        fail_prefix: str,
+    ) -> None:
+        try:
+            task = asyncio.create_task(factory())
+            tasks.append(task)
+            logger.info(success_msg)
+        except Exception as exc:  # pragma: no cover - best-effort захист
+            logger.warning("%s: %s", fail_prefix, exc, exc_info=True)
+
+    _launch(
+        lambda: run_fxcm_ingestor(
+            store_handler,
+            hmac_secret=settings.fxcm_hmac_secret,
+            hmac_algo=settings.fxcm_hmac_algo,
+            hmac_required=settings.fxcm_hmac_required,
+        ),
+        "[Pipeline] FXCM інжестор запущено (early)",
+        "[Pipeline] Не вдалося запустити FXCM інжестор",
+    )
+
+    _launch(
+        lambda: run_fxcm_status_listener(
+            redis_host=settings.redis_host,
+            redis_port=settings.redis_port,
+            heartbeat_channel=settings.fxcm_heartbeat_channel,
+            market_status_channel=settings.fxcm_market_status_channel,
+            status_channel=settings.fxcm_status_channel,
+        ),
+        "[Pipeline] FXCM статус-лістенер запущено",
+        "[Pipeline] Не вдалося запустити FXCM статус-лістенер",
+    )
+
+    _launch(
+        lambda: run_fxcm_price_stream_listener(
+            store_handler,
+            redis_host=settings.redis_host,
+            redis_port=settings.redis_port,
+            channel=settings.fxcm_price_tick_channel,
+        ),
+        "[Pipeline] FXCM price-stream лістенер запущено",
+        "[Pipeline] Не вдалося запустити FXCM price-stream",
+    )
+
+    return tasks
 
 
 async def bootstrap() -> UnifiedDataStore:
@@ -203,10 +258,8 @@ async def run_pipeline() -> None:
     """Основний асинхронний цикл застосунку (оркестрація компонентів)."""
     logger.info("[Pipeline] Старт run_pipeline() (FXCM режим)")
     tasks_to_run: list[asyncio.Task] = []
-    fxcm_task: asyncio.Task | None = None
-    fxcm_status_task: asyncio.Task | None = None
-    price_stream_task: asyncio.Task | None = None
     redis_conn: Redis | None = None
+    fxcm_tasks: list[asyncio.Task[Any]] = []
 
     try:
         # 1. Ініціалізація сховища та Redis
@@ -317,88 +370,24 @@ async def run_pipeline() -> None:
             logger.debug("[Pipeline] Не вдалося прив'язати монітор до datastore: %s", e)
 
         logger.info("[Pipeline] FXCM режим: legacy крипто-WSWorker не запускається")
-
-        if fxcm_task is None:
-            try:
-                fxcm_task = asyncio.create_task(
-                    run_fxcm_ingestor(
-                        ds,
-                        hmac_secret=settings.fxcm_hmac_secret,
-                        hmac_algo=settings.fxcm_hmac_algo,
-                        hmac_required=settings.fxcm_hmac_required,
-                    )
-                )
-                logger.info("[Pipeline] FXCM інжестор запущено (early)")
-            except Exception as e:
-                logger.warning(
-                    "[Pipeline] Не вдалося запустити FXCM інжестор: %s",
-                    e,
-                    exc_info=True,
-                )
-
-        if fxcm_status_task is None:
-            try:
-                fxcm_status_task = asyncio.create_task(
-                    run_fxcm_status_listener(
-                        redis_host=settings.redis_host,
-                        redis_port=settings.redis_port,
-                        heartbeat_channel=settings.fxcm_heartbeat_channel,
-                        market_status_channel=settings.fxcm_market_status_channel,
-                        status_channel=settings.fxcm_status_channel,
-                    )
-                )
-                logger.info("[Pipeline] FXCM статус-лістенер запущено")
-            except Exception as e:
-                logger.warning(
-                    "[Pipeline] Не вдалося запустити FXCM статус-лістенер: %s",
-                    e,
-                    exc_info=True,
-                )
-
-        if price_stream_task is None:
-            try:
-                price_stream_task = asyncio.create_task(
-                    run_fxcm_price_stream_listener(
-                        ds,
-                        redis_host=settings.redis_host,
-                        redis_port=settings.redis_port,
-                        channel=settings.fxcm_price_tick_channel,
-                    )
-                )
-                logger.info("[Pipeline] FXCM price-stream лістенер запущено")
-            except Exception as e:
-                logger.warning(
-                    "[Pipeline] Не вдалося запустити FXCM price-stream: %s",
-                    e,
-                    exc_info=True,
-                )
+        fxcm_tasks = _start_fxcm_tasks(ds)
 
         health_task = asyncio.create_task(noop_healthcheck())
         logger.info("[Pipeline] Healthcheck task створено")
 
-        async def ui_metrics_publisher() -> None:
-            channel = "ui.metrics"
-            logger.info("[Pipeline] Старт ui_metrics_publisher channel=%s", channel)
-            while True:
-                snap = ds.metrics_snapshot()
-                try:
-                    lru = getattr(getattr(ds, "ram", None), "_lru", None)
-                    if lru is not None:
-                        hot_symbols = list({s for (s, _i) in lru.keys()})
-                        snap["hot_symbols"] = len(hot_symbols)
-                    else:
-                        snap["hot_symbols"] = None
-                except Exception:
-                    snap["hot_symbols"] = None
-                try:
-                    redis_pub = getattr(getattr(ds, "redis", None), "r", None)
-                    if redis_pub is not None:
-                        await redis_pub.publish(channel, json.dumps(snap))
-                except Exception as e:
-                    logger.debug("[Pipeline] ui_metrics publish fail: %s", e)
-                await asyncio.sleep(5)
-
-        metrics_task = asyncio.create_task(ui_metrics_publisher())
+        redis_pub = None
+        try:
+            redis_pub = getattr(getattr(ds, "redis", None), "r", None)
+        except Exception:
+            redis_pub = None
+        metrics_task = asyncio.create_task(
+            publish_ui_metrics(
+                ds,
+                redis_pub,
+                channel="ui.metrics",
+                interval=5.0,
+            )
+        )
         logger.info("[Pipeline] Metrics publisher запущено")
 
         logger.info("[Pipeline] Ініціалізація UIConsumer...")
@@ -445,12 +434,8 @@ async def run_pipeline() -> None:
         tasks_to_run = [health_task, metrics_task]
         if prod is not None:
             tasks_to_run.append(prod)
-        if fxcm_task is not None:
-            tasks_to_run.append(fxcm_task)
-        if fxcm_status_task is not None:
-            tasks_to_run.append(fxcm_status_task)
-        if price_stream_task is not None:
-            tasks_to_run.append(price_stream_task)
+        if fxcm_tasks:
+            tasks_to_run.extend(fxcm_tasks)
 
         logger.info("[Pipeline] Запуск %d фон-виконавчих задач", len(tasks_to_run))
         logger.info(

@@ -12,7 +12,7 @@
 
 ## Stage1 Cold-start / Warmup
 
-- `bootstrap()` у `app/main.py` прогріває `UnifiedDataStore` лише зі снапшотів (`DATASTORE_WARMUP_*`).
+- `bootstrap()` у `app/main.py` прогріває `UnifiedDataStore` зі снапшотів одразу після старту (окремих прапорів більше немає).
 - Живі дані йдуть **виключно** з зовнішнього FXCM конектора через Redis канали `fxcm:ohlcv`, `fxcm:heartbeat`, `fxcm:market_status`.
 - `_await_fxcm_history()` очікує, поки стрім заповнить мінімум `SCREENING_LOOKBACK` барів на `1m`; якщо їх нема, Stage1 продовжує слухати канал, доки зовнішній конектор не надішле достатньо барів.
 - Будь-які прямі виклики біржових API/локальних warmup-скриптів у цьому репозиторії відсутні та вважаються поза межами Stage1.

@@ -29,8 +29,7 @@ from config.config import (
     FXCM_STALE_LAG_SECONDS,
     MIN_READY_PCT,
     SCREENING_BATCH_SIZE,
-    SMC_PIPELINE_CFG,
-    SMC_PIPELINE_ENABLED,
+    SMC_RUNTIME_PARAMS,
     TRADE_REFRESH_INTERVAL,
     WS_GAP_STATUS_PATH,
 )
@@ -204,7 +203,7 @@ async def _get_smc_engine() -> SmcCoreEngine | None:
     """Ліниво створює SmcCoreEngine при першому зверненні."""
 
     global _SMC_ENGINE
-    if not SMC_PIPELINE_ENABLED:
+    if not SMC_RUNTIME_PARAMS.get("enabled", True):
         return None
     if _SMC_ENGINE is not None:
         return _SMC_ENGINE
@@ -225,7 +224,7 @@ def _get_smc_plain_serializer() -> Callable[[Any], dict[str, Any] | None] | None
     """Повертає to_plain_smc_hint із core без глобального імпорту під час старту."""
 
     global _SMC_TO_PLAIN
-    if not SMC_PIPELINE_ENABLED:
+    if not SMC_RUNTIME_PARAMS.get("enabled", True):
         return None
     if _SMC_TO_PLAIN is not None:
         return _SMC_TO_PLAIN
@@ -245,16 +244,17 @@ async def _build_smc_hint(
 ) -> SmcHint | None:
     """Формує SmcHint для символу, не впливаючи на Stage1 при помилках."""
 
-    if not SMC_PIPELINE_ENABLED:
+    params = SMC_RUNTIME_PARAMS
+    if not params.get("enabled", True):
         return None
 
     try:
-        tf_primary = str(SMC_PIPELINE_CFG.get("tf_primary", "1m"))
-        tfs_extra_cfg = SMC_PIPELINE_CFG.get("tfs_extra", ("5m", "15m", "1h"))
+        tf_primary = str(params.get("tf_primary", "1m"))
+        tfs_extra_cfg = params.get("tfs_extra", ("5m", "15m", "1h"))
         tfs_extra = tuple(tfs_extra_cfg)
-        limit = int(SMC_PIPELINE_CFG.get("limit", 300))
+        limit = int(params.get("limit", 300))
     except Exception as exc:
-        logger.debug("[SMC] Некоректний SMC_PIPELINE_CFG: %s", exc)
+        logger.debug("[SMC] Некоректні SMC_RUNTIME_PARAMS: %s", exc)
         return None
 
     try:
@@ -283,7 +283,7 @@ async def _build_smc_hint(
         return None
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
-    if SMC_PIPELINE_CFG.get("log_latency", False):
+    if params.get("log_latency", False):
         liq = getattr(hint, "liquidity", None)
         meta = getattr(liq, "meta", {}) if liq is not None else {}
         pool_count = meta.get("pool_count")
@@ -478,7 +478,7 @@ async def process_asset_batch(
 
             # Додаємо SMC hint, якщо можливо
             smc_hint = None
-            if SMC_PIPELINE_ENABLED:
+            if SMC_RUNTIME_PARAMS.get("enabled", True):
                 try:
                     smc_hint = await _build_smc_hint(symbol=symbol, store=store)
                 except Exception as exc:  # pragma: no cover - захист від edge-case
