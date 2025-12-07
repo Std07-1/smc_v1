@@ -99,6 +99,8 @@ async def publish_full_state(  # type: ignore
     state_manager: AssetStateManagerProto,
     cache_handler: object,
     redis_conn: Redis[str],
+    *,
+    meta_extra: dict[str, Any] | None = None,
 ) -> None:
     """Публікує агрегований стан активів у Redis одним повідомленням.
 
@@ -116,6 +118,8 @@ async def publish_full_state(  # type: ignore
         state_manager: Постачальник станів активів (має метод ``get_all_assets()``).
         cache_handler: Резервний параметр для майбутнього кешу (не використовується).
         redis_conn: Підключення до Redis із методами ``publish`` та ``set``.
+        meta_extra: Опційний словник для додаткових метаданих циклу (наприклад,
+            ``cycle_seq`` або ``cycle_started_ts``), що потраплять у ``payload.meta``.
 
     Returns:
         None: Побічно публікує повідомлення у канал і зберігає снапшот у Redis.
@@ -793,16 +797,40 @@ async def publish_full_state(  # type: ignore
             except Exception:
                 fxcm_summary = None
 
+        seq_override: int | None = None
+        if meta_extra:
+            for key in ("cycle_seq", "seq"):
+                candidate = meta_extra.get(key)
+                if isinstance(candidate, (int, float)):
+                    seq_override = int(candidate)
+                    break
+        if seq_override is not None:
+            _SEQ = seq_override
+        else:
+            _SEQ = (_SEQ + 1) if _SEQ < 2**31 - 1 else 1
+            seq_override = _SEQ
+
         payload = {
             "type": REDIS_CHANNEL_ASSET_STATE,
             "meta": {
                 "ts": datetime.utcnow().isoformat() + "Z",
-                "seq": _SEQ,
+                "seq": seq_override,
                 "schema_version": UI_PAYLOAD_SCHEMA_VERSION,
             },
             "counters": counters,
             "assets": serialized_assets,
         }
+        if meta_extra:
+            meta_block = payload["meta"]
+            if "ts" in meta_extra and meta_extra["ts"]:
+                meta_block["ts"] = meta_extra["ts"]
+            meta_block.setdefault("cycle_seq", seq_override)
+            for key, value in meta_extra.items():
+                if key in ("seq", "cycle_seq"):
+                    continue
+                meta_block[key] = value
+        else:
+            payload["meta"]["cycle_seq"] = seq_override
         if isinstance(fxcm_summary, dict):
             payload["meta"]["fxcm"] = fxcm_summary
         if analytics_summary:

@@ -268,8 +268,15 @@ class UIConsumer:
                         self._display_results = self._last_results
                     self._last_counters = snap.get("counters", {}) or {}
                     self._consume_fxcm_block(self._extract_meta_fxcm(snap))
-                    meta_ts = snap.get("meta", {}).get("ts")
-                    meta_seq = snap.get("meta", {}).get("seq")
+                    meta_block = snap.get("meta", {}) or {}
+                    meta_ts = (
+                        meta_block.get("cycle_ready_ts")
+                        or meta_block.get("cycle_started_ts")
+                        or meta_block.get("ts")
+                    )
+                    meta_seq = meta_block.get("cycle_seq")
+                    if meta_seq is None:
+                        meta_seq = meta_block.get("seq")
                     if meta_ts:
                         try:
                             # Інтерпретуємо UTC-час коректно (Z → +00:00)
@@ -333,8 +340,15 @@ class UIConsumer:
                         if isinstance(data, dict) and "assets" in data:
                             # Строгий контроль послідовності: приймаємо лише якщо seq монотонно зростає.
                             try:
-                                meta_ts_raw = data.get("meta", {}).get("ts")
-                                meta_seq = data.get("meta", {}).get("seq")
+                                meta_block = data.get("meta", {}) or {}
+                                meta_ts_raw = (
+                                    meta_block.get("cycle_ready_ts")
+                                    or meta_block.get("cycle_started_ts")
+                                    or meta_block.get("ts")
+                                )
+                                meta_seq = meta_block.get("cycle_seq")
+                                if meta_seq is None:
+                                    meta_seq = meta_block.get("seq")
                                 incoming_ts = None
                                 if meta_ts_raw:
                                     incoming_ts = datetime.fromisoformat(

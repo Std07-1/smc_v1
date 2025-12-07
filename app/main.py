@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Coroutine
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -423,7 +424,16 @@ async def run_pipeline() -> None:
 
         logger.info("[Pipeline] Публікація початкового стану в Redis...")
         try:
-            await publish_full_state(state_manager, ds, redis_conn)
+            await publish_full_state(
+                state_manager,
+                ds,
+                redis_conn,
+                meta_extra={
+                    "cycle_seq": -1,
+                    "cycle_started_ts": datetime.utcnow().isoformat() + "Z",
+                    "cycle_reason": "pipeline_bootstrap",
+                },
+            )
             logger.info("[Pipeline] Початковий стан опубліковано успішно")
 
         except Exception as e:

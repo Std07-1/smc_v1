@@ -64,7 +64,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         return Panel(
             layout,
             title=title,
-            subtitle="Режим 1 · Session view",
+            subtitle="Session view",
             border_style="magenta",
         )
 

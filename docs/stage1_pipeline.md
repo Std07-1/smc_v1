@@ -15,6 +15,7 @@
    - `screening_producer` обходить `FXCM_FAST_SYMBOLS`, збирає стани та передає їх у `UI.publish_full_state`.
 4. **UI/споживачі**
    - `publish_full_state` кладе snapshot у `ai_one:ui:snapshot` та публікує його в `ai_one:ui:asset_state`.
+   - `meta` у payload тепер містить `cycle_seq`, `cycle_started_ts` та `cycle_ready_ts`, що дозволяє UI синхронізуватись із циклами `screening_producer` без дрібних розсинхронів.
    - `UI.ui_consumer_entry` або experimental viewer читають той самий payload.
 
 ## 2. Єдине джерело даних

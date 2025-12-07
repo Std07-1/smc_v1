@@ -15,6 +15,7 @@ import importlib
 import logging
 import time
 from collections.abc import Callable
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from redis.asyncio import Redis
@@ -73,6 +74,11 @@ def _fxcm_symbols() -> set[str]:
     if not FXCM_FAST_SYMBOLS:
         return set()
     return {sym.lower() for sym in FXCM_FAST_SYMBOLS if sym}
+
+
+def _utc_iso(ts: float | None = None) -> str:
+    base = datetime.utcfromtimestamp(ts if ts is not None else time.time())
+    return base.isoformat() + "Z"
 
 
 def _build_fxcm_status_payload(
@@ -534,6 +540,8 @@ async def screening_producer(
         state_manager.init_asset(sym)
     logger.info(f"Ініціалізовано стан для {len(assets_current)} активів")
 
+    cycle_seq = 0
+
     # Забезпечуємо доступ кешу до UnifiedDataStore через state_manager.cache (для публікацій у Redis)
     try:
         if getattr(state_manager, "cache", None) is None:
@@ -541,9 +549,20 @@ async def screening_producer(
     except Exception:
         pass
 
-    await publish_full_state(state_manager, store, redis_conn)
+    await publish_full_state(
+        state_manager,
+        store,
+        redis_conn,
+        meta_extra={
+            "cycle_seq": cycle_seq,
+            "cycle_started_ts": _utc_iso(),
+            "cycle_reason": "bootstrap",
+        },
+    )
     while True:
         start_time = time.time()
+        cycle_seq += 1
+        cycle_started_ts = start_time
         try:
             new_assets_raw = await store_fast_symbols.get_fast_symbols()
             if new_assets_raw:
@@ -602,7 +621,17 @@ async def screening_producer(
                         len(not_ready),
                     )
                 # Публікуємо частковий стан, щоб UI одразу побачив NO_DATA
-                await publish_full_state(state_manager, store, redis_conn)
+                await publish_full_state(
+                    state_manager,
+                    store,
+                    redis_conn,
+                    meta_extra={
+                        "cycle_seq": cycle_seq,
+                        "cycle_started_ts": _utc_iso(cycle_started_ts),
+                        "cycle_ready_ts": _utc_iso(),
+                        "cycle_reason": "insufficient_data",
+                    },
+                )
             except Exception as e:
                 logger.error("Помилка під час оновлення NO_DATA: %s", str(e))
             await asyncio.sleep(interval_sec)
@@ -630,8 +659,21 @@ async def screening_producer(
         except Exception as e:
             logger.error(f"Критична помилка Stage1: {str(e)}")
 
+        cycle_ready_ts = time.time()
+        cycle_meta = {
+            "cycle_seq": cycle_seq,
+            "cycle_started_ts": _utc_iso(cycle_started_ts),
+            "cycle_ready_ts": _utc_iso(cycle_ready_ts),
+            "cycle_compute_ms": round((cycle_ready_ts - cycle_started_ts) * 1000.0, 2),
+            "cycle_reason": "screening",
+        }
         logger.info("📢 Публікація стану активів...")
-        await publish_full_state(state_manager, store, redis_conn)
+        await publish_full_state(
+            state_manager,
+            store,
+            redis_conn,
+            meta_extra=cycle_meta,
+        )
 
         processing_time = time.time() - start_time
         logger.info(

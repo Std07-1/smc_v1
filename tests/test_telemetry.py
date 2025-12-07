@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections import OrderedDict
-
-import pytest
 
 from app.telemetry import publish_ui_metrics
 
@@ -33,8 +32,11 @@ class DummyStore:
         return {"tick": 1}
 
 
-@pytest.mark.asyncio
-async def test_publish_ui_metrics_enriches_payload_with_hot_symbols() -> None:
+def test_publish_ui_metrics_enriches_payload_with_hot_symbols() -> None:
+    asyncio.run(_run_hot_symbols_case())
+
+
+async def _run_hot_symbols_case() -> None:
     store = DummyStore(
         [
             ("xauusd", "1m"),
@@ -59,8 +61,11 @@ async def test_publish_ui_metrics_enriches_payload_with_hot_symbols() -> None:
     assert data["hot_symbols"] == 2
 
 
-@pytest.mark.asyncio
-async def test_publish_ui_metrics_handles_absent_redis() -> None:
+def test_publish_ui_metrics_handles_absent_redis() -> None:
+    asyncio.run(_run_absent_redis_case())
+
+
+async def _run_absent_redis_case() -> None:
     store = DummyStore(None)
     # Перевіряємо, що цикл завершується навіть без Redis публішера
     await publish_ui_metrics(store, None, iteration_limit=1, interval=0.0)  # type: ignore
