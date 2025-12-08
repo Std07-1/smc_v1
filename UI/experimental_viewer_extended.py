@@ -34,6 +34,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         events = self._build_events_with_delta(viewer_state)
         ote = self._build_ote_with_delta(viewer_state)
         pools = self._build_liquidity_heatmap(viewer_state)
+        magnets_panel = self._build_magnets_panel(viewer_state)
 
         fxcm_panel = self._build_fxcm_panel(viewer_state)
         top_panels = [summary, session_block]
@@ -48,6 +49,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
 
         right_stack = Table.grid(expand=True)
         right_stack.add_row(pools)
+        right_stack.add_row(magnets_panel)
         right_stack.add_row(zones_panel)
 
         body_row = Columns([left_stack, right_stack], expand=True)
@@ -237,36 +239,24 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
     def _build_zone_inspector(self, viewer_state: dict[str, Any]) -> Panel:
         zones_block = viewer_state.get("zones", {})
         raw_block = zones_block.get("raw") if isinstance(zones_block, dict) else None
-        zones = []
-        if isinstance(raw_block, dict):
-            payload = raw_block.get("zones")
-            if isinstance(payload, list):
-                zones = payload
+        all_zones = self._extract_zone_list(raw_block, "zones")
+        active_zones = self._extract_zone_list(raw_block, "active_zones")
         price_ref = self._safe_float(viewer_state.get("price"))
-        table = Table(title="Zones / POI", expand=True)
-        table.add_column("Тип")
-        table.add_column("Role")
-        table.add_column("Entry")
-        table.add_column("Δ")
-        table.add_column("Quality")
-        if not zones:
-            table.add_row("-", "-", "-", "-", "-")
-            return Panel(table, border_style="magenta")
-        ranked = sorted(
-            zones,
-            key=lambda item: self._safe_float(item.get("strength")) or 0.0,
-            reverse=True,
-        )
-        for zone in ranked[:3]:
-            entry = zone.get("entry_hint") or zone.get("price_min")
-            table.add_row(
-                str(zone.get("zone_type")),
-                str(zone.get("role")),
-                self._format_price(entry),
-                self._format_delta(entry, price_ref, prefix=False),
-                str(zone.get("quality") or zone.get("bias_at_creation") or "-"),
+
+        grid = Table.grid(expand=True)
+        grid.add_row(
+            self._render_zone_table(
+                title="Загальний список зон", zones=all_zones, price_ref=price_ref
             )
-        return Panel(table, border_style="magenta")
+        )
+        grid.add_row(
+            self._render_zone_table(
+                title="Active zones (time + distance)",
+                zones=active_zones,
+                price_ref=price_ref,
+            )
+        )
+        return Panel(grid, border_style="magenta", title="Zones / POI")
 
     def _format_delta(
         self, target: Any, price_ref: float | None, *, prefix: bool = False
@@ -277,6 +267,83 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         delta = value - price_ref
         formatted = f"{delta:+.2f}"
         return f"Δ={formatted}" if prefix else formatted
+
+    def _extract_zone_list(
+        self, raw_block: dict[str, Any] | None, key: str
+    ) -> list[dict[str, Any]]:
+        if not isinstance(raw_block, dict):
+            return []
+        payload = raw_block.get(key)
+        if isinstance(payload, list):
+            return payload
+        return []
+
+    def _render_zone_table(
+        self, *, title: str, zones: list[dict[str, Any]], price_ref: float | None
+    ) -> Table:
+        table = Table(title=title, expand=True)
+        table.add_column("Тип")
+        table.add_column("Role")
+        table.add_column("Entry")
+        table.add_column("Δ")
+        table.add_column("Quality")
+        if not zones:
+            table.add_row("-", "-", "-", "-", "-")
+            return table
+        ranked = sorted(
+            zones,
+            key=lambda item: self._safe_float(item.get("strength")) or 0.0,
+            reverse=True,
+        )
+        for zone in ranked[:4]:
+            entry = (
+                zone.get("entry_hint") or zone.get("price_min") or zone.get("price_max")
+            )
+            table.add_row(
+                str(zone.get("zone_type")),
+                str(zone.get("role")),
+                self._format_price(entry),
+                self._format_delta(entry, price_ref, prefix=False),
+                str(zone.get("quality") or zone.get("bias_at_creation") or "-"),
+            )
+        return table
+
+    def _build_magnets_panel(self, viewer_state: dict[str, Any]) -> Panel:
+        liquidity = viewer_state.get("liquidity") or {}
+        magnets = liquidity.get("magnets") or []
+        price_ref = self._safe_float(viewer_state.get("price"))
+        table = Table(title="Magnets", expand=True)
+        table.add_column("Центр")
+        table.add_column("Δ")
+        table.add_column("Діапазон")
+        table.add_column("Role")
+        table.add_column("Сила")
+        if not magnets:
+            table.add_row("-", "-", "-", "-", "-")
+            return Panel(table, border_style="green")
+        for magnet in magnets[:5]:
+            center = magnet.get("center")
+            table.add_row(
+                self._format_price(center),
+                self._format_delta(center, price_ref, prefix=False),
+                self._format_price_range(
+                    magnet.get("price_min"), magnet.get("price_max")
+                ),
+                str(magnet.get("role")),
+                self._format_price(magnet.get("strength")),
+            )
+        return Panel(table, border_style="green")
+
+    def _format_price_range(self, lower: Any, upper: Any) -> str:
+        lower_str = self._format_price(lower)
+        upper_str = self._format_price(upper)
+        if lower_str == "-" and upper_str == "-":
+            return "-"
+        if lower_str == "-":
+            return upper_str
+        if upper_str == "-":
+            return lower_str
+        return f"{lower_str} → {upper_str}"
 
     def _format_timeline_item(self, event: dict[str, Any]) -> dict[str, str]:
         label = f"{event.get('type','?')} → {event.get('direction','?')}"
