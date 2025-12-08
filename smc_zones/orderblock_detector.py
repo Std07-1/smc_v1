@@ -22,10 +22,54 @@ from smc_core.smc_types import (
 # ───────────────────────────── Логування ─────────────────────────────
 logger = logging.getLogger("smc_zones.orderblock_detector")
 if not logger.handlers:  # захист від повторної ініціалізації
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     # show_path=True для відображення файлу/рядка у WARN/ERROR
     logger.addHandler(RichHandler(console=Console(stderr=True), show_path=True))
     logger.propagate = False
+
+
+def _calc_duration_seconds(start: Any, end: Any) -> float | None:
+    if start is None or end is None:
+        return None
+    try:
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+    except Exception:
+        return None
+    if pd.isna(start_ts) or pd.isna(end_ts):
+        return None
+    delta = end_ts - start_ts
+    return max(delta.total_seconds(), 0.0)
+
+
+def _leg_log_context(
+    leg: SmcStructureLeg, extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    context = dict(extra or {})
+    context["leg_label"] = getattr(leg, "label", "UNKNOWN")
+    from_swing = getattr(leg, "from_swing", None)
+    to_swing = getattr(leg, "to_swing", None)
+    if from_swing is not None:
+        context["leg_from_index"] = getattr(from_swing, "index", None)
+        if getattr(from_swing, "price", None) is not None:
+            context["leg_from_price"] = float(from_swing.price)
+        if getattr(from_swing, "time", None) is not None:
+            context["leg_from_time"] = _format_ts(from_swing.time)
+    if to_swing is not None:
+        context["leg_to_index"] = getattr(to_swing, "index", None)
+        if getattr(to_swing, "price", None) is not None:
+            context["leg_to_price"] = float(to_swing.price)
+        if getattr(to_swing, "time", None) is not None:
+            context["leg_to_time"] = _format_ts(to_swing.time)
+    leg_duration = _calc_duration_seconds(
+        getattr(from_swing, "time", None), getattr(to_swing, "time", None)
+    )
+    if leg_duration is not None:
+        context["leg_duration_sec"] = leg_duration
+    direction = _leg_direction(leg)
+    if direction is not None:
+        context["leg_direction"] = direction
+    return context
 
 
 def detect_order_blocks(
@@ -100,6 +144,15 @@ def detect_order_blocks(
                 float(leg.to_swing.price),
                 _format_ts(leg.from_swing.time),
                 _format_ts(leg.to_swing.time),
+                extra=_leg_log_context(
+                    leg,
+                    {
+                        "symbol": snapshot.symbol,
+                        "tf": snapshot.tf_primary,
+                        "bar_count": bar_count,
+                        "leg_max_bars": cfg.ob_leg_max_bars,
+                    },
+                ),
             )
             continue
 
@@ -113,6 +166,16 @@ def detect_order_blocks(
                 float(leg.to_swing.price),
                 _format_ts(leg.from_swing.time),
                 _format_ts(leg.to_swing.time),
+                extra=_leg_log_context(
+                    leg,
+                    {
+                        "symbol": snapshot.symbol,
+                        "tf": snapshot.tf_primary,
+                        "atr": atr,
+                        "ob_leg_min_atr_mul": cfg.ob_leg_min_atr_mul,
+                        "leg_amplitude": amplitude,
+                    },
+                ),
             )
             continue
         if amplitude <= 0:
@@ -120,12 +183,36 @@ def detect_order_blocks(
 
         candidate_pos = _find_ob_candidate(frame, start_pos, direction, cfg)
         if candidate_pos is None:
-            logger.debug("OB_v1: не знайдено candlestick для ноги %s", leg.label)
+            logger.debug(
+                "OB_v1: не знайдено candlestick для ноги %s",
+                leg.label,
+                extra=_leg_log_context(
+                    leg,
+                    {
+                        "symbol": snapshot.symbol,
+                        "tf": snapshot.tf_primary,
+                        "prelude_max_bars": cfg.ob_prelude_max_bars,
+                    },
+                ),
+            )
             continue
 
         break_event = _leg_break_event(structure_events, leg, direction)
         if break_event is None:
-            logger.debug("OB_v1: немає break події для ноги %s", leg.label)
+            """
+            logger.debug(
+                "OB_v1: немає break події для ноги %s",
+                leg.label,
+                extra=_leg_log_context(
+                    leg,
+                    {
+                        "symbol": snapshot.symbol,
+                        "tf": snapshot.tf_primary,
+                        "structure_events": len(structure_events),
+                    },
+                ),
+            )
+            """
             continue
         zone = _build_zone_from_row(
             snapshot=snapshot,
@@ -141,7 +228,19 @@ def detect_order_blocks(
             cfg=cfg,
         )
         if zone is None:
-            logger.debug("OB_v1: побудова зони провалена для ноги %s", leg.label)
+            logger.debug(
+                "OB_v1: побудова зони провалена для ноги %s",
+                leg.label,
+                extra=_leg_log_context(
+                    leg,
+                    {
+                        "symbol": snapshot.symbol,
+                        "tf": snapshot.tf_primary,
+                        "candidate_pos": candidate_pos,
+                        "direction": direction,
+                    },
+                ),
+            )
             continue
 
         logger.info(
@@ -152,6 +251,14 @@ def detect_order_blocks(
                 "zone_id": zone.zone_id,
                 "direction": zone.direction,
                 "role": zone.role,
+                **_leg_log_context(
+                    leg,
+                    {
+                        "bar_count": bar_count,
+                        "amplitude": amplitude,
+                        "candidate_pos": candidate_pos,
+                    },
+                ),
             },
         )
         zones.append(zone)

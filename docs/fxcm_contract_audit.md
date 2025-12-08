@@ -13,7 +13,7 @@
    - `run_fxcm_ingestor` (`data/fxcm_ingestor.py`) підписується на `fxcm:ohlcv`, валідує HMAC, перетворює на `DataFrame` та викликає `UnifiedDataStore.put_bars()`. Додатково він викликає `note_fxcm_bar_close()` щоб передати час останнього бара в `FxcmFeedState`.
    - `run_fxcm_status_listener` (`data/fxcm_status_listener.py`) підписується одночасно на `fxcm:heartbeat` та `fxcm:market_status`, парсить payload через `parse_fxcm_*` і оновлює глобальну структуру `FxcmFeedState`.
 4. **Оркестрація**: `app/main.py` створює обидва лістенери під час `run_pipeline()` і зберігає стан у `UnifiedDataStore`. Цей стан далі публікується у канал `ui.metrics` (див. `ui_metrics_publisher`).
-5. **UI / Stage1** отримують метрики через `UnifiedDataStore.metrics_snapshot()` → `publish_full_state()` / `UIConsumer`, а Stage1 використовує самі OHLCV-бари з цього ж сховища.
+5. **UI / Stage1** отримують метрики через `UnifiedDataStore.metrics_snapshot()` → `publish_full_state()` / `UI.experimental_viewer_extended`, а Stage1 використовує самі OHLCV-бари з цього ж сховища.
 
 ## 2. Контракт `fxcm:ohlcv`
 
@@ -133,7 +133,7 @@
 1. `UnifiedDataStore.metrics_snapshot()` вбудовує `FxcmFeedState.to_metrics_dict()` у ключ `fxcm` (див. `data/unified_store.py`). Цей зріз викликається:
    - у `app/main.py` (функція `ui_metrics_publisher`) кожні 5 секунд → Redis канал `ui.metrics` (через `redis_pub.publish`).
    - у `UI.publish_full_state.publish_full_state()` під час формування повного snapshot для UI (викликається при запуску та за запитом Stage1).
-2. UI (клас `SmcExperimentalViewer` або стандартний `UIConsumer`) читає ці значення та відображає: `Market`, `Process`, `Lag`, `Last close`, `Next open` та ін. Починаючи з оновлення 2025-12, поле `Next open` показує фактичний timestamp лише коли ринок закритий; при `market_state="open"` відображається дефіс, навіть якщо календар повертає наступний слот. Extended viewer дублює цю поведінку в рядку «Наступне відкриття».
+2. UI (клас `SmcExperimentalViewer` / `SmcExperimentalViewerExtended`) читає ці значення та відображає: `Market`, `Process`, `Lag`, `Last close`, `Next open` тощо. Починаючи з оновлення 2025-12, поле `Next open` показує фактичний timestamp лише коли ринок закритий; при `market_state="open"` відображається дефіс, навіть якщо календар повертає наступний слот. Extended viewer дублює цю поведінку в рядку «Наступне відкриття».
 3. Stage1/Stage2 користуються самими даними (`UnifiedDataStore`) для аналізу барів; логіка ризик-менеджменту також може використовувати `fxcm` метрики для перевірки затримок та стану ринку.
 4. Після оновлення 2025-12 `fxcm`-блок додатково містить `heartbeat_ts`, `market_status_ts`, `published_bars`, `stream_targets` та `session`, що дозволяє UI диференціювати джерело затримки (немає heartbeat ≠ немає OHLCV) і бачити актуальний профіль торгової сесії.
 

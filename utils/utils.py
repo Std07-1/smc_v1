@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from datetime import datetime, time
 from typing import Any
 
@@ -31,7 +31,6 @@ from config.config import (
     TICK_SIZE_BRACKETS,
     TICK_SIZE_DEFAULT,
     TICK_SIZE_MAP,
-    TRIGGER_NAME_MAP,
 )
 from config.constants import ASSET_STATE
 
@@ -458,34 +457,6 @@ def ensure_epoch_ms_columns(
                 pass
 
     return out if changed else df
-
-
-def normalize_trigger_reasons(reasons: Iterable[str] | None) -> list[str]:
-    """Нормалізує список причин-тригерів до канонічних коротких імен.
-
-    Операції:
-      - trim + lower для кожного елементу,
-      - мапінг через TRIGGER_NAME_MAP,
-      - унікалізація зі збереженням порядку.
-
-    Args:
-        reasons: Список/кортеж сирих назв тригерів.
-
-    Returns:
-        list[str]: Впорядкований список уніфікованих імен.
-    """
-    if not reasons:
-        return []
-    seen: set[str] = set()
-    out: list[str] = []
-    for raw in reasons:
-        key = str(raw).strip().lower()
-        std = TRIGGER_NAME_MAP.get(key, key)
-        if std and std not in seen:
-            out.append(std)
-            seen.add(std)
-    _logger.debug("normalize_trigger_reasons: in=%r → out=%r", list(reasons), out)
-    return out
 
 
 # ── Форматування (обсяг, OI, ціна) ──────────────────────────────────────────

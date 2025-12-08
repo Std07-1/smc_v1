@@ -34,27 +34,24 @@ __all__ = [
     "MIN_READY_PCT",
     "TRADE_REFRESH_INTERVAL",
     "WS_GAP_STATUS_PATH",
-    "ASSET_TRIGGER_FLAGS",
-    "STAGE1_METRICS_BATCH",
-    "STAGE1_MONITOR_PARAMS",
-    "STAGE1_BEARISH_REASON_BONUS",
-    "STAGE1_BEARISH_TRIGGER_TAGS",
-    "USE_VOL_ATR",
-    "DIRECTIONAL_PARAMS",
     "INTERVAL_TTL_MAP",
     "TICK_SIZE_MAP",
     "TICK_SIZE_BRACKETS",
     "TICK_SIZE_DEFAULT",
-    "TRIGGER_NAME_MAP",
-    "TRIGGER_TP_SL_SWAP_LONG",
-    "TRIGGER_TP_SL_SWAP_SHORT",
     "PROM_GAUGES_ENABLED",
     "PROM_HTTP_PORT",
     "SMC_BACKTEST_ENABLED",
     "SMC_RUNTIME_PARAMS",
     "REDIS_CACHE_TTL",
-    "UI_EXPERIMENTAL_VIEW_ENABLED",
-    "UI_VIEWER_PROFILE",
+    "REDIS_CHANNEL_SMC_STATE",
+    "REDIS_SNAPSHOT_KEY_SMC",
+    "UI_SMC_PAYLOAD_SCHEMA_VERSION",
+    "UI_SMC_SNAPSHOT_TTL_SEC",
+    "UI_VIEWER_ALT_SCREEN_ENABLED",
+    "UI_VIEWER_SNAPSHOT_DIR",
+    "SMC_PIPELINE_ENABLED",
+    "SMC_REFRESH_INTERVAL",
+    "SMC_BATCH_SIZE",
 ]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -119,11 +116,11 @@ REDIS_CACHE_TTL = 15 * 60
 # ──────────────────────────────────────────────────────────────────────────────
 # REDIS: КАНАЛИ ТА КЛЮЧІ
 # ──────────────────────────────────────────────────────────────────────────────
-#: Канал публікації агрегованого стану активів для UI-консюмера (нова схема v2)
-REDIS_CHANNEL_ASSET_STATE: str = f"{NAMESPACE}:ui:asset_state"
+#: Канал публікації чистого SMC-стану
+REDIS_CHANNEL_SMC_STATE: str = f"{NAMESPACE}:ui:smc_state"
 
-#: Ключ для зберігання останнього знімка стану (для «холодного» старту UI)
-REDIS_SNAPSHOT_KEY: str = f"{NAMESPACE}:ui:snapshot"
+#: Ключ снапшота для SMC-пайплайна
+REDIS_SNAPSHOT_KEY_SMC: str = f"{NAMESPACE}:ui:smc_snapshot"
 
 #: Канал для адмін-команд (узгоджено з AdminCfg.commands_channel)
 ADMIN_COMMANDS_CHANNEL: str = f"{NAMESPACE}:admin:commands"
@@ -134,16 +131,13 @@ STATS_HEALTH_KEY: str = f"{NAMESPACE}:stats:health"
 
 # TTL для ключів (секунди)
 UI_SNAPSHOT_TTL_SEC: int = 180
+UI_SMC_SNAPSHOT_TTL_SEC: int = 180
 
 # Версія схеми UI payload (для консюмерів/міграцій)
 UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
-
-# Опційний рендерер (SMC viewer) — вимкнено за замовчуванням
-UI_EXPERIMENTAL_VIEW_ENABLED: bool = True
-# Профіль experimental viewer: "standard" (поточна версія) або "extended"
-UI_VIEWER_PROFILE: str = "extended"
-# Чи вмикати альтернативний буфер термінала для viewer (екран без прокрутки)
-UI_VIEWER_ALT_SCREEN: bool = True
+UI_SMC_PAYLOAD_SCHEMA_VERSION: str = "1.2"
+UI_VIEWER_ALT_SCREEN_ENABLED: bool = True
+UI_VIEWER_SNAPSHOT_DIR: str = "tmp"
 
 # ── Підготовчі прапорці для WS gap‑бекфілу (за замовчуванням вимкнено) ──
 WS_GAP_BACKFILL: dict[str, int | bool] = {
@@ -185,35 +179,10 @@ DEFAULT_LOOKBACK = 3
 DEFAULT_TIMEZONE = "UTC"
 MIN_READY_PCT = 0.6
 TRADE_REFRESH_INTERVAL = 3  # цикл Stage1 синхронізовано з 2–3 сек FXCM тиками
-ASSET_TRIGGER_FLAGS = {
-    "volume_spike": False,
-    "breakout": False,
-    "volatility_spike": False,
-    "rsi": False,
-    "vwap_deviation": False,
-}
-STAGE1_METRICS_BATCH = 15
-STAGE1_MONITOR_PARAMS = {
-    "vol_z_threshold": 2.2,
-    "rsi_overbought": 68.0,
-    "rsi_oversold": 32.0,
-    "dynamic_rsi_multiplier": 1.1,
-    "min_reasons_for_alert": 2,
-    "atr_low_gate": 0.0035,
-    "atr_high_gate": 0.015,
-    "vwap_deviation": 0.02,
-    "min_atr_percent": 0.0008,
-}
-STAGE1_BEARISH_REASON_BONUS = 0.15
-STAGE1_BEARISH_TRIGGER_TAGS = (
-    "whale_dump",
-    "liquidity_sweep_down",
-)
-USE_VOL_ATR = True
-DIRECTIONAL_PARAMS = {
-    "w_short": 3,
-    "min_total_volume": 250_000.0,
-}
+SMC_REFRESH_INTERVAL = 5  # окремий цикл для SmcCore без Stage1 логіки
+SMC_BATCH_SIZE = 12
+SMC_PIPELINE_ENABLED = True
+
 
 # ───────────────────────────── Логування / Метрики ───────────────────────────
 
@@ -241,16 +210,6 @@ INTERVAL_TTL_MAP = {
     "4h": 4 * 60 * 60,
     "1d": 24 * 60 * 60,
 }
-
-TRIGGER_NAME_MAP = {
-    "volume_spike": "volume_spike",
-    "volatility_spike": "volatility_spike",
-    "breakout_level": "breakout_level",
-    "rsi_divergence": "rsi_divergence",
-    "vwap_deviation": "vwap_deviation",
-}
-TRIGGER_TP_SL_SWAP_LONG = {"breakout_level"}
-TRIGGER_TP_SL_SWAP_SHORT = {"breakout_level"}
 TICK_SIZE_DEFAULT = 0.01
 TICK_SIZE_BRACKETS = [
     (0.1, 0.0001),

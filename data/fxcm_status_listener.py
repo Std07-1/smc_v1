@@ -1,7 +1,8 @@
-"""Лістенер стану FXCM (market_status + heartbeat).
+"""Лістенер стану FXCM, який читає лише агрегований канал ``fxcm:status``.
 
-Підписується на Redis-канали конектора, підтримує локальний стан
-``FxcmFeedState`` та (опційно) Prometheus-метрики.
+Отримані поля (process/market/price/ohlcv/session/note) приводимо до
+``FxcmFeedState`` і поширюємо на UI та Stage1. Внутрішні канали
+``fxcm:heartbeat``/``fxcm:market_status`` більше не використовуються.
 """
 
 from __future__ import annotations
@@ -23,19 +24,14 @@ from redis.asyncio import Redis
 from app.settings import settings
 from data.fxcm_models import (
     FxcmAggregatedStatus,
-    FxcmHeartbeat,
-    FxcmMarketStatus,
     FxcmSessionContext,
     parse_fxcm_aggregated_status,
-    parse_fxcm_heartbeat,
-    parse_fxcm_market_status,
 )
 
 logger = logging.getLogger("fxcm_status_listener")
 try:  # pragma: no cover - опціонально
     PromGauge = importlib.import_module("prometheus_client").Gauge
 except Exception:  # pragma: no cover - бібліотека може бути відсутня
-    PromGauge = None
     PromGauge = None
 
 
@@ -80,19 +76,11 @@ class FxcmFeedState:
     next_open_utc: str | None = None
     next_open_ms: int | None = None
     last_bar_close_ms: int | None = None
-    last_heartbeat_ts: float | None = None
-    last_market_status_ts: float | None = None
     lag_seconds: float | None = None
-    market_pause: bool | None = None
-    market_pause_reason: str | None = None
     seconds_to_open: float | None = None
-    last_heartbeat_iso: str | None = None
-    last_market_status_iso: str | None = None
     status_note: str | None = None
     status_ts: float | None = None
     status_ts_iso: str | None = None
-    stream_targets: list[dict[str, Any]] | dict[str, Any] | None = None
-    published_bars: int | None = None
     session: dict[str, Any] | None = None
     session_seconds_to_close: float | None = None
     session_seconds_to_next_open: float | None = None
@@ -139,13 +127,11 @@ class FxcmFeedState:
             "last_close_utc": last_close_utc,
             "next_open_ms": self.next_open_ms,
             "next_open_utc": next_open_utc,
-            "heartbeat_ts": self.last_heartbeat_iso,
-            "market_status_ts": self.last_market_status_iso,
+            "seconds_to_open": self.seconds_to_open,
+            "seconds_to_close": self.session_seconds_to_close,
             "status_note": self.status_note,
             "status_ts": self.status_ts,
             "status_ts_iso": self.status_ts_iso,
-            "published_bars": self.published_bars,
-            "stream_targets": self.stream_targets,
             "session": self.session,
             "session_seconds_to_close": self.session_seconds_to_close,
             "session_seconds_to_next_open": self.session_seconds_to_next_open,
@@ -154,8 +140,6 @@ class FxcmFeedState:
         }
 
 
-_MARKET_STATES = {"open", "closed"}
-_PROCESS_STATES = {"warmup", "warmup_cache", "stream", "idle"}
 _STATE_LOCK = threading.Lock()
 _FXCM_FEED_STATE = FxcmFeedState()
 
@@ -230,6 +214,15 @@ def _update_session_snapshot(session_payload: dict[str, Any] | None) -> None:
         session_payload.get("name") or session_payload.get("tag")
     )
     _FXCM_FEED_STATE.session_state = _coerce_str(session_payload.get("state"))
+    next_open_candidate = session_payload.get("next_open_utc")
+    if next_open_candidate:
+        _FXCM_FEED_STATE.next_open_utc = str(next_open_candidate)
+    next_open_ms_candidate = session_payload.get("next_open_ms")
+    if next_open_ms_candidate is not None:
+        try:
+            _FXCM_FEED_STATE.next_open_ms = int(float(next_open_ms_candidate))
+        except (TypeError, ValueError):
+            pass
 
 
 def get_fxcm_feed_state() -> FxcmFeedState:
@@ -252,91 +245,22 @@ def _update_metrics(snapshot: FxcmFeedState) -> None:
         lag = snapshot.lag_seconds if snapshot.lag_seconds is not None else 0.0
         PROM_FXCM_FEED_LAG.set(float(lag))
         PROM_FXCM_FEED_STATE.labels(
-            market_state=snapshot.market_state,
-            process_state=snapshot.process_state,
+            market_state=str(snapshot.market_state or "unknown"),
+            process_state=str(snapshot.process_state or "unknown"),
         ).set(1.0)
     except Exception:  # pragma: no cover - захист від помилок метрик
         pass
 
 
-def _apply_market_status(status: FxcmMarketStatus) -> FxcmFeedState:
-    now_monotonic = time.monotonic()
-    market_state = status.state if status.state in _MARKET_STATES else "unknown"
-    next_open_utc = status.next_open_utc if market_state == "closed" else None
-    with _STATE_LOCK:
-        _FXCM_FEED_STATE.market_state = market_state
-        _FXCM_FEED_STATE.next_open_utc = next_open_utc
-        _FXCM_FEED_STATE.next_open_ms = status.next_open_ms
-        _FXCM_FEED_STATE.seconds_to_open = status.seconds_to_open
-        _FXCM_FEED_STATE.last_market_status_ts = now_monotonic
-        _FXCM_FEED_STATE.last_market_status_iso = (
-            status.ts or _FXCM_FEED_STATE.last_market_status_iso
-        )
-        session_payload = _session_model_to_dict(status.session)
-        if session_payload is not None:
-            _update_session_snapshot(session_payload)
-        snapshot = replace(_FXCM_FEED_STATE)
-    _update_metrics(snapshot)
-    return snapshot
-
-
-def _apply_heartbeat(heartbeat: FxcmHeartbeat) -> FxcmFeedState:
-    now_monotonic = time.monotonic()
+def _refresh_lag_from_last_close() -> float | None:
+    last_close_ms = _FXCM_FEED_STATE.last_bar_close_ms
+    if last_close_ms is None:
+        _FXCM_FEED_STATE.lag_seconds = None
+        return None
     now_ms = time.time() * 1000.0
-    process_state = heartbeat.state if heartbeat.state in _PROCESS_STATES else "unknown"
-    last_close_int = heartbeat.last_bar_close_ms
-    lag_seconds: float | None = None
-    context = heartbeat.context
-    if context and context.lag_seconds is not None:
-        try:
-            lag_seconds = float(context.lag_seconds)
-        except (TypeError, ValueError):
-            lag_seconds = None
-    if lag_seconds is None and last_close_int is not None:
-        lag_seconds = max(0.0, (now_ms - last_close_int) / 1000.0)
-    next_open_utc = context.next_open_utc if context else None
-    next_open_ms = context.next_open_ms if context else None
-    seconds_to_open = context.seconds_to_open if context else None
-    market_pause = context.market_pause if context else None
-    market_pause_reason = context.market_pause_reason if context else None
-    stream_targets = context.stream_targets if context else None
-    published_bars = context.bars_published if context else None
-    session_payload = _session_model_to_dict(context.session) if context else None
-    with _STATE_LOCK:
-        _FXCM_FEED_STATE.process_state = process_state
-        if last_close_int is not None:
-            _FXCM_FEED_STATE.last_bar_close_ms = last_close_int
-        _FXCM_FEED_STATE.lag_seconds = lag_seconds
-        _FXCM_FEED_STATE.last_heartbeat_ts = now_monotonic
-        if heartbeat.ts:
-            _FXCM_FEED_STATE.last_heartbeat_iso = heartbeat.ts
-        if _FXCM_FEED_STATE.market_state in (None, "", "unknown") and process_state in {
-            "stream",
-            "warmup",
-            "warmup_cache",
-        }:
-            _FXCM_FEED_STATE.market_state = "open"
-        if next_open_utc is not None:
-            _FXCM_FEED_STATE.next_open_utc = next_open_utc
-        if next_open_ms is not None:
-            _FXCM_FEED_STATE.next_open_ms = next_open_ms
-        if seconds_to_open is not None:
-            _FXCM_FEED_STATE.seconds_to_open = seconds_to_open
-        _FXCM_FEED_STATE.market_pause = market_pause
-        _FXCM_FEED_STATE.market_pause_reason = market_pause_reason
-        _FXCM_FEED_STATE.stream_targets = stream_targets
-        _FXCM_FEED_STATE.published_bars = published_bars
-        if session_payload is not None:
-            _update_session_snapshot(session_payload)
-        if (
-            process_state == "idle"
-            and _FXCM_FEED_STATE.market_state in (None, "", "unknown")
-            and next_open_utc is not None
-        ):
-            _FXCM_FEED_STATE.market_state = "closed"
-        snapshot = replace(_FXCM_FEED_STATE)
-    _update_metrics(snapshot)
-    return snapshot
+    lag = max(0.0, (now_ms - last_close_ms) / 1000.0)
+    _FXCM_FEED_STATE.lag_seconds = lag
+    return lag
 
 
 def _apply_status_snapshot(status: FxcmAggregatedStatus) -> FxcmFeedState:
@@ -366,6 +290,8 @@ def _apply_status_snapshot(status: FxcmAggregatedStatus) -> FxcmFeedState:
         session_payload = _session_model_to_dict(status.session)
         if session_payload is not None:
             _update_session_snapshot(session_payload)
+        _FXCM_FEED_STATE.seconds_to_open = _FXCM_FEED_STATE.session_seconds_to_next_open
+        _refresh_lag_from_last_close()
         snapshot = replace(_FXCM_FEED_STATE)
     _update_metrics(snapshot)
     return snapshot
@@ -383,6 +309,7 @@ def note_fxcm_bar_close(close_time_ms: int | None) -> None:
 
     with _STATE_LOCK:
         _FXCM_FEED_STATE.last_bar_close_ms = close_int
+        _refresh_lag_from_last_close()
         snapshot = replace(_FXCM_FEED_STATE)
     _update_metrics(snapshot)
 
@@ -391,8 +318,6 @@ async def run_fxcm_status_listener(
     *,
     redis_host: str | None = None,
     redis_port: int | None = None,
-    heartbeat_channel: str = "fxcm:heartbeat",
-    market_status_channel: str = "fxcm:market_status",
     status_channel: str | None = None,
 ) -> None:
     """Слухає FXCM канали та оновлює ``FxcmFeedState``."""
@@ -400,22 +325,20 @@ async def run_fxcm_status_listener(
     host = redis_host or settings.redis_host
     port = redis_port or settings.redis_port
     status_ch = (status_channel or settings.fxcm_status_channel or "").strip()
-    channels: list[str] = []
-    for ch in (heartbeat_channel, market_status_channel, status_ch):
-        if ch and ch not in channels:
-            channels.append(ch)
-    if not channels:
-        logger.warning("[FXCM_STATUS] Немає каналів для підписки, лістенер не стартує")
+    if not status_ch:
+        logger.warning(
+            "[FXCM_STATUS] Не вказано fxcm:status канал, лістенер не стартує"
+        )
         return
 
     redis = Redis(host=host, port=port)
     pubsub = redis.pubsub()
-    await pubsub.subscribe(*channels)
+    await pubsub.subscribe(status_ch)
     logger.info(
-        "[FXCM_STATUS] Старт лістенера host=%s port=%s channels=%s",
+        "[FXCM_STATUS] Старт лістенера host=%s port=%s channel=%s",
         host,
         port,
-        channels,
+        status_ch,
     )
     try:
         async for message in pubsub.listen():
@@ -447,25 +370,7 @@ async def run_fxcm_status_listener(
                 continue
             if payload is None:
                 continue
-            if channel == heartbeat_channel:
-                try:
-                    heartbeat = parse_fxcm_heartbeat(payload)
-                except (ValidationError, ValueError, TypeError) as exc:
-                    logger.warning(
-                        "[FXCM_STATUS] Некоректний heartbeat payload: %s", exc
-                    )
-                    continue
-                _apply_heartbeat(heartbeat)
-            elif channel == market_status_channel:
-                try:
-                    status = parse_fxcm_market_status(payload)
-                except (ValidationError, ValueError, TypeError) as exc:
-                    logger.warning(
-                        "[FXCM_STATUS] Некоректний market_status payload: %s", exc
-                    )
-                    continue
-                _apply_market_status(status)
-            elif status_ch and channel == status_ch:
+            if status_ch and channel == status_ch:
                 try:
                     combined_status = parse_fxcm_aggregated_status(payload)
                 except (ValidationError, ValueError, TypeError) as exc:
@@ -480,7 +385,7 @@ async def run_fxcm_status_listener(
         raise
     finally:
         try:
-            await pubsub.unsubscribe(*channels)
+            await pubsub.unsubscribe(status_ch)
         except Exception:  # pragma: no cover - best effort
             pass
         await pubsub.close()

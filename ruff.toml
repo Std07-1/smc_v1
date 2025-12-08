@@ -21,18 +21,24 @@ ignore = [
 
 [lint.per-file-ignores]
 "tests/**" = ["N", "E501"]
+"app/main.py" = ["N815", "N805"]
+"app/runtime.py" = ["N815", "N805"]
+"app/settings.py" = ["N815", "N805"]
+"app/smc_producer.py" = ["N815", "N805"]
+"app/smc_state_manager.py" = ["N815", "N805"]
+"app/" = ["N815", "N805"]
 "UI/__init__.py" = ["N999"]
 "config/config.py" = ["N815", "N805"]
-"stage1/asset_monitoring.py" = ["E501"]
-"stage1/asset_triggers/rsi_divergence_trigger.py" = ["E501"]
-"stage1/asset_triggers/vwap_deviation_trigger.py" = ["E501"]
+"smc_core/" = ["E501"]
+"smc_liquidity/" = ["E501"]
+"smc_structure/" = ["E501"]
+"smc_zones/"= ["E501"]
 
 [lint.isort]
 known-first-party = [
   "app",
   "config",
   "data",
-  "stage1",
   "UI",
   "smc_core",
   "smc_structure",

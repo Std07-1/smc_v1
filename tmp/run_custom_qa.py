@@ -99,7 +99,7 @@ def summarize() -> None:
                     f"delta={attempt['delta']:.5f}",
                     f"thr={attempt['threshold']:.5f}",
                     f"ratio={attempt['ratio']:.2f}",
-                    f"time={attempt['time'].isoformat()}",
+                    f"time={attempt['time'].isoformat()}",  # type: ignore
                 )
         print()
 
@@ -153,7 +153,7 @@ def _detect_near_bos_attempts(
                 "time": leg.to_swing.time,
             }
         )
-    near_attempts.sort(key=lambda item: item["ratio"], reverse=True)
+    near_attempts.sort(key=lambda item: item["ratio"], reverse=True)  # type: ignore
     return near_attempts, atr_mean
 
 

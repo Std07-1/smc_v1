@@ -15,8 +15,8 @@
     "project_root": "./",
     "main_entry": "app/main.py",
     "modules": [
-      "app/screening_producer.py",
-      "app/asset_state_manager.py",
+      "app/smc_producer.py",
+      "app/smc_state_manager.py",
       "data/unified_store.py",
       "smc_core/engine.py",
       "smc_core/input_adapter.py"
@@ -40,7 +40,7 @@
         "description": "Шарувате сховище з RAM-кешем, Redis та snapshotами на диску."
       },
       "ScreeningProducer": {
-        "source": "app/screening_producer.py",
+        "source": "app/smc_producer.py",
         "description": "Формує черги активів і готує дані Stage1 для UI та майбутнього Stage2."
       },
       "SmcCoreEngine": {

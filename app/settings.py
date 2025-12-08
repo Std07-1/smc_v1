@@ -67,8 +67,6 @@ class Settings(BaseSettings):
     fxcm_hmac_secret: str | None = None
     fxcm_hmac_algo: str = "sha256"  # алгоритм HMAC-підпису для FXCM
     fxcm_hmac_required: bool = True  # чи вимагати HMAC-підписи від FXCM
-    fxcm_heartbeat_channel: str = "fxcm:heartbeat"
-    fxcm_market_status_channel: str = "fxcm:market_status"
     fxcm_price_tick_channel: str = FXCM_PRICE_TICK_CHANNEL
     fxcm_status_channel: str = FXCM_STATUS_CHANNEL
 
@@ -125,8 +123,6 @@ class Settings(BaseSettings):
         return bool(v)
 
     @field_validator(
-        "fxcm_heartbeat_channel",
-        "fxcm_market_status_channel",
         "fxcm_price_tick_channel",
         "fxcm_status_channel",
         mode="before",
@@ -141,8 +137,6 @@ class Settings(BaseSettings):
         if text:
             return text
         default_map = {
-            "fxcm_heartbeat_channel": "fxcm:heartbeat",
-            "fxcm_market_status_channel": "fxcm:market_status",
             "fxcm_price_tick_channel": FXCM_PRICE_TICK_CHANNEL,
             "fxcm_status_channel": FXCM_STATUS_CHANNEL,
         }

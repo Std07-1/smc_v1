@@ -6,7 +6,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Literal
+from typing import Literal, cast
 
 import pandas as pd
 from rich.console import Console
@@ -325,10 +325,16 @@ def _find_row_by_timestamp(frame: pd.DataFrame, ts: pd.Timestamp) -> int | None:
             index = frame.index
             index_utc = index if index.tz is not None else index.tz_localize("UTC")
             index_utc = index_utc.tz_convert("UTC")
-            diffs = (index_utc - target).abs()
-            idx = int(diffs.argmin())
-            if 0 <= idx < len(frame):
-                return idx
+            delta_series = pd.Series(
+                index_utc - target,
+                index=pd.RangeIndex(len(index_utc)),
+            )
+            if not delta_series.isna().all():
+                delta_seconds = delta_series.abs().dt.total_seconds().dropna()
+                if not delta_seconds.empty:
+                    idx = int(delta_seconds.idxmin())
+                    if 0 <= idx < len(frame):
+                        return idx
         except Exception:
             pass
     for column in ("timestamp", "open_time", "close_time"):
@@ -371,6 +377,11 @@ def _build_breaker_zone(
     origin_time = _resolve_row_timestamp(row, frame.index[row_index])
     if None in {high, low, open_v, close_v} or origin_time is None:
         return None
+
+    high = cast(float, high)
+    low = cast(float, low)
+    open_v = cast(float, open_v)
+    close_v = cast(float, close_v)
 
     full_range = max(high - low, 1e-9)
     body_high = max(open_v, close_v)
@@ -426,6 +437,8 @@ def _build_breaker_zone(
         meta={},
     )
 
+    zone_center = _zone_center(ob)
+
     zone.meta.update(
         {
             "derived_from_ob_id": ob.zone_id,
@@ -438,9 +451,7 @@ def _build_breaker_zone(
             "break_event_id": reference_event_id,
             "breaker_age_min": _minutes_between(ob.origin_time, bos_event.time),
             "distance_to_sweep": (
-                abs(_zone_center(ob) - sweep.level)
-                if _zone_center(ob) is not None
-                else None
+                abs(zone_center - sweep.level) if zone_center is not None else None
             ),
             "displacement_atr": displacement,
             "breaker_params": {

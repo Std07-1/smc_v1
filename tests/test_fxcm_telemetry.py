@@ -10,7 +10,6 @@ from data.fxcm_status_listener import FxcmFeedState
 from data.unified_store import UnifiedDataStore
 from UI.experimental_viewer import SmcExperimentalViewer
 from UI.experimental_viewer_extended import SmcExperimentalViewerExtended
-from UI.ui_consumer import UIConsumer
 
 
 class _DummyRedis:
@@ -143,6 +142,30 @@ def test_extended_viewer_uses_session_next_open(tmp_path: Any) -> None:
         fxcm_payload,
     )
 
+    def test_viewer_prefers_meta_fxcm_block(tmp_path: Any) -> None:
+        viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
+        asset = _minimal_asset()
+        payload_meta = {
+            "ts": "2025-11-25T12:00:00Z",
+            "fxcm": {"market_state": "open", "lag_seconds": 1.25},
+        }
+
+        state = viewer.build_state(asset, payload_meta)
+
+        assert state["fxcm"]["market_state"] == "open"
+        assert state["fxcm"]["lag_seconds"] == pytest.approx(1.25)
+
+    def test_viewer_uses_payload_fxcm_when_meta_missing(tmp_path: Any) -> None:
+        viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
+        asset = _minimal_asset()
+        payload_meta = {"ts": "2025-11-25T12:00:00Z"}
+        fxcm_payload = {"market_state": "closed", "lag_seconds": 3.5}
+
+        state = viewer.build_state(asset, payload_meta, fxcm_payload)
+
+        assert state["fxcm"]["market_state"] == "closed"
+        assert state["fxcm"]["lag_seconds"] == pytest.approx(3.5)
+
     rows = viewer._compose_fxcm_rows(state)  # noqa: SLF001
     next_open = next(value for label, value in rows if label == "Наступне відкриття")
     assert "2025-12-01 12:55:00 UTC" in next_open
@@ -261,26 +284,6 @@ def test_extended_viewer_formats_long_lag(tmp_path: Any) -> None:
     assert "2д" in lag_value
     assert "мс" in lag_value
     assert "172800.5с" in lag_value
-
-
-def test_ui_consumer_prefers_meta_fxcm_block() -> None:
-    consumer = UIConsumer()
-    payload = {"meta": {"fxcm": {"market_state": "open"}}}
-
-    fxcm_block = consumer._extract_meta_fxcm(payload)
-
-    assert fxcm_block is payload["meta"]["fxcm"]
-    assert consumer._fxcm_meta_warned is False
-
-
-def test_ui_consumer_falls_back_to_top_level_fxcm_block() -> None:
-    consumer = UIConsumer()
-    payload = {"fxcm": {"market_state": "open", "lag_seconds": 3.0}}
-
-    fxcm_block = consumer._extract_meta_fxcm(payload)
-
-    assert fxcm_block is payload["fxcm"]
-    assert consumer._fxcm_meta_warned is True
 
 
 def test_base_viewer_hides_close_countdown_when_market_closed(tmp_path: Any) -> None:

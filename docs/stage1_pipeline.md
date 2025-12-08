@@ -16,9 +16,9 @@
    - `AssetMonitorStage1` отримує дані з `UnifiedDataStore`, готує сирі сигнали й делегує їх `AssetStateManager`.
    - `screening_producer` обходить `FXCM_FAST_SYMBOLS`, збирає стани та передає їх у `UI.publish_full_state`.
 4. **UI/споживачі**
-   - `publish_full_state` кладе snapshot у `ai_one:ui:snapshot` та публікує його в `ai_one:ui:asset_state`.
-   - `meta` у payload тепер містить `cycle_seq`, `cycle_started_ts` та `cycle_ready_ts`, що дозволяє UI синхронізуватись із циклами `screening_producer` без дрібних розсинхронів.
-   - `UI.ui_consumer_entry` або experimental viewer читають той самий payload.
+   - Історичний канал `ai_one:ui:asset_state` видалено; UI працює лише з чистим SMC-снапшотом `ai_one:ui:smc_state`, який формує `publish_smc_state`.
+   - `meta` у payload містить `cycle_seq`, `cycle_started_ts` та `cycle_ready_ts`, що дозволяє UI синхронізуватись із циклами `screening_producer` без дрібних розсинхронів.
+      - `UI.experimental_viewer_extended` читає payload із `ai_one:ui:smc_state`.
 
 ## 2. Єдине джерело даних
 

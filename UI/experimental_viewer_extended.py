@@ -169,8 +169,9 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             table.add_row("-", "-", "-", "-")
             return Panel(table, border_style="blue")
         for event in events[-15:]:
-            price_val = self._format_price(event.get("price"))
-            delta = self._format_delta(event.get("price"), price_ref, prefix=False)
+            price_source = event.get("price") or event.get("price_level")
+            price_val = self._format_price(price_source)
+            delta = self._format_delta(price_source, price_ref, prefix=False)
             table.add_row(
                 str(event.get("type")),
                 str(event.get("direction")),
@@ -242,11 +243,19 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         all_zones = self._extract_zone_list(raw_block, "zones")
         active_zones = self._extract_zone_list(raw_block, "active_zones")
         price_ref = self._safe_float(viewer_state.get("price"))
+        active_ids = {
+            ident
+            for ident in (self._zone_identity(zone) for zone in active_zones)
+            if ident
+        }
 
         grid = Table.grid(expand=True)
         grid.add_row(
             self._render_zone_table(
-                title="Загальний список зон", zones=all_zones, price_ref=price_ref
+                title="Загальний список зон",
+                zones=all_zones,
+                price_ref=price_ref,
+                active_ids=active_ids,
             )
         )
         grid.add_row(
@@ -254,6 +263,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
                 title="Active zones (time + distance)",
                 zones=active_zones,
                 price_ref=price_ref,
+                active_ids=active_ids,
             )
         )
         return Panel(grid, border_style="magenta", title="Zones / POI")
@@ -279,7 +289,12 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         return []
 
     def _render_zone_table(
-        self, *, title: str, zones: list[dict[str, Any]], price_ref: float | None
+        self,
+        *,
+        title: str,
+        zones: list[dict[str, Any]],
+        price_ref: float | None,
+        active_ids: set[str],
     ) -> Table:
         table = Table(title=title, expand=True)
         table.add_column("Тип")
@@ -287,8 +302,10 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         table.add_column("Entry")
         table.add_column("Δ")
         table.add_column("Quality")
+        table.add_column("Статус")
+        table.add_column("Створено")
         if not zones:
-            table.add_row("-", "-", "-", "-", "-")
+            table.add_row("-", "-", "-", "-", "-", "-", "-")
             return table
         ranked = sorted(
             zones,
@@ -299,14 +316,36 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             entry = (
                 zone.get("entry_hint") or zone.get("price_min") or zone.get("price_max")
             )
+            identity = self._zone_identity(zone)
+            status_label = str(zone.get("status") or zone.get("state") or "-")
+            if not status_label or status_label == "-":
+                status_label = "ACTIVE" if identity in active_ids else "HIST"
+            created_label = self._format_ts(
+                zone.get("origin_time") or zone.get("created_at") or zone.get("time")
+            )
             table.add_row(
                 str(zone.get("zone_type")),
                 str(zone.get("role")),
                 self._format_price(entry),
                 self._format_delta(entry, price_ref, prefix=False),
                 str(zone.get("quality") or zone.get("bias_at_creation") or "-"),
+                status_label,
+                created_label,
             )
         return table
+
+    def _zone_identity(self, zone: dict[str, Any] | None) -> str:
+        if not isinstance(zone, dict):
+            return ""
+        zone_id = zone.get("zone_id") or zone.get("id")
+        if zone_id:
+            return str(zone_id)
+        key_parts = (
+            str(zone.get("zone_type")),
+            str(zone.get("price_min")),
+            str(zone.get("price_max")),
+        )
+        return "|".join(key_parts)
 
     def _build_magnets_panel(self, viewer_state: dict[str, Any]) -> Panel:
         liquidity = viewer_state.get("liquidity") or {}
@@ -323,6 +362,16 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             return Panel(table, border_style="green")
         for magnet in magnets[:5]:
             center = magnet.get("center")
+            strength_value = self._safe_float(magnet.get("strength"))
+            if strength_value is None:
+                strength_value = self._safe_float(magnet.get("pool_count"))
+            if strength_value is None:
+                meta_block = magnet.get("meta")
+                if isinstance(meta_block, dict):
+                    strength_value = self._safe_float(meta_block.get("pool_count"))
+            strength_label = (
+                f"{strength_value:.2f}" if strength_value is not None else "-"
+            )
             table.add_row(
                 self._format_price(center),
                 self._format_delta(center, price_ref, prefix=False),
@@ -330,7 +379,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
                     magnet.get("price_min"), magnet.get("price_max")
                 ),
                 str(magnet.get("role")),
-                self._format_price(magnet.get("strength")),
+                strength_label,
             )
         return Panel(table, border_style="green")
 
@@ -347,9 +396,14 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
 
     def _format_timeline_item(self, event: dict[str, Any]) -> dict[str, str]:
         label = f"{event.get('type','?')} → {event.get('direction','?')}"
-        price = self._format_price(event.get("price"))
-        time_value = str(event.get("time") or "-")
-        return {"label": label, "price": price, "time": time_value}
+        price_value = event.get("price") or event.get("price_level")
+        price = self._format_price(price_value)
+        time_value = event.get("time") or event.get("timestamp")
+        return {
+            "label": label,
+            "price": price,
+            "time": self._format_ts(time_value),
+        }
 
     def _build_fxcm_panel(self, viewer_state: dict[str, Any]) -> Panel | None:
         table = Table(title="FXCM конектор", expand=True)
@@ -431,15 +485,23 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             next_open_label = "-"
 
         close_seconds = self._safe_float(fxcm_block.get("seconds_to_close"))
-        if close_seconds is None:
-            session_block = fxcm_block.get("session")
-            if isinstance(session_block, dict):
-                close_seconds = self._safe_float(session_block.get("seconds_to_close"))
+        if close_seconds is None and session_block:
+            close_seconds = self._safe_float(session_block.get("seconds_to_close"))
         close_countdown = fxcm_block.get("countdown_to_close")
         if not close_countdown:
             close_countdown = self._format_countdown(close_seconds)
         if market_state != "open":
             close_countdown = "-"
+
+        open_seconds = self._safe_float(fxcm_block.get("seconds_to_open"))
+        if open_seconds is None and session_block:
+            open_seconds = self._safe_float(
+                session_block.get("next_open_seconds")
+                or session_block.get("seconds_to_next_open")
+            )
+        open_countdown = fxcm_block.get("countdown")
+        if not open_countdown:
+            open_countdown = self._format_countdown(open_seconds)
 
         rows = [
             ("Market", market_label),
@@ -449,12 +511,42 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             ("Лаг", lag_label),
             ("Останній close", last_close_label),
             ("Наступне відкриття", next_open_label),
+            ("До відкриття", open_countdown or "-"),
             ("До закриття", close_countdown or "-"),
         ]
 
         status_note = fxcm_block.get("status_note")
         if status_note:
             rows.append(("Note", str(status_note)))
+
+        pause_state = fxcm_block.get("market_pause")
+        pause_reason = fxcm_block.get("market_pause_reason") or fxcm_block.get(
+            "idle_reason"
+        )
+        if pause_state:
+            label = "ON"
+            if pause_reason:
+                label = f"ON · {pause_reason}"
+            rows.append(("Pause", label))
+        elif pause_reason:
+            rows.append(("Idle", str(pause_reason)))
+
+        cache_source = fxcm_block.get("cache_source")
+        if cache_source:
+            rows.append(("Cache", str(cache_source)))
+
+        published_bars = fxcm_block.get("published_bars")
+        published_delta = fxcm_block.get("published_bars_delta")
+        if published_bars is not None:
+            label = str(published_bars)
+            if isinstance(published_delta, (int, float)):
+                sign = (
+                    f"{published_delta:+d}"
+                    if isinstance(published_delta, int)
+                    else f"{published_delta:+.0f}"
+                )
+                label = f"{label} ({sign})"
+            rows.append(("Published bars", label))
 
         return rows
 

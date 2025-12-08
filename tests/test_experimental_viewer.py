@@ -1,6 +1,7 @@
 """Перевірки побудови стану для SmcExperimentalViewer."""
 
 import copy
+from datetime import UTC, datetime
 
 import pytest
 from rich.panel import Panel
@@ -66,9 +67,11 @@ def _sample_asset() -> dict:
                 ],
                 "magnets": [
                     {
+                        "center": 2375.0,
                         "price_min": 2370.0,
                         "price_max": 2380.0,
                         "role": "PRIMARY",
+                        "meta": {"pool_count": 3},
                     }
                 ],
             },
@@ -102,6 +105,10 @@ def test_build_state_returns_compact_sections(tmp_path) -> None:
     assert state["liquidity"]["pools"][0]["liq_type"] == "EQH"
     assert "fxcm" in state
     assert state["payload_seq"] == 42
+    event_entry = state["structure"]["events"][0]
+    assert event_entry["price"] == pytest.approx(2376.0)
+    assert str(event_entry["time"]).startswith("2025-11-25T12:00:00")
+    assert state["liquidity"]["magnets"][0]["strength"] == 3
 
     viewer.dump_snapshot(state)
     assert viewer.snapshot_path.exists()
@@ -201,3 +208,44 @@ def test_events_persist_when_source_empty(tmp_path) -> None:
     second = viewer.build_state(asset_without_events, payload_meta)
 
     assert len(second["structure"]["events"]) == 1
+
+
+def test_zones_persist_when_missing(tmp_path) -> None:
+    viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
+    asset = _sample_asset()
+    payload_meta = {"ts": "2025-11-25T12:10:00Z", "seq": 8}
+
+    first = viewer.build_state(asset, payload_meta)
+    assert first["zones"]["raw"]["zones"]
+
+    asset_without_zones = copy.deepcopy(asset)
+    asset_without_zones["smc"].pop("zones", None)
+    second = viewer.build_state(asset_without_zones, payload_meta)
+
+    assert second["zones"]["raw"]["zones"]
+
+
+def test_magnets_strength_fallback(tmp_path) -> None:
+    viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
+    asset = _sample_asset()
+    payload_meta = {"ts": "2025-11-25T12:10:00Z", "seq": 9}
+
+    state = viewer.build_state(asset, payload_meta)
+
+    assert state["liquidity"]["magnets"][0]["strength"] == 3
+
+
+def test_fxcm_status_ts_converts_seconds_string(tmp_path) -> None:
+    viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
+    fxcm_payload = {
+        "market_state": "open",
+        "process_state": "RUNNING",
+        "status_ts": "1765207699.8571026",
+    }
+
+    normalized = viewer._normalize_fxcm_block(fxcm_payload)
+
+    assert normalized is not None
+    status_ts = normalized.get("status_ts")
+    expected = datetime.fromtimestamp(1765207699.8571026, tz=UTC).isoformat()
+    assert status_ts == expected

@@ -100,28 +100,17 @@ pip install -r requirements.txt
   python -m app.main
   ```
 
-- **UI консоль** (можна запускати окремо, якщо головний процес уже публікує дані):
+- **SMC viewer (extended)** — автоматично стартує разом із `app.main`, але можна
+  запускати вручну:
 
   ```powershell
-  python -m UI.ui_consumer_entry
-  ```
-
-  UI payload зараз у схемі `1.2`: коли `SMC_RUNTIME_PARAMS["enabled"]=True`, кожен актив
-  отримає опційний alias `smc` (plain JSON), який дублює `smc_hint` і використовується
-  консольним клієнтом для швидкого відображення тренду/ренджу/AMD без додаткових
-  розрахунків.
-
-- **Experimental SMC viewer** (вимкнено за замовчуванням):
-
-  ```powershell
-  # або автоматично через app.main, якщо UI_EXPERIMENTAL_VIEW_ENABLED=True
   python -m UI.ui_consumer_experimental_entry
   ```
 
-  Активується прапором `UI_EXPERIMENTAL_VIEW_ENABLED` у `config/config.py` та показує
-  розширений SMC-блок для одного символу (за замовчуванням `XAUUSD`, можна змінити
-  через `SMC_EXPERIMENT_SYMBOL`). Viewer не впливає на базовий UI й працює в окремих
-  модулях, тож його можна безболісно видалити у разі потреби.
+  Viewer спирається на `publish_smc_state`, читає payload напряму з Redis та
+  відображає тренд, рендж, AMD, ліквідність і FXCM статус для одного символу
+  (за замовчуванням береться перший із `FXCM_FAST_SYMBOLS`). Канал Stage1
+  (`ai_one:ui:asset_state`) видалено як легасі.
 
 - **QA/SMC snapshot runner** — детермінований прогон SMC на історичній вибірці без
   Stage1:

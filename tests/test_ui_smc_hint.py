@@ -10,7 +10,7 @@ from smc_core.smc_types import (
     SmcLiquidityState,
     SmcStructureState,
 )
-from UI.publish_full_state import _prepare_smc_hint
+from UI.publish_smc_state import _format_tick_age, _prepare_smc_hint
 
 
 def test_prepare_smc_hint_serializes_dataclasses() -> None:
@@ -110,3 +110,17 @@ def test_prepare_smc_hint_normalizes_price_scale() -> None:
     zone = zones["zones"][0]
     assert zone["price_min"] == pytest.approx(4120.0, rel=1e-3)
     assert zone["entry_hint"] == pytest.approx(4125.0, rel=1e-3)
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (0.2, "200 мс"),
+        (2, "2.0 с"),
+        (120, "2.0 хв"),
+        (-5, "-"),
+        (None, "-"),
+    ],
+)
+def test_format_tick_age(value: object, expected: str) -> None:
+    assert _format_tick_age(value) == expected
