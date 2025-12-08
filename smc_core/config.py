@@ -17,7 +17,7 @@ class SmcCoreConfig:
     max_lookback_bars: int = 300  # Максимальна кількість барів для огляду назад
     default_timeframes: tuple[str, ...] = ("5m", "15m", "1h")  # Типові таймфрейми
     bos_min_move_atr_m1: float = 0.6  # Мінімальний рух BOS в ATR на 1 хвилину
-    bos_min_move_pct_m1: float = 0.002  # Мінімальний рух BOS в % на 1 хвилину
+    bos_min_move_pct_m1: float = 0.0018  # Мінімальний рух BOS в % на 1 хвилину (0.18 %)
     leg_min_amplitude_atr_m1: float = 0.8  # Мінімальна амплітуда ліг в ATR на 1 хвилину
     ote_trend_only_m1: bool = True  # OTE лише в напрямку тренду на 1 хвилину
     ote_max_active_per_side_m1: int = 1  # Макс. активних OTE на бік на 1 хвилину
@@ -37,6 +37,17 @@ class SmcCoreConfig:
     ob_body_min_pct: float = (
         0.25  # Мінімальний відсоток тіла для слабкої зони (BODY_TOUCH)
     )
+    ob_max_active_distance_atr: float | None = (
+        15.0  # Додатковий фільтр активних зон (ATR)
+    )
+    breaker_max_ob_age_minutes: int = 60 * 12  # Максимальний вік OB (720 хв)
+    breaker_max_sweep_delay_minutes: int = 180  # Макс. пауза між sweep і BOS
+    breaker_level_tolerance_pct: float = 0.0015  # Допуск збігу sweep і OB
+    breaker_min_body_pct: float = 0.35  # Мінімальна частка тіла BOS-свічки
+    breaker_min_displacement_atr: float = 0.75  # Мінімальний рух між sweep і BOS
+    fvg_min_gap_atr: float = 0.5  # Мінімальний gap між свічками в ATR
+    fvg_min_gap_pct: float = 0.0015  # Мінімальний gap у % (0.15%)
+    fvg_max_age_minutes: int = 60 * 24 * 3  # TTL imbalance, не довше 3 діб
 
 
 SMC_CORE_CONFIG = SmcCoreConfig()

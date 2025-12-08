@@ -183,6 +183,31 @@ def ensure_timestamp_column(
         _log("[ensure_timestamp_column] DataFrame порожній або невалідний.")
         return pd.DataFrame()
 
+    def _infer_epoch_unit(median_value: float) -> str:
+        if 1e11 <= median_value < 1e14:
+            return "ms"
+        if 1e9 <= median_value < 1e11:
+            return "s"
+        if 1e14 <= median_value < 1e17:
+            return "us"
+        if 1e17 <= median_value < 1e20:
+            return "ns"
+        return "ms"
+
+    def _convert_numeric_timestamp(series: pd.Series, hint: str) -> bool:
+        numeric = pd.to_numeric(series, errors="coerce")
+        valid = numeric.dropna()
+        if valid.empty:
+            return False
+        try:
+            median_value = float(valid.abs().median())
+        except Exception:
+            return False
+        unit = _infer_epoch_unit(median_value)
+        df["timestamp"] = pd.to_datetime(numeric, unit=unit, errors="coerce", utc=True)
+        _log(f"[ensure_timestamp_column] {hint}→datetime(unit={unit}).")
+        return True
+
     # Якщо timestamp є індексом — переносимо у колонку
     if "timestamp" not in df.columns and df.index.name == "timestamp":
         df = df.reset_index()
@@ -193,30 +218,13 @@ def ensure_timestamp_column(
 
         ts = df["timestamp"]
 
-        # 1) Якщо dtype не datetime → як і було:
+        # 1) Якщо dtype не datetime → пробуємо автоматичну конвертацію числових значень
         if not pd.api.types.is_datetime64_any_dtype(ts):
-            if pd.api.types.is_integer_dtype(ts):
-                v = ts.astype("int64")
-                try:
-                    med = float(v.median())
-                except Exception:
-                    med = float(v.iloc[0]) if len(v) else 0.0
-                # Автовизначення одиниць часу за порядком величини
-                if 1e11 <= med < 1e14:
-                    unit = "ms"
-                elif 1e9 <= med < 1e11:
-                    unit = "s"
-                elif 1e14 <= med < 1e17:
-                    unit = "us"
-                elif 1e17 <= med < 1e20:
-                    unit = "ns"
-                else:
-                    unit = "ms"  # дефолт безпечний для FX feed
-                df["timestamp"] = pd.to_datetime(
-                    v, unit=unit, errors="coerce", utc=True
-                )
-                _log(f"[ensure_timestamp_column] int→datetime(unit={unit}).")
-            else:
+            converted = False
+            if pd.api.types.is_numeric_dtype(ts):
+                type_hint = "int" if pd.api.types.is_integer_dtype(ts) else "float"
+                converted = _convert_numeric_timestamp(ts, type_hint)
+            if not converted:
                 df["timestamp"] = pd.to_datetime(ts, errors="coerce", utc=True)
                 _log("[ensure_timestamp_column] to_datetime(auto).")
         else:

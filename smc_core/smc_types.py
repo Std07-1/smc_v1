@@ -145,6 +145,7 @@ class SmcStructureLeg:
     from_swing: SmcSwing
     to_swing: SmcSwing
     label: Literal["HH", "HL", "LH", "LL", "UNDEFINED"]
+    reference_price: float | None = None
 
 
 @dataclass(slots=True)

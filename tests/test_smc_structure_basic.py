@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 import smc_structure
 from smc_core.config import SmcCoreConfig
@@ -189,14 +190,67 @@ def test_significant_moves_trigger_events() -> None:
         strength=1,
     )
     legs = [
-        SmcStructureLeg(from_swing=swing_high_1, to_swing=swing_low, label="LL"),
-        SmcStructureLeg(from_swing=swing_low, to_swing=swing_high_2, label="HH"),
+        SmcStructureLeg(
+            from_swing=swing_high_1,
+            to_swing=swing_low,
+            label="LL",
+            reference_price=110.0,
+        ),
+        SmcStructureLeg(
+            from_swing=swing_low,
+            to_swing=swing_high_2,
+            label="HH",
+            reference_price=120.0,
+        ),
     ]
 
     events = structure_engine.detect_events(legs, df, atr_series=None, cfg=cfg)
 
     assert any(evt.event_type == "BOS" and evt.direction == "SHORT" for evt in events)
     assert any(evt.event_type == "CHOCH" and evt.direction == "LONG" for evt in events)
+
+
+def test_build_legs_tracks_reference_extremes() -> None:
+    swings = [
+        SmcSwing(
+            index=0,
+            time=pd.Timestamp("2025-11-10T00:00:00Z"),
+            price=100.0,
+            kind="LOW",
+            strength=2,
+        ),
+        SmcSwing(
+            index=3,
+            time=pd.Timestamp("2025-11-10T00:15:00Z"),
+            price=110.0,
+            kind="HIGH",
+            strength=2,
+        ),
+        SmcSwing(
+            index=6,
+            time=pd.Timestamp("2025-11-10T00:30:00Z"),
+            price=95.0,
+            kind="LOW",
+            strength=2,
+        ),
+        SmcSwing(
+            index=9,
+            time=pd.Timestamp("2025-11-10T00:45:00Z"),
+            price=115.0,
+            kind="HIGH",
+            strength=2,
+        ),
+    ]
+
+    legs = structure_engine.build_legs(swings)
+
+    ll_leg = next(leg for leg in legs if leg.label == "LL")
+    hh_leg = next(leg for leg in legs if leg.label == "HH")
+
+    assert ll_leg.reference_price is not None
+    assert hh_leg.reference_price is not None
+    assert ll_leg.reference_price == pytest.approx(100.0)
+    assert hh_leg.reference_price == pytest.approx(110.0)
 
 
 def test_timestamp_meta_recovers_from_epoch_ms() -> None:

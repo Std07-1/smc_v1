@@ -28,7 +28,10 @@ BARS_LIMIT = 500
 
 
 def _load_frame(path: Path, limit: int) -> pd.DataFrame:
-    df = pd.read_json(path, lines=True)
+    if path.suffix.lower() == ".csv":
+        df = pd.read_csv(path)
+    else:
+        df = pd.read_json(path, lines=True)
     if "is_closed" in df.columns:
         df = df[df["is_closed"].astype(bool)]
     if "open_time" in df.columns:
@@ -75,9 +78,27 @@ def main() -> None:
         hint = engine.process_snapshot(snapshot)
         zones_state = hint.zones
         zones = zones_state.zones if zones_state else []
+        active_zones = zones_state.active_zones if zones_state else []
+        zones_meta = zones_state.meta if zones_state else {}
         ob_zones = [z for z in zones if z.zone_type is SmcZoneType.ORDER_BLOCK]
+        breaker_zones = [z for z in zones if z.zone_type is SmcZoneType.BREAKER]
+        fvg_zones = [z for z in zones if z.zone_type is SmcZoneType.IMBALANCE]
+        active_ob_zones = [
+            z for z in active_zones if z.zone_type is SmcZoneType.ORDER_BLOCK
+        ]
+        active_breaker_zones = [
+            z for z in active_zones if z.zone_type is SmcZoneType.BREAKER
+        ]
+        active_fvg_zones = [
+            z for z in active_zones if z.zone_type is SmcZoneType.IMBALANCE
+        ]
         role_counts = Counter(z.role for z in ob_zones)
         dir_counts = Counter(z.direction for z in ob_zones)
+        active_role_counts = Counter(z.role for z in active_ob_zones)
+        breaker_role_counts = Counter(z.role for z in breaker_zones)
+        breaker_dir_counts = Counter(z.direction for z in breaker_zones)
+        fvg_role_counts = Counter(z.role for z in fvg_zones)
+        fvg_dir_counts = Counter(z.direction for z in fvg_zones)
         snapshot_end = frame["timestamp"].iloc[-1]
         primary_age = []
         for zone in ob_zones:
@@ -94,8 +115,26 @@ def main() -> None:
             "symbol": symbol,
             "bars_used": len(frame),
             "zones_total": len(ob_zones),
+            "active_zones_total": len(active_ob_zones),
             "role_counts": dict(role_counts),
+            "active_role_counts": dict(active_role_counts),
             "direction_counts": dict(dir_counts),
+            "breaker_zones_total": len(breaker_zones),
+            "breaker_active_zones_total": len(active_breaker_zones),
+            "breaker_role_counts": dict(breaker_role_counts),
+            "breaker_direction_counts": dict(breaker_dir_counts),
+            "fvg_zones_total": len(fvg_zones),
+            "fvg_active_zones_total": len(active_fvg_zones),
+            "fvg_role_counts": dict(fvg_role_counts),
+            "fvg_direction_counts": dict(fvg_dir_counts),
+            "distance_threshold_atr": zones_meta.get(
+                "active_zone_distance_threshold_atr"
+            ),
+            "active_zones_within_threshold": zones_meta.get(
+                "active_zones_within_threshold"
+            ),
+            "zones_filtered_by_distance": zones_meta.get("zones_filtered_by_distance"),
+            "max_zone_distance_atr": zones_meta.get("max_zone_distance_atr"),
             "time_start": frame["timestamp"].iloc[0].isoformat(),
             "time_end": snapshot_end.isoformat(),
             "primary_reference_age_min": primary_age,
@@ -106,7 +145,8 @@ def main() -> None:
         summaries.append(summary)
         print(
             f"[{symbol}] zones={summary['zones_total']} primary={role_counts.get('PRIMARY', 0)} "
-            f"counter={role_counts.get('COUNTERTREND', 0)} neutral={role_counts.get('NEUTRAL', 0)}"
+            f"counter={role_counts.get('COUNTERTREND', 0)} neutral={role_counts.get('NEUTRAL', 0)} "
+            f"breakers={summary['breaker_zones_total']} fvgs={summary['fvg_zones_total']}"
         )
     OUTPUT_PATH.write_text(json.dumps(summaries, indent=2))
     print(f"Звіт збережено в {OUTPUT_PATH}")

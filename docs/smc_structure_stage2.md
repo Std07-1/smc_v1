@@ -35,7 +35,7 @@
   - `tools/smc_snapshot_runner.py` — формує `SmcHint` по історії (через `build_smc_input_from_store`).
   - `tools/smc_structure_threshold_study.py` — акумуляція статистики по легам/ATR/подіям у CSV.
 - **Фактичні результати (XAUUSD 5m, 2000 барів):**
-  - Зріз «D» (`smc_xau_5m_2000bars_D.json`): 40 свінгів, 39 легів, `trend=DOWN`, `range_state=DEV_DOWN`, `bias=SHORT`, `events=[]`, одна SHORT PRIMARY OTE по нозі `159→163` (H 4202.55 @21:00 → L 4193.04 @21:20, зона 4198.94–4200.55). `atr_last≈1.75`, `atr_median≈1.93`, пороги `bos_min_move_atr_m1=0.6`, `bos_min_move_pct_m1=0.002` пояснюють, чому BOS/CHOCH не з’явились на «чистому спаді».
+  - Зріз «D» (`smc_xau_5m_2000bars_D.json`): 40 свінгів, 39 легів, `trend=DOWN`, `range_state=DEV_DOWN`, `bias=SHORT`, `events=[]`, одна SHORT PRIMARY OTE по нозі `159→163` (H 4202.55 @21:00 → L 4193.04 @21:20, зона 4198.94–4200.55). `atr_last≈1.75`, `atr_median≈1.93`, пороги `bos_min_move_atr_m1=0.6`, `bos_min_move_pct_m1=0.0018` (≈0.073 @ XAU 5m «v2 threshold») пояснюють, чому BOS/CHOCH не з’явились на «чистому спаді».
   - Зрізи «B» і «C» використовуються для тижня з явним BOS/CHOCH (2 BOS + 1 CHOCH) та сусіднього тижня; у CSV видно event_leg-id та амплітуди.
 
 ## 4. Контрольні кроки перед freeze
@@ -75,3 +75,19 @@
   - Поточна вибірка годиться для розуміння порядку величин (типова нога ≈3 ATR/~0.25%, «справжні» BOS ≥0.3–0.4%).
   - Для остаточної фіксації `bos_min_move_*` потрібно щонайменше 30–50 унікальних BOS/CHOCH у різних режимах (тренд, флет, висока/низька вола). Після розширення вибірки перевірити кілька кандидатів (наприклад 0.6/0.002; 1.0/0.0025; 1.3/0.003–0.0035) й виміряти втрати реальних BOS.
   - До того моменту пороги лишаємо без змін, документуючи нинішні спостереження як «фазу 1» аналізу.
+
+## 8. SmcZones: zones vs active_zones (стан на 2025-12-07)
+
+- `SmcZonesState.zones` містить усі знайдені детекторами області (нині тільки OB_v1). Цей список не змінюється навіть якщо зона втратила актуальність.
+- `SmcZonesState.active_zones` = `zones` ∩ (часове вікно `max_lookback_bars`) ∩ (за наявності `ob_max_active_distance_atr`) зон, що ближчі до поточної ціни, ніж `N` ATR. Якщо `ob_max_active_distance_atr` залишається `None`, поведінка повністю збігається з freeze-конфігом OB_v1.
+- `ob_max_active_distance_atr` зафіксовано на 15 ATR (QA 2025-12-07: пороги 2.0 та 3.5 відсікають XAG PRIMARY SHORT, бо `max_zone_distance_atr ≈ 13.3`, тоді як 15 ATR залишає обидві зони активними; деталі в `reports/ob_v1_event_history_status.md`).
+- `SmcZone.meta` та `SmcZonesState.meta` містять телеметрію `active_zone_distance_threshold_atr`, `active_zones_within_threshold`, `zones_filtered_by_distance`, `max_zone_distance_atr`, щоб QA/Stage3 могли відстежувати вплив відстаневого фільтра й бачити фактичні дистанції у `reports/smc_qa_5m_summary.json`.
+- Stage3, Experimental Viewer та наступні детектори (Breaker/FVG/POI) повинні покладатися саме на `active_zones`, не на повний список `zones`; таким чином, логіка TTL + distance централізована в одному шарі smc_zones.
+
+## 9. BOS/CHOCH threshold tuning (2025-12-08)
+
+- `bos_min_move_pct_m1` знижено з 0.002 (≈0.081 @ XAUUSD ~40, «v1 threshold») до 0.0018 (≈0.073, `XAU 5m v2 threshold`). Мета — пропустити імпульси з `delta/threshold ≈ 0.95–0.97`, не розблокувавши майже флетовий `week_24`.
+- **До зміни:** `run_custom_qa.py` по `XAUUSD_10_14`, `XAUUSD_17_21`, `XAUUSD_export_5m_{7d,14d,30d}` давав `events=15/13/5` з максимумом `ratio≈0.95–0.97`, тоді як `XAUUSD_week_2025_11_24` лишався без BOS (`events=0`, `ratio_max≈0.85`).
+- **Після зміни:** ті самі набори отримали додаткові BOS (`XAUUSD_10_14` → 21 подія, `XAUUSD_17_21` → 17 подій, експорти → 9 подій), а `week_24` досі без подій (`events=0`, найкраща спроба `ratio≈0.94`).
+- Телеметрія скрипта фіксує оновлені `atr_last/median/mean` та ближні спроби BOS для прозорості, журнали лежать у `tmp/run_custom_qa.py` (див. commit 2025-12-08).
+- **Регламент:** подальші зміни `bos_min_move_pct_m1` допускаються лише після окремого QA-циклу (`tmp/run_custom_qa.py` на `XAUUSD_10_14`, `XAUUSD_17_21`, `XAUUSD_week_2025_11_24`, `XAUUSD_export_5m_{7d,14d,30d}`) і документування «до/після» в цьому файлі.

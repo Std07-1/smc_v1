@@ -12,6 +12,7 @@ from smc_core.smc_types import (
     SmcStructureLeg,
     SmcStructureState,
     SmcSwing,
+    SmcZone,
     SmcZoneType,
 )
 
@@ -67,6 +68,62 @@ def test_orderblock_skips_small_body_prelude() -> None:
     zones_state = smc_zones.compute_zones_state(snapshot, structure, None, cfg)
 
     assert zones_state.zones == []
+
+
+def test_active_zone_distance_filter_disabled_matches_all() -> None:
+    cfg = SmcCoreConfig(ob_max_active_distance_atr=None)
+    frame = _build_close_frame()
+    structure = SmcStructureState(meta={"atr_last": 1.0})
+    origin_time = frame.index[-1]
+    zones = [
+        _manual_zone(origin_time, 101.0, "near"),
+        _manual_zone(origin_time, 110.0, "far"),
+    ]
+
+    filtered, distance_meta = smc_zones._select_active_zones(
+        zones, frame, structure, cfg
+    )
+
+    assert filtered == zones
+    assert distance_meta["filtered_out_by_distance"] == 0
+
+
+def test_active_zone_distance_filter_removes_far_orderblocks() -> None:
+    cfg = SmcCoreConfig(ob_max_active_distance_atr=3.0)
+    frame = _build_close_frame()
+    structure = SmcStructureState(meta={"atr_last": 1.0})
+    origin_time = frame.index[-1]
+    zones = [
+        _manual_zone(origin_time, 101.0, "near"),
+        _manual_zone(origin_time, 110.0, "far"),
+    ]
+
+    filtered, distance_meta = smc_zones._select_active_zones(
+        zones, frame, structure, cfg
+    )
+
+    assert len(filtered) == 1
+    assert filtered[0].zone_id == "near"
+    assert distance_meta["filtered_out_by_distance"] == 1
+    assert distance_meta["max_distance_atr"] > 5.0
+
+
+def test_active_zone_distance_filter_skips_when_no_atr() -> None:
+    cfg = SmcCoreConfig(ob_max_active_distance_atr=2.0)
+    frame = _build_close_frame()
+    structure = SmcStructureState(meta={})
+    origin_time = frame.index[-1]
+    zones = [
+        _manual_zone(origin_time, 101.0, "near"),
+        _manual_zone(origin_time, 110.0, "far"),
+    ]
+
+    filtered, distance_meta = smc_zones._select_active_zones(
+        zones, frame, structure, cfg
+    )
+
+    assert len(filtered) == len(zones)
+    assert distance_meta["filtered_out_by_distance"] == 0
 
 
 def _build_snapshot_and_structure(
@@ -130,3 +187,31 @@ def _build_frame(weaken_prelude: bool) -> pd.DataFrame:
         data["close"][0] = 100.7  # тіло стає занадто малим для OB
     frame = pd.DataFrame(data, index=timestamps)
     return frame
+
+
+def _build_close_frame() -> pd.DataFrame:
+    timestamps = pd.date_range("2025-01-01", periods=4, freq="5min")
+    data = {
+        "open": [100.0, 100.5, 101.0, 101.5],
+        "high": [100.5, 101.0, 101.5, 102.0],
+        "low": [99.5, 100.0, 100.5, 101.0],
+        "close": [100.2, 100.8, 101.2, 101.5],
+        "volume": [100, 110, 105, 120],
+    }
+    return pd.DataFrame(data, index=timestamps)
+
+
+def _manual_zone(origin_time: pd.Timestamp, center: float, zone_id: str) -> SmcZone:
+    return SmcZone(
+        zone_type=SmcZoneType.ORDER_BLOCK,
+        price_min=center - 0.5,
+        price_max=center + 0.5,
+        timeframe="5m",
+        origin_time=origin_time,
+        direction="LONG",
+        role="PRIMARY",
+        strength=1.0,
+        confidence=0.5,
+        components=[],
+        zone_id=zone_id,
+    )

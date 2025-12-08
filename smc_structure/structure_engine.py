@@ -44,6 +44,8 @@ def build_legs(swings: Sequence[SmcSwing]) -> list[SmcStructureLeg]:
         else:
             last_low = prev.price
 
+        reference_price = last_high if curr.kind == "HIGH" else last_low
+
         label = "UNDEFINED"
         if curr.kind == "HIGH":
             if last_high is None:
@@ -62,7 +64,16 @@ def build_legs(swings: Sequence[SmcSwing]) -> list[SmcStructureLeg]:
                 label = "LL"
             last_low = curr.price
 
-        legs.append(SmcStructureLeg(from_swing=prev, to_swing=curr, label=label))
+        legs.append(
+            SmcStructureLeg(
+                from_swing=prev,
+                to_swing=curr,
+                label=label,
+                reference_price=(
+                    float(reference_price) if reference_price is not None else None
+                ),
+            )
+        )
 
     return legs
 
@@ -110,11 +121,12 @@ def detect_events(
         if leg.label == "UNDEFINED":
             continue
         close_value = _value_at_index(closes, leg.to_swing.index)
-        if close_value is None:
+        baseline_price = leg.reference_price
+        if close_value is None or baseline_price is None:
             continue
         if not _passes_break_threshold(
             close_value,
-            leg.to_swing.price,
+            baseline_price,
             _value_at_index(atr_series, leg.to_swing.index),
             cfg,
         ):
@@ -185,11 +197,11 @@ def _value_at_index(series: pd.Series | None, idx: int) -> float | None:
 
 def _passes_break_threshold(
     close_value: float,
-    swing_price: float,
+    baseline_price: float,
     atr_value: float | None,
     cfg: SmcCoreConfig,
 ) -> bool:
-    delta = abs(close_value - swing_price)
+    delta = abs(close_value - baseline_price)
     atr_component = 0.0 if atr_value is None else atr_value * cfg.bos_min_move_atr_m1
     pct_component = abs(close_value) * cfg.bos_min_move_pct_m1
     threshold = max(atr_component, pct_component)
