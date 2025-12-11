@@ -64,6 +64,8 @@ function mapOteZonesFromViewerState(state) {
     return zones.map((zone) => ({
         min: zone.ote_min ?? zone.price_min,
         max: zone.ote_max ?? zone.price_max,
+        direction: (zone.direction || "").toUpperCase(),
+        role: zone.role,
         label: `${zone.direction || ""} OTE`.trim(),
     }));
 }

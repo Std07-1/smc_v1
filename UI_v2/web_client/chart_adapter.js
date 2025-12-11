@@ -45,6 +45,31 @@
         },
     };
 
+    const STRUCTURE_TRIANGLE = {
+        widthBars: 4,
+        minWidthSec: 60,
+        heightRatio: 0.25,
+        minHeight: 0.003,
+        colors: {
+            bos: "#22c55e",
+            choch: "#f97316",
+        },
+        maxEvents: 8,
+    };
+
+    const OTE_STYLES = {
+        LONG: {
+            border: "rgba(34, 197, 94, 0.85)",
+            arrow: "#22c55e",
+            axisLabel: "#22c55e",
+        },
+        SHORT: {
+            border: "rgba(248, 113, 113, 0.85)",
+            arrow: "#f87171",
+            axisLabel: "#f87171",
+        },
+    };
+
     function normalizeBar(bar) {
         if (!bar) {
             return null;
@@ -83,6 +108,10 @@
         let poolLines = [];
         let rangeAreas = [];
         let zoneLines = [];
+        let structureTriangles = [];
+        let oteOverlays = [];
+        let barTimeSpanSeconds = 60;
+        let chartTimeRange = { min: null, max: null };
         const priceScaleState = {
             manualRange: null,
             lastAutoRange: null,
@@ -131,6 +160,7 @@
             if (!Array.isArray(bars) || bars.length === 0) {
                 candles.setData([]);
                 lastBar = null;
+                chartTimeRange = { min: null, max: null };
                 return;
             }
             const normalized = bars
@@ -139,6 +169,8 @@
                 .sort((a, b) => a.time - b.time);
             candles.setData(normalized);
             lastBar = normalized.length ? normalized[normalized.length - 1] : null;
+            updateBarTimeSpanFromBars(normalized);
+            updateTimeRangeFromBars(normalized);
             chart.timeScale().fitContent();
         }
 
@@ -148,8 +180,21 @@
                 return;
             }
             if (!lastBar || normalized.time >= lastBar.time) {
+                if (lastBar && normalized.time > lastBar.time) {
+                    const diff = normalized.time - lastBar.time;
+                    if (Number.isFinite(diff) && diff > 0) {
+                        barTimeSpanSeconds = Math.max(
+                            1,
+                            Math.round((barTimeSpanSeconds * 3 + diff) / 4)
+                        );
+                    }
+                }
                 candles.update(normalized);
                 lastBar = normalized;
+                if (chartTimeRange.min == null) {
+                    chartTimeRange.min = normalized.time;
+                }
+                chartTimeRange.max = Math.max(chartTimeRange.max ?? normalized.time, normalized.time);
             }
         }
 
@@ -158,6 +203,7 @@
                 candles.setMarkers([]);
                 eventMarkers = [];
             }
+            clearStructureTriangles();
         }
 
         function clearPools() {
@@ -175,27 +221,74 @@
             zoneLines = [];
         }
 
+        function clearStructureTriangles() {
+            if (!structureTriangles.length) {
+                return;
+            }
+            structureTriangles.forEach((series) => {
+                try {
+                    chart.removeSeries(series);
+                } catch (err) {
+                    console.warn("chart_adapter: не вдалося прибрати трикутник", err);
+                }
+            });
+            structureTriangles = [];
+        }
+
+        function clearOteOverlays() {
+            if (!oteOverlays.length) {
+                return;
+            }
+            oteOverlays.forEach((overlay) => {
+                overlay.series?.forEach((series) => {
+                    try {
+                        chart.removeSeries(series);
+                    } catch (err) {
+                        console.warn("chart_adapter: не вдалося прибрати OTE серію", err);
+                    }
+                });
+                if (overlay.priceLine) {
+                    try {
+                        candles.removePriceLine(overlay.priceLine);
+                    } catch (err) {
+                        console.warn("chart_adapter: не вдалося прибрати OTE label", err);
+                    }
+                }
+            });
+            oteOverlays = [];
+        }
+
         function setEvents(events) {
             clearEvents();
             if (!Array.isArray(events) || !events.length) {
                 return;
             }
-            eventMarkers = events
-                .map((evt) => {
-                    const time = Number(evt.time);
-                    if (!Number.isFinite(time)) return null;
-                    const direction = (evt.direction || evt.dir || "").toUpperCase();
-                    const color = direction === "SHORT" ? "#ef476f" : "#1ed760";
-                    return {
-                        time: Math.floor(time),
-                        position: direction === "SHORT" ? "aboveBar" : "belowBar",
-                        color,
-                        shape: (evt.type || "").includes("CHOCH") ? "arrowUp" : "arrowDown",
-                        text: `${evt.type || evt.event_type || ""}`.toUpperCase(),
-                    };
-                })
-                .filter(Boolean);
-            candles.setMarkers(eventMarkers);
+            withViewportPreserved(() => {
+                const structureEvents = events.filter(isStructureEvent);
+                if (!structureEvents.length) {
+                    return;
+                }
+                const recentEvents = structureEvents.slice(-STRUCTURE_TRIANGLE.maxEvents);
+                eventMarkers = structureEvents
+                    .map((evt) => {
+                        const time = Number(evt.time);
+                        if (!Number.isFinite(time)) return null;
+                        const direction = (evt.direction || evt.dir || "").toUpperCase();
+                        const color = direction === "SHORT" ? "#ef476f" : "#1ed760";
+                        return {
+                            time: Math.floor(time),
+                            position: direction === "SHORT" ? "aboveBar" : "belowBar",
+                            color,
+                            shape: (evt.type || "").includes("CHOCH") ? "arrowUp" : "arrowDown",
+                            text: `${evt.type || evt.event_type || ""}`.toUpperCase(),
+                        };
+                    })
+                    .filter(Boolean);
+                candles.setMarkers(eventMarkers);
+                recentEvents.forEach((evt) => {
+                    renderStructureTriangle(evt);
+                });
+            });
         }
 
         function setLiquidityPools(pools) {
@@ -297,7 +390,22 @@
         }
 
         function setOteZones(zones) {
-            setBandZones(zones, { min: "#06d6a0", max: "#1b9aaa" });
+            withViewportPreserved(() => {
+                clearOteOverlays();
+                if (!Array.isArray(zones) || !zones.length) {
+                    return;
+                }
+                const domain = getChartTimeDomain();
+                if (!domain) {
+                    return;
+                }
+                const span = Math.max(domain.max - domain.min, barTimeSpanSeconds * 50);
+                const left = domain.min ?? domain.max - span;
+                const right = domain.max ?? left + span;
+                zones.forEach((zone, index) => {
+                    renderOteZone(zone, index, left, right);
+                });
+            });
         }
 
         function setZones(zones) {
@@ -311,7 +419,10 @@
             clearPools();
             clearRanges();
             clearZones();
+            clearOteOverlays();
             resetManualPriceScale({ silent: true });
+            structureTriangles = [];
+            chartTimeRange = { min: null, max: null };
         }
 
         return {
@@ -324,6 +435,8 @@
             setZones,
             clearAll,
             dispose() {
+                clearStructureTriangles();
+                clearOteOverlays();
                 interactionCleanup.splice(0).forEach((cleanup) => {
                     try {
                         cleanup();
@@ -335,6 +448,182 @@
                 chart.remove();
             },
         };
+
+        function renderStructureTriangle(evt) {
+            if (!evt) {
+                return;
+            }
+            const price = Number(evt.price ?? evt.level);
+            const time = Number(evt.time ?? evt.ts ?? evt.timestamp);
+            if (!Number.isFinite(price) || !Number.isFinite(time)) {
+                return;
+            }
+            const normalizedTime = Math.floor(time);
+            const direction = (evt.direction || evt.dir || "").toUpperCase();
+            const type = (evt.type || evt.event_type || "").toUpperCase();
+            const color = type.includes("CHOCH")
+                ? STRUCTURE_TRIANGLE.colors.choch
+                : STRUCTURE_TRIANGLE.colors.bos;
+            const priceRange = getEffectivePriceRange();
+            const rangeSpan = priceRange
+                ? priceRange.max - priceRange.min
+                : Math.max(Math.abs(price) * 0.02, 1);
+            const widthSeconds = Math.max(
+                STRUCTURE_TRIANGLE.minWidthSec,
+                Math.round(barTimeSpanSeconds * STRUCTURE_TRIANGLE.widthBars)
+            );
+            const halfWidth = Math.max(1, Math.round(widthSeconds / 2));
+            const leftTime = Math.max(0, normalizedTime - halfWidth);
+            const rightTime = normalizedTime + halfWidth;
+            const height = Math.max(
+                STRUCTURE_TRIANGLE.minHeight,
+                rangeSpan * STRUCTURE_TRIANGLE.heightRatio
+            );
+            const isShort = direction === "SHORT";
+            const basePrice = isShort ? price + height : price - height;
+            const edgesSeries = createOverlaySeries(color, 2);
+            edgesSeries.setData([
+                { time: leftTime, value: basePrice },
+                { time: normalizedTime, value: price },
+                { time: rightTime, value: basePrice },
+            ]);
+            const baseSeries = createOverlaySeries(color, 1);
+            baseSeries.setData([
+                { time: leftTime, value: basePrice },
+                { time: rightTime, value: basePrice },
+            ]);
+            structureTriangles.push(edgesSeries, baseSeries);
+        }
+
+        function renderOteZone(zone, index, left, right) {
+            if (!zone) {
+                return;
+            }
+            const minPrice = Number(zone.min ?? zone.price_min ?? zone.ote_min);
+            const maxPrice = Number(zone.max ?? zone.price_max ?? zone.ote_max);
+            if (!Number.isFinite(minPrice) || !Number.isFinite(maxPrice) || minPrice >= maxPrice) {
+                return;
+            }
+            const direction = (zone.direction || "").toUpperCase();
+            const palette = direction === "SHORT" ? OTE_STYLES.SHORT : OTE_STYLES.LONG;
+            const safeLeft = Math.floor(left);
+            const safeRight = Math.max(safeLeft + 1, Math.floor(right));
+            const topSeries = createOverlaySeries(palette.border, 1);
+            topSeries.setData([
+                { time: safeLeft, value: maxPrice },
+                { time: safeRight, value: maxPrice },
+            ]);
+            const bottomSeries = createOverlaySeries(palette.border, 1);
+            bottomSeries.setData([
+                { time: safeLeft, value: minPrice },
+                { time: safeRight, value: minPrice },
+            ]);
+            const overlaySeries = [topSeries, bottomSeries];
+            const priceLine = candles.createPriceLine({
+                price: (minPrice + maxPrice) / 2,
+                color: palette.axisLabel,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                axisLabelVisible: true,
+                lineVisible: false,
+                title: `${direction || (direction === "SHORT" ? "SHORT" : "LONG")} OTE`,
+            });
+            oteOverlays.push({
+                series: overlaySeries,
+                priceLine,
+            });
+        }
+
+        function isStructureEvent(evt) {
+            if (!evt) {
+                return false;
+            }
+            const kind = (evt.type || evt.event_type || "").toUpperCase();
+            return kind.includes("BOS") || kind.includes("CHOCH");
+        }
+
+        function getChartTimeDomain() {
+            if (
+                chartTimeRange.min != null &&
+                chartTimeRange.max != null &&
+                chartTimeRange.max > chartTimeRange.min
+            ) {
+                return {
+                    min: chartTimeRange.min,
+                    max: chartTimeRange.max,
+                };
+            }
+            if (lastBar?.time) {
+                const fallbackMin = lastBar.time - barTimeSpanSeconds * 200;
+                return {
+                    min: Math.max(0, fallbackMin),
+                    max: lastBar.time,
+                };
+            }
+            return null;
+        }
+
+        function updateBarTimeSpanFromBars(bars) {
+            if (!Array.isArray(bars) || bars.length < 2) {
+                return;
+            }
+            let total = 0;
+            let count = 0;
+            for (let i = bars.length - 1; i > 0 && count < 32; i -= 1) {
+                const diff = bars[i].time - bars[i - 1].time;
+                if (Number.isFinite(diff) && diff > 0) {
+                    total += diff;
+                    count += 1;
+                }
+            }
+            if (count) {
+                barTimeSpanSeconds = Math.max(1, Math.round(total / count));
+            }
+        }
+
+        function updateTimeRangeFromBars(bars) {
+            if (!Array.isArray(bars) || !bars.length) {
+                chartTimeRange = { min: null, max: null };
+                return;
+            }
+            chartTimeRange = {
+                min: bars[0].time,
+                max: bars[bars.length - 1].time,
+            };
+        }
+
+        function clampTime(value, min, max) {
+            if (!Number.isFinite(value)) {
+                return min;
+            }
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function createOverlaySeries(color, lineWidth) {
+            return chart.addLineSeries({
+                color,
+                lineWidth,
+                priceScaleId: "right",
+                lastValueVisible: false,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+                autoscaleInfoProvider: () => null,
+            });
+        }
+
+        function withViewportPreserved(action) {
+            const logicalRange = chart.timeScale().getVisibleLogicalRange();
+            const scrollPos = chart.timeScale().scrollPosition();
+            action();
+            if (logicalRange) {
+                chart.timeScale().setVisibleLogicalRange({
+                    from: logicalRange.from,
+                    to: logicalRange.to,
+                });
+            } else if (Number.isFinite(scrollPos)) {
+                chart.timeScale().scrollToPosition(scrollPos, false);
+            }
+        }
 
         function setupPriceScaleInteractions() {
             if (!container || typeof window === "undefined") {
