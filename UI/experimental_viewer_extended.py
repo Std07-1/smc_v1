@@ -83,6 +83,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         table.add_row("AMD", str(liquidity.get("amd_phase")))
         table.add_row("Session", str(viewer_state.get("session") or "-"))
         table.add_row("Price", self._format_price(viewer_state.get("price")))
+        table.add_row("Pipeline", self._pipeline_label(viewer_state))
         table.add_row("Payload TS", self._format_ts(viewer_state.get("payload_ts")))
         return table
 
@@ -573,6 +574,28 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             if next_seconds is not None:
                 return next_seconds >= self.WEEKEND_GUESS_THRESHOLD_SECONDS
         return False
+
+    def _pipeline_label(self, viewer_state: dict[str, Any]) -> str:
+        meta_block = viewer_state.get("meta")
+        if not isinstance(meta_block, dict):
+            return "-"
+
+        state_label = str(meta_block.get("pipeline_state") or "-").upper()
+
+        def _as_int(value: Any) -> int | None:
+            return int(value) if isinstance(value, (int, float)) else None
+
+        ready = _as_int(meta_block.get("pipeline_ready_assets"))
+        total = _as_int(meta_block.get("pipeline_assets_total"))
+        minimum = _as_int(meta_block.get("pipeline_min_ready"))
+
+        parts = [state_label]
+        if ready is not None and total is not None:
+            parts.append(f"{ready}/{total}")
+        if minimum is not None:
+            parts.append(f"min {minimum}")
+
+        return " ".join(parts).strip()
 
     def _viewer_payload_datetime(self, viewer_state: dict[str, Any]) -> datetime | None:
         ts_value: Any = viewer_state.get("payload_ts")

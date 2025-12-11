@@ -14,3 +14,4 @@ rich==14.0.0
 scipy==1.15.3
 tenacity==9.1.2
 websockets==15.0
+prometheus-client==0.21.0

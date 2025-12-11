@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SMC Viewer v2 (Web)</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+    <header class="app-header">
+        <div class="header-left">
+            <label for="symbol-select">Символ:</label>
+            <select id="symbol-select"></select>
+            <button id="refresh-btn" type="button">Оновити snapshot</button>
+        </div>
+        <div class="header-right">
+            <span id="ws-status" class="status-pill status-disconnected">Відключено</span>
+            <button id="reconnect-btn" type="button">Перепідключити</button>
+            <div class="status-meta">
+                <span class="status-meta__item" id="payload-ts">Payload ts: -</span>
+                <span class="status-meta__item" id="payload-lag">Lag (s): -</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <section class="summary" aria-labelledby="summary-title">
+            <h2 id="summary-title">Summary</h2>
+            <div class="summary-grid">
+                <div>
+                    <span class="label">Symbol</span>
+                    <span id="summary-symbol" class="value">-</span>
+                </div>
+                <div>
+                    <span class="label">Price</span>
+                    <span id="summary-price" class="value">-</span>
+                </div>
+                <div>
+                    <span class="label">Session</span>
+                    <span id="summary-session" class="value">-</span>
+                </div>
+                <div>
+                    <span class="label">Trend</span>
+                    <span id="summary-trend" class="summary-badge">-</span>
+                </div>
+                <div>
+                    <span class="label">Bias</span>
+                    <span id="summary-bias" class="summary-badge">-</span>
+                </div>
+                <div>
+                    <span class="label">Range State</span>
+                    <span id="summary-range" class="summary-badge">-</span>
+                </div>
+                <div>
+                    <span class="label">AMD Phase</span>
+                    <span id="summary-amd" class="summary-badge">-</span>
+                </div>
+                <div>
+                    <span class="label">FX Market</span>
+                    <span id="summary-market" class="value">-</span>
+                </div>
+                <div>
+                    <span class="label">FX Process</span>
+                    <span id="summary-process" class="value">-</span>
+                </div>
+                <div>
+                    <span class="label">Lag (s)</span>
+                    <span id="summary-lag" class="value">-</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="card card-chart" aria-labelledby="chart-title">
+            <div class="card-chart__header">
+                <h2 id="chart-title" class="card-title">Price Chart</h2>
+                <div class="chart-layer-controls" role="group" aria-label="Керування шарами">
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-toggle-events" checked />
+                        <span class="layer-toggle__dot layer-toggle__dot--events" aria-hidden="true"></span>
+                        <span class="layer-toggle__text">BOS / CHOCH</span>
+                    </label>
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-toggle-pools" checked />
+                        <span class="layer-toggle__dot layer-toggle__dot--pools" aria-hidden="true"></span>
+                        <span class="layer-toggle__text">Pools</span>
+                    </label>
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-toggle-ote" checked />
+                        <span class="layer-toggle__dot layer-toggle__dot--ote" aria-hidden="true"></span>
+                        <span class="layer-toggle__text">OTE</span>
+                    </label>
+                    <label class="layer-toggle">
+                        <input type="checkbox" id="layer-toggle-zones" checked />
+                        <span class="layer-toggle__dot layer-toggle__dot--zones" aria-hidden="true"></span>
+                        <span class="layer-toggle__text">Zones</span>
+                    </label>
+                </div>
+            </div>
+            <div id="chart-container" class="chart-demo-container"></div>
+        </section>
+
+        <section class="card card-ohlcv" aria-labelledby="ohlcv-title">
+            <h2 id="ohlcv-title" class="card-title">OHLCV Debug</h2>
+            <div class="summary-grid summary-grid-ohlcv">
+                <div class="summary-item">
+                    <span class="summary-label">Timeframe</span>
+                    <span id="ohlcv-tf" class="summary-value">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Bars</span>
+                    <span id="ohlcv-count" class="summary-value">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Last time</span>
+                    <span id="ohlcv-last-time" class="summary-value">-</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Last close</span>
+                    <span id="ohlcv-last-close" class="summary-value">-</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" aria-labelledby="events-title">
+            <div class="panel-header">
+                <h3 id="events-title">Structure Events (BOS / CHOCH)</h3>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Direction</th>
+                        <th>Price</th>
+                    </tr>
+                </thead>
+                <tbody id="events-body"></tbody>
+            </table>
+        </section>
+
+        <section class="panel" aria-labelledby="ote-title">
+            <div class="panel-header">
+                <h3 id="ote-title">OTE Zones</h3>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Direction</th>
+                        <th>Role</th>
+                        <th>OTE min</th>
+                        <th>OTE max</th>
+                    </tr>
+                </thead>
+                <tbody id="ote-body"></tbody>
+            </table>
+        </section>
+
+        <section class="panel" aria-labelledby="pools-title">
+            <div class="panel-header">
+                <h3 id="pools-title">Liquidity Pools</h3>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Role</th>
+                        <th>Price</th>
+                        <th>Strength / Touches</th>
+                    </tr>
+                </thead>
+                <tbody id="pools-body"></tbody>
+            </table>
+        </section>
+
+        <section class="panel" aria-labelledby="zones-title">
+            <div class="panel-header">
+                <h3 id="zones-title">Zones</h3>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Role</th>
+                        <th>Price min</th>
+                        <th>Price max</th>
+                    </tr>
+                </thead>
+                <tbody id="zones-body"></tbody>
+            </table>
+        </section>
+    </main>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="chart_adapter.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

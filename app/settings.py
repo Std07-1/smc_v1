@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.config import (
@@ -153,6 +153,80 @@ RAM_BUFFER_MAX_BARS = (
     30000  # Максимальна кількість барів у RAMBuffer на symbol/timeframe
 )
 
+# Дозволені таймфрейми для SMC contract-of-needs
+SMC_SUPPORTED_TFS: tuple[str, ...] = ("1m", "5m")
+
+
+class SmcUniverseSymbolCfg(BaseModel):
+    """Опис одиничного символу у SMC contract-of-needs."""
+
+    id: str
+    tfs: list[str]
+    min_history_bars: int
+    enabled: bool = True
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _normalize_id(cls, v: Any) -> str:
+        text = str(v or "").strip().lower()
+        if not text:
+            raise ValueError("id символу не може бути порожнім")
+        return text
+
+    @field_validator("tfs")
+    @classmethod
+    def _validate_tfs(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("tfs має містити хоча б один таймфрейм")
+        cleaned: list[str] = []
+        for tf in v:
+            tf_norm = str(tf or "").strip().lower()
+            if tf_norm not in SMC_SUPPORTED_TFS:
+                raise ValueError(
+                    f"Непідтримуваний таймфрейм {tf_norm!r}; дозволено {SMC_SUPPORTED_TFS}"
+                )
+            cleaned.append(tf_norm)
+        return cleaned
+
+    @field_validator("min_history_bars")
+    @classmethod
+    def _validate_min_history(cls, v: int) -> int:
+        try:
+            value = int(v)
+        except (TypeError, ValueError):
+            raise ValueError("min_history_bars має бути цілим числом")
+        if value < 100:
+            raise ValueError("min_history_bars має бути не менше 100")
+        if value > 10000:
+            raise ValueError("min_history_bars має бути не більше 10000")
+        return value
+
+
+class SmcFxcmContractCfg(BaseModel):
+    """Contract-of-needs для FXCM джерела (версія + список символів)."""
+
+    version: int = 1
+    symbols: list[SmcUniverseSymbolCfg] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _ensure_unique_symbol_tf(self) -> "SmcFxcmContractCfg":
+        seen: set[tuple[str, str]] = set()
+        for entry in self.symbols:
+            for tf in entry.tfs:
+                key = (entry.id, tf)
+                if key in seen:
+                    raise ValueError(
+                        f"Дублікат символу/TF у контрактi: {entry.id} {tf}"
+                    )
+                seen.add(key)
+        return self
+
+
+class SmcUniverseCfg(BaseModel):
+    """Контейнер для SMC universe контрактів (fxcm тощо)."""
+
+    fxcm_contract: SmcFxcmContractCfg | None = None
+
 
 class Profile(BaseModel):
     name: str = "small"
@@ -242,6 +316,7 @@ class DataStoreCfg(BaseModel):
     io_retry_attempts: int = 3
     io_retry_backoff: float = 0.25
     admin: AdminCfg = AdminCfg()
+    smc_universe: SmcUniverseCfg = SmcUniverseCfg()
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

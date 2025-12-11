@@ -32,6 +32,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UI_EXPERIMENTAL_VIEW_ENABLED = True
 
 
+def _log_smc_universe(cfg) -> None:
+    """Логування contract-of-needs для SMC (fxcm_contract)."""
+
+    universe = getattr(cfg, "smc_universe", None)
+    contract = getattr(universe, "fxcm_contract", None) if universe else None
+    symbols = getattr(contract, "symbols", None) if contract else None
+    if not contract or not symbols:
+        logger.warning(
+            "[SMC_UNIVERSE] fxcm_contract відсутній або порожній — SMC працює без contract-of-needs"
+        )
+        return
+
+    formatted: list[str] = []
+    for entry in symbols:
+        tfs = "/".join(entry.tfs)
+        status = "(disabled)" if not entry.enabled else ""
+        formatted.append(f"{entry.id}:{tfs}:{entry.min_history_bars}{status}")
+
+    logger.info(
+        "[SMC_UNIVERSE] fxcm_contract v%s symbols=%s",
+        contract.version,
+        "; ".join(formatted),
+    )
+
+
 def create_redis_client(*, decode_responses: bool = False) -> tuple[Redis, str]:
     """Створює Redis-клієнт на базі pydantic Settings."""
 
@@ -45,10 +70,42 @@ def create_redis_client(*, decode_responses: bool = False) -> tuple[Redis, str]:
     return client, f"{settings.redis_host}:{settings.redis_port}"
 
 
-def start_fxcm_tasks(store_handler: UnifiedDataStore) -> list[asyncio.Task[Any]]:
+def _build_allowed_pairs(cfg) -> set[tuple[str, str]] | None:
+    """Формує whitelist (symbol, tf) з fxcm_contract або повертає None."""
+
+    contract = getattr(getattr(cfg, "smc_universe", None), "fxcm_contract", None)
+    symbols = getattr(contract, "symbols", None) if contract else None
+    if not contract or not symbols:
+        return None
+
+    pairs: set[tuple[str, str]] = set()
+    for entry in symbols:
+        if not entry.enabled:
+            continue
+        for tf in entry.tfs:
+            pairs.add((entry.id.strip().lower(), tf.strip().lower()))
+    return pairs or None
+
+
+def start_fxcm_tasks(
+    store_handler: UnifiedDataStore,
+    *,
+    allowed_pairs: set[tuple[str, str]] | None = None,
+) -> list[asyncio.Task[Any]]:
     """Запускає інжестор та FXCM статус/price-stream лістенери."""
 
     tasks: list[asyncio.Task[Any]] = []
+
+    if allowed_pairs is None:
+        logger.info(
+            "[SMC_UNIVERSE] FXCM інжестор працює в legacy-mode (без фільтра за контрактом)"
+        )
+    else:
+        pairs_str = ", ".join(f"{s}:{tf}" for (s, tf) in sorted(allowed_pairs))
+        logger.info(
+            "[SMC_UNIVERSE] Активований universe-фільтр для FXCM: %s",
+            pairs_str,
+        )
 
     def _launch(
         factory: Callable[[], Coroutine[Any, Any, Any]],
@@ -68,6 +125,7 @@ def start_fxcm_tasks(store_handler: UnifiedDataStore) -> list[asyncio.Task[Any]]
             hmac_secret=settings.fxcm_hmac_secret,
             hmac_algo=settings.fxcm_hmac_algo,
             hmac_required=settings.fxcm_hmac_required,
+            allowed_pairs=allowed_pairs,
         ),
         "[Pipeline] FXCM інжестор запущено",
         "[Pipeline] Не вдалося запустити FXCM інжестор",
@@ -123,8 +181,8 @@ def launch_experimental_viewer() -> None:
             logger.warning("Не вдалося запустити UI consumer: %s", exc)
 
 
-async def bootstrap() -> UnifiedDataStore:
-    """Ініціалізує UnifiedDataStore та запускає maintenance loop."""
+async def bootstrap() -> tuple[UnifiedDataStore, Any]:
+    """Ініціалізує UnifiedDataStore та запускає maintenance loop; повертає store і cfg."""
 
     cfg = load_datastore_cfg()
     logger.info(
@@ -132,6 +190,7 @@ async def bootstrap() -> UnifiedDataStore:
         cfg.namespace,
         cfg.base_dir,
     )
+    _log_smc_universe(cfg)
     redis, redis_source = create_redis_client()
     logger.info("[Launch] Redis client created via %s", redis_source)
     try:
@@ -152,7 +211,7 @@ async def bootstrap() -> UnifiedDataStore:
     store = UnifiedDataStore(redis=redis, cfg=store_cfg)
     await store.start_maintenance()
     logger.info("[Launch] UnifiedDataStore maintenance loop started")
-    return store
+    return store, cfg
 
 
 async def noop_healthcheck() -> None:
@@ -168,5 +227,6 @@ __all__ = (
     "create_redis_client",
     "launch_experimental_viewer",
     "noop_healthcheck",
+    "_build_allowed_pairs",
     "start_fxcm_tasks",
 )

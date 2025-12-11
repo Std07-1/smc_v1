@@ -45,10 +45,14 @@ __all__ = [
     "REDIS_CACHE_TTL",
     "REDIS_CHANNEL_SMC_STATE",
     "REDIS_SNAPSHOT_KEY_SMC",
+    "REDIS_CHANNEL_SMC_VIEWER_EXTENDED",
+    "REDIS_SNAPSHOT_KEY_SMC_VIEWER",
     "UI_SMC_PAYLOAD_SCHEMA_VERSION",
     "UI_SMC_SNAPSHOT_TTL_SEC",
     "UI_VIEWER_ALT_SCREEN_ENABLED",
     "UI_VIEWER_SNAPSHOT_DIR",
+    "UI_V2_DEBUG_VIEWER_ENABLED",
+    "UI_V2_DEBUG_VIEWER_SYMBOLS",
     "SMC_PIPELINE_ENABLED",
     "SMC_REFRESH_INTERVAL",
     "SMC_BATCH_SIZE",
@@ -122,6 +126,12 @@ REDIS_CHANNEL_SMC_STATE: str = f"{NAMESPACE}:ui:smc_state"
 #: Ключ снапшота для SMC-пайплайна
 REDIS_SNAPSHOT_KEY_SMC: str = f"{NAMESPACE}:ui:smc_snapshot"
 
+#: Канал публікації готового viewer_state (extended UI)
+REDIS_CHANNEL_SMC_VIEWER_EXTENDED: str = f"{NAMESPACE}:ui:smc_viewer_extended"
+
+#: Ключ снапшота viewer_state (мапа symbol -> SmcViewerState)
+REDIS_SNAPSHOT_KEY_SMC_VIEWER: str = f"{NAMESPACE}:ui:smc_viewer_snapshot"
+
 #: Канал для адмін-команд (узгоджено з AdminCfg.commands_channel)
 ADMIN_COMMANDS_CHANNEL: str = f"{NAMESPACE}:admin:commands"
 
@@ -138,6 +148,8 @@ UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
 UI_SMC_PAYLOAD_SCHEMA_VERSION: str = "1.2"
 UI_VIEWER_ALT_SCREEN_ENABLED: bool = True
 UI_VIEWER_SNAPSHOT_DIR: str = "tmp"
+# UI_v2 debug viewer: увімкнено за замовчуванням і дивиться на FXCM символи
+UI_V2_DEBUG_VIEWER_ENABLED: bool = True
 
 # ── Підготовчі прапорці для WS gap‑бекфілу (за замовчуванням вимкнено) ──
 WS_GAP_BACKFILL: dict[str, int | bool] = {
@@ -159,10 +171,21 @@ FAST_SYMBOLS_TTL_MANUAL = 60 * 60
 FXCM_FAST_SYMBOLS = [
     "xauusd",
     # "xagusd",  # у всій системі символи зберігаємо у lower-case
+    # "eurusd",
+    # "gbpusd",
+    # "usdjpy",
+    # "usdchf",
+    # "usdcad",
+    # "audusd",
 ]
 
-FXCM_STALE_LAG_SECONDS = 120
+# Перелік символів для UI_v2 debug viewer базується на FXCM_FAST_SYMBOLS
+UI_V2_DEBUG_VIEWER_SYMBOLS: list[str] = [sym.upper() for sym in FXCM_FAST_SYMBOLS]
+
+#: Канал живих bid/ask/mid тиков від FXCM конектора
 FXCM_PRICE_TICK_CHANNEL = "fxcm:price_tik"
+
+FXCM_STALE_LAG_SECONDS = 120
 # Канал агрегованого статусу конектора FXCM (process/market/price/ohlcv/session)
 FXCM_STATUS_CHANNEL = "fxcm:status"
 # Скільки секунд mid вважається «свіжим» для UI/алгоритмів

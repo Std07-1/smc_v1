@@ -93,6 +93,8 @@ PROM_FXCM_UNSIGNED_PAYLOAD = _build_counter(
 )
 
 _UNEXPECTED_SIG_LOGGED = False
+_NON_CONTRACT_LOGGED = 0
+_NON_CONTRACT_LOG_LIMIT = 5
 
 
 def _bars_payload_to_df(bars: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
@@ -232,6 +234,7 @@ async def _process_payload(
     hmac_secret: str | None,
     hmac_algo: str,
     hmac_required: bool,
+    allowed_pairs: set[tuple[str, str]] | None = None,
 ) -> tuple[int, str | None, str | None]:
     symbol = payload.get("symbol")
     interval = payload.get("tf")
@@ -291,8 +294,19 @@ async def _process_payload(
     if df.empty:
         return 0, None, None
 
-    symbol_norm = str(symbol).lower()
-    interval_norm = str(interval).lower()
+    symbol_norm = str(symbol).lower().strip()
+    interval_norm = str(interval).lower().strip()
+
+    if allowed_pairs is not None and (symbol_norm, interval_norm) not in allowed_pairs:
+        global _NON_CONTRACT_LOGGED
+        if _NON_CONTRACT_LOGGED < _NON_CONTRACT_LOG_LIMIT:
+            logger.info(
+                "[FXCM_INGEST] Пропускаємо non-contract пакет symbol=%s tf=%s",
+                symbol_norm,
+                interval_norm,
+            )
+            _NON_CONTRACT_LOGGED += 1
+        return 0, None, None
 
     try:
         await store.put_bars(symbol_norm, interval_norm, df)
@@ -325,6 +339,7 @@ async def run_fxcm_ingestor(
     hmac_secret: str | None = None,
     hmac_algo: str = "sha256",
     hmac_required: bool = False,
+    allowed_pairs: set[tuple[str, str]] | None = None,
 ) -> None:
     """Основний цикл інжестора FXCM → UnifiedDataStore.
 
@@ -354,6 +369,15 @@ async def run_fxcm_ingestor(
         port,
         channel,
     )
+    if allowed_pairs is None:
+        logger.info(
+            "[FXCM_INGEST] Universe-фільтр вимкнено (legacy mode, приймаємо всі symbol/tf)"
+        )
+    else:
+        logger.info(
+            "[FXCM_INGEST] Universe-фільтр активний, дозволені пари: %s",
+            ", ".join(f"{s}:{tf}" for (s, tf) in sorted(allowed_pairs)),
+        )
 
     await pubsub.subscribe(channel)
 
@@ -403,6 +427,7 @@ async def run_fxcm_ingestor(
                 hmac_secret=normalized_secret,
                 hmac_algo=normalized_algo,
                 hmac_required=hmac_required,
+                allowed_pairs=allowed_pairs,
             )
 
             if rows <= 0:

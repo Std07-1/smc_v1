@@ -22,7 +22,7 @@ from smc_core.smc_types import (
 # ───────────────────────────── Логування ─────────────────────────────
 logger = logging.getLogger("smc_zones.orderblock_detector")
 if not logger.handlers:  # захист від повторної ініціалізації
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     # show_path=True для відображення файлу/рядка у WARN/ERROR
     logger.addHandler(RichHandler(console=Console(stderr=True), show_path=True))
     logger.propagate = False

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SMC Viewer v2 — Chart Demo</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body class="chart-demo-body">
+    <main class="chart-demo-main">
+        <section class="chart-demo-panel">
+            <header class="chart-demo-header">
+                <div>
+                    <label for="chart-symbol">Символ:</label>
+                    <select id="chart-symbol">
+                        <option value="xauusd">XAUUSD</option>
+                        <option value="eurusd">EURUSD</option>
+                        <option value="gbpusd">GBPUSD</option>
+                        <option value="usdjpy">USDJPY</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="chart-tf">Таймфрейм:</label>
+                    <select id="chart-tf">
+                        <option value="1m">1m (поки що)</option>
+                    </select>
+                </div>
+            </header>
+
+            <div id="chart-status" class="chart-demo-status">Очікуємо завантаження даних…</div>
+            <div id="chart-container" class="chart-demo-container"></div>
+        </section>
+    </main>
+
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="chart_adapter.js"></script>
+    <script src="chart_demo.js"></script>
+</body>
+
+</html>

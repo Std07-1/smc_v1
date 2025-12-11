@@ -26,6 +26,22 @@ validate_on_read: true
 io_retry_attempts: 3
 io_retry_backoff: 0.25
 
+# SMC contract-of-needs (джерело правди для FXCM стріму)
+smc_universe:
+  fxcm_contract:
+    # Підтримувані tfs: "1m", "5m". min_history_bars > 0 (рекомендовано 100–10000).
+    version: 1
+    symbols:
+      - id: "xauusd"
+        tfs: ["1m", "5m"]
+        min_history_bars: 2000
+        enabled: true
+      # приклад на майбутнє:
+      # - id: "eurusd"
+      #   tfs: ["1m"]
+      #   min_history_bars: 1500
+      #   enabled: false
+
 admin:
   # вмикає командний канал для живого керування (через redis pubsub)
   commands_channel: ai_one:admin:commands

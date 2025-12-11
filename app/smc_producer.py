@@ -86,6 +86,33 @@ def _get_smc_plain_serializer() -> Callable[[Any], dict[str, Any] | None] | None
     return _SMC_PLAIN_SERIALIZER
 
 
+def _build_pipeline_meta(
+    *, assets_total: int, ready_assets: int, min_ready: int
+) -> dict[str, Any]:
+    """Повертає компактний стан пайплайна для UI мета-блоку."""
+
+    total = max(0, assets_total)
+    ready = max(0, min(ready_assets, total)) if total else max(0, ready_assets)
+    required = max(1, min_ready) if total else max(1, min_ready)
+
+    if ready == 0:
+        state = "COLD"
+    elif ready < required:
+        state = "WARMUP"
+    else:
+        state = "LIVE"
+
+    ready_pct = 0.0 if total == 0 else round(ready / total, 4)
+
+    return {
+        "pipeline_state": state,
+        "pipeline_ready_assets": ready,
+        "pipeline_min_ready": required,
+        "pipeline_assets_total": total,
+        "pipeline_ready_pct": ready_pct,
+    }
+
+
 async def _build_smc_hint(*, symbol: str, store: UnifiedDataStore) -> SmcHint | None:
     """Формує SmcHint через smc_core.input_adapter."""
 
@@ -248,6 +275,13 @@ async def smc_producer(
     state_manager = state_manager or SmcStateManager(assets_current)
     state_manager.set_cache_handler(store)
 
+    min_ready = (
+        max(1, int(len(assets_current) * min_ready_pct)) if assets_current else 1
+    )
+    pipeline_meta = _build_pipeline_meta(
+        assets_total=len(assets_current), ready_assets=0, min_ready=min_ready
+    )
+
     cycle_seq = 0
     await publish_smc_state(
         state_manager,
@@ -257,6 +291,7 @@ async def smc_producer(
             "cycle_seq": cycle_seq,
             "cycle_started_ts": datetime.utcnow().isoformat() + "Z",
             "cycle_reason": "smc_bootstrap",
+            **pipeline_meta,
         },
     )
 
@@ -296,6 +331,11 @@ async def smc_producer(
             for symbol in assets_current:
                 if symbol not in ready_assets:
                     state_manager.update_asset(symbol, create_no_data_signal(symbol))
+            pipeline_meta = _build_pipeline_meta(
+                assets_total=len(assets_current),
+                ready_assets=len(ready_assets),
+                min_ready=min_ready,
+            )
             await publish_smc_state(
                 state_manager,
                 store,
@@ -304,6 +344,7 @@ async def smc_producer(
                     "cycle_seq": cycle_seq,
                     "cycle_started_ts": datetime.utcnow().isoformat() + "Z",
                     "cycle_reason": "smc_insufficient_data",
+                    **pipeline_meta,
                 },
             )
             await asyncio.sleep(interval_sec)
@@ -327,6 +368,11 @@ async def smc_producer(
             await asyncio.gather(*tasks)
 
         cycle_ready_ts = time.time()
+        pipeline_meta = _build_pipeline_meta(
+            assets_total=len(assets_current),
+            ready_assets=len(ready_assets),
+            min_ready=min_ready,
+        )
         await publish_smc_state(
             state_manager,
             store,
@@ -341,6 +387,7 @@ async def smc_producer(
                     (cycle_ready_ts - cycle_started_ts) * 1000.0, 2
                 ),
                 "cycle_reason": "smc_screening",
+                **pipeline_meta,
             },
         )
 
