@@ -11,6 +11,8 @@ const STORAGE_KEYS = {
 };
 
 let lastOhlcvResponse = null;
+let cachedStorage = null;
+let storageUnavailable = false;
 
 function formatNumber(value, digits = 2) {
     if (value === null || value === undefined) return "-";
@@ -424,15 +426,22 @@ function pickInitialSymbol(snapshot) {
     if (!snapshot || Object.keys(snapshot).length === 0) {
         return null;
     }
-    const preferred = DEFAULT_SYMBOL.toUpperCase();
+    const preferred = (appState.preferredSymbol || DEFAULT_SYMBOL).toUpperCase();
     if (snapshot[preferred]) {
         return preferred;
+    }
+    const defaultKey = DEFAULT_SYMBOL.toUpperCase();
+    if (snapshot[defaultKey]) {
+        return defaultKey;
     }
     return Object.keys(snapshot)[0];
 }
 
 function populateSymbolSelect(symbols) {
     const select = elements.symbolSelect;
+    if (!select) {
+        return;
+    }
     select.innerHTML = "";
     const sorted = symbols.sort();
     sorted.forEach((symbol) => {
@@ -441,8 +450,9 @@ function populateSymbolSelect(symbols) {
         option.textContent = symbol;
         select.appendChild(option);
     });
-    if (appState.currentSymbol && symbols.includes(appState.currentSymbol)) {
-        select.value = appState.currentSymbol;
+    const targetSymbol = appState.currentSymbol || appState.preferredSymbol;
+    if (targetSymbol && symbols.includes(targetSymbol)) {
+        select.value = targetSymbol;
     }
 }
 
@@ -475,6 +485,7 @@ function handleTimeframeChange(nextTf) {
     }
     appState.currentTimeframe = normalized;
     syncTimeframeSelect(normalized);
+    persistTimeframe(normalized);
     if (appState.currentSymbol) {
         fetchOhlcv(appState.currentSymbol, normalized);
     }
@@ -767,6 +778,77 @@ function syncTimeframeSelect(tf) {
 function normalizeTimeframe(tf) {
     const value = String(tf || OHLCV_DEFAULT_TF).toLowerCase();
     return AVAILABLE_TIMEFRAMES.includes(value) ? value : OHLCV_DEFAULT_TF;
+}
+
+function persistSymbol(symbol) {
+    const storage = getStorage();
+    if (!storage || !symbol) {
+        return;
+    }
+    try {
+        storage.setItem(STORAGE_KEYS.symbol, String(symbol).toUpperCase());
+    } catch (err) {
+        console.warn("[UI] Не вдалося зберегти символ у localStorage", err);
+    }
+}
+
+function persistTimeframe(tf) {
+    const storage = getStorage();
+    if (!storage || !tf) {
+        return;
+    }
+    try {
+        storage.setItem(STORAGE_KEYS.timeframe, normalizeTimeframe(tf));
+    } catch (err) {
+        console.warn("[UI] Не вдалося зберегти таймфрейм у localStorage", err);
+    }
+}
+
+function loadPersistedPreferences() {
+    const storage = getStorage();
+    if (!storage) {
+        return;
+    }
+    try {
+        const storedTf = storage.getItem(STORAGE_KEYS.timeframe);
+        if (storedTf) {
+            const normalizedTf = normalizeTimeframe(storedTf);
+            appState.currentTimeframe = normalizedTf;
+            if (normalizedTf !== storedTf) {
+                storage.setItem(STORAGE_KEYS.timeframe, normalizedTf);
+            }
+        }
+        const storedSymbol = storage.getItem(STORAGE_KEYS.symbol);
+        if (storedSymbol) {
+            const normalizedSymbol = String(storedSymbol).toUpperCase();
+            appState.preferredSymbol = normalizedSymbol;
+            if (normalizedSymbol !== storedSymbol) {
+                storage.setItem(STORAGE_KEYS.symbol, normalizedSymbol);
+            }
+        }
+    } catch (err) {
+        console.warn("[UI] Не вдалося зчитати налаштування з localStorage", err);
+    }
+}
+
+function getStorage() {
+    if (storageUnavailable) {
+        return null;
+    }
+    if (cachedStorage) {
+        return cachedStorage;
+    }
+    try {
+        if (typeof window !== "undefined" && window.localStorage) {
+            cachedStorage = window.localStorage;
+            return cachedStorage;
+        }
+    } catch (err) {
+        storageUnavailable = true;
+        console.warn("[UI] localStorage недоступний", err);
+    }
+    storageUnavailable = true;
+    return null;
 }
 
 function renderOhlcvSummary(ohlcv) {

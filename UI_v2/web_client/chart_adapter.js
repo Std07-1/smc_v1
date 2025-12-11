@@ -46,15 +46,16 @@
     };
 
     const STRUCTURE_TRIANGLE = {
-        widthBars: 4,
-        minWidthSec: 60,
-        heightRatio: 0.25,
-        minHeight: 0.003,
+        widthBars: 6,
+        minWidthSec: 180,
+        heightRatio: 0.35,
+        minHeight: 0.01,
+        minHeightPct: 0.0006,
         colors: {
             bos: "#4ade80",
             choch: "#facc15",
         },
-        maxEvents: 8,
+        maxEvents: 12,
         edgeWidth: 3,
         baseWidth: 2,
     };
@@ -111,6 +112,7 @@
         let rangeAreas = [];
         let zoneLines = [];
         let structureTriangles = [];
+        let structureTriangleLabels = [];
         let oteOverlays = [];
         let barTimeSpanSeconds = 60;
         let chartTimeRange = { min: null, max: null };
@@ -224,17 +226,26 @@
         }
 
         function clearStructureTriangles() {
-            if (!structureTriangles.length) {
-                return;
+            if (structureTriangles.length) {
+                structureTriangles.forEach((series) => {
+                    try {
+                        chart.removeSeries(series);
+                    } catch (err) {
+                        console.warn("chart_adapter: не вдалося прибрати трикутник", err);
+                    }
+                });
+                structureTriangles = [];
             }
-            structureTriangles.forEach((series) => {
-                try {
-                    chart.removeSeries(series);
-                } catch (err) {
-                    console.warn("chart_adapter: не вдалося прибрати трикутник", err);
-                }
-            });
-            structureTriangles = [];
+            if (structureTriangleLabels.length) {
+                structureTriangleLabels.forEach((line) => {
+                    try {
+                        candles.removePriceLine(line);
+                    } catch (err) {
+                        console.warn("chart_adapter: не вдалося прибрати структуральний label", err);
+                    }
+                });
+                structureTriangleLabels = [];
+            }
         }
 
         function clearOteOverlays() {
@@ -270,8 +281,15 @@
                 if (!structureEvents.length) {
                     return;
                 }
-                const recentEvents = structureEvents.slice(-STRUCTURE_TRIANGLE.maxEvents);
-                eventMarkers = structureEvents
+                const getEventTime = (evt) => {
+                    const value = Number(evt.time ?? evt.ts ?? evt.timestamp ?? 0);
+                    return Number.isFinite(value) ? value : 0;
+                };
+                const sortedEvents = structureEvents
+                    .slice()
+                    .sort((a, b) => getEventTime(a) - getEventTime(b));
+                const recentEvents = sortedEvents.slice(-STRUCTURE_TRIANGLE.maxEvents);
+                eventMarkers = sortedEvents
                     .map((evt) => {
                         const time = Number(evt.time);
                         if (!Number.isFinite(time)) return null;
@@ -467,9 +485,10 @@
                 ? STRUCTURE_TRIANGLE.colors.choch
                 : STRUCTURE_TRIANGLE.colors.bos;
             const priceRange = getEffectivePriceRange();
+            const fallbackSpan = Math.max(Math.abs(price) * 0.02, 1);
             const rangeSpan = priceRange
                 ? priceRange.max - priceRange.min
-                : Math.max(Math.abs(price) * 0.02, 1);
+                : fallbackSpan;
             const widthSeconds = Math.max(
                 STRUCTURE_TRIANGLE.minWidthSec,
                 Math.round(barTimeSpanSeconds * STRUCTURE_TRIANGLE.widthBars)
@@ -477,8 +496,12 @@
             const halfWidth = Math.max(1, Math.round(widthSeconds / 2));
             const leftTime = Math.max(0, normalizedTime - halfWidth);
             const rightTime = normalizedTime + halfWidth;
-            const height = Math.max(
+            const minHeightFromPrice = Math.max(
                 STRUCTURE_TRIANGLE.minHeight,
+                Math.abs(price) * (STRUCTURE_TRIANGLE.minHeightPct || 0)
+            );
+            const height = Math.max(
+                minHeightFromPrice,
                 rangeSpan * STRUCTURE_TRIANGLE.heightRatio
             );
             const isShort = direction === "SHORT";
@@ -495,6 +518,20 @@
                 { time: rightTime, value: basePrice },
             ]);
             structureTriangles.push(edgesSeries, baseSeries);
+            const priceLineTitle = [type || "STRUCT", direction || ""]
+                .map((part) => part.trim())
+                .filter(Boolean)
+                .join(" ");
+            const priceLine = candles.createPriceLine({
+                price,
+                color,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                axisLabelVisible: true,
+                lineVisible: false,
+                title: priceLineTitle || "STRUCT",
+            });
+            structureTriangleLabels.push(priceLine);
         }
 
         function renderOteZone(zone, index, left, right) {
