@@ -4,6 +4,11 @@ const WS_BASE_URL = "ws://127.0.0.1:8081";
 const DEFAULT_SYMBOL = "xauusd";
 const OHLCV_DEFAULT_TF = "1m";
 const OHLCV_DEFAULT_LIMIT = 500;
+const AVAILABLE_TIMEFRAMES = ["1m", "5m"];
+const STORAGE_KEYS = {
+    symbol: "smc_viewer_selected_symbol",
+    timeframe: "smc_viewer_selected_tf",
+};
 
 let lastOhlcvResponse = null;
 
@@ -163,6 +168,8 @@ const appState = {
     snapshot: {},
     latestStates: {},
     currentSymbol: null,
+    currentTimeframe: OHLCV_DEFAULT_TF,
+    preferredSymbol: null,
     ws: null,
     reconnectAttempt: 0,
     reconnectTimer: null,
@@ -183,6 +190,8 @@ const appState = {
 
 const elements = {};
 
+loadPersistedPreferences();
+
 document.addEventListener("DOMContentLoaded", () => {
     cacheElements();
     bindUi();
@@ -197,6 +206,7 @@ function cacheElements() {
     elements.wsStatus = document.getElementById("ws-status");
     elements.payloadTs = document.getElementById("payload-ts");
     elements.payloadLag = document.getElementById("payload-lag");
+    elements.timeframeSelect = document.getElementById("timeframe-select");
 
     elements.summary = {
         symbol: document.getElementById("summary-symbol"),
@@ -249,11 +259,18 @@ function bindUi() {
         handleSymbolChange(nextSymbol);
     });
 
+    if (elements.timeframeSelect) {
+        elements.timeframeSelect.value = appState.currentTimeframe;
+        elements.timeframeSelect.addEventListener("change", (event) => {
+            handleTimeframeChange(event.target.value);
+        });
+    }
+
     elements.refreshBtn.addEventListener("click", async () => {
         try {
             await reloadSnapshot(true);
             if (appState.currentSymbol) {
-                await fetchOhlcv(appState.currentSymbol, OHLCV_DEFAULT_TF);
+                await fetchOhlcv(appState.currentSymbol, appState.currentTimeframe);
             }
         } catch (err) {
             console.error("[UI] Snapshot error:", err);
@@ -331,7 +348,7 @@ async function bootstrap() {
     }
     setCurrentSymbol(initialSymbol);
     renderFromCache(initialSymbol);
-    await fetchOhlcv(initialSymbol, OHLCV_DEFAULT_TF);
+    await fetchOhlcv(initialSymbol, appState.currentTimeframe);
     openViewerSocket(initialSymbol);
 }
 
@@ -360,17 +377,19 @@ async function fetchSnapshot() {
     return response.json();
 }
 
-async function fetchOhlcv(symbol, timeframe = OHLCV_DEFAULT_TF) {
+async function fetchOhlcv(symbol, timeframe = appState.currentTimeframe || OHLCV_DEFAULT_TF) {
     if (!symbol) {
         lastOhlcvResponse = null;
         renderOhlcvSummary(null);
         return;
     }
 
+    const normalizedTf = normalizeTimeframe(timeframe);
+
     const lowerSymbol = symbol.toLowerCase();
     const url = `${HTTP_BASE_URL}/smc-viewer/ohlcv` +
         `?symbol=${encodeURIComponent(lowerSymbol)}` +
-        `&tf=${encodeURIComponent(timeframe)}` +
+        `&tf=${encodeURIComponent(normalizedTf)}` +
         `&limit=${OHLCV_DEFAULT_LIMIT}`;
 
     try {
@@ -427,16 +446,38 @@ function populateSymbolSelect(symbols) {
     }
 }
 
-function setCurrentSymbol(symbol) {
-    appState.currentSymbol = symbol;
-    elements.symbolSelect.value = symbol;
+function setCurrentSymbol(symbol, options = {}) {
+    if (!symbol) {
+        return;
+    }
+    const normalized = String(symbol).toUpperCase();
+    appState.currentSymbol = normalized;
+    appState.preferredSymbol = normalized;
+    if (elements.symbolSelect) {
+        elements.symbolSelect.value = normalized;
+    }
+    if (options.persist !== false) {
+        persistSymbol(normalized);
+    }
 }
 
 function handleSymbolChange(symbol) {
     setCurrentSymbol(symbol);
     renderFromCache(symbol);
-    fetchOhlcv(symbol, OHLCV_DEFAULT_TF);
+    fetchOhlcv(symbol, appState.currentTimeframe);
     openViewerSocket(symbol);
+}
+
+function handleTimeframeChange(nextTf) {
+    const normalized = normalizeTimeframe(nextTf);
+    if (normalized === appState.currentTimeframe) {
+        return;
+    }
+    appState.currentTimeframe = normalized;
+    syncTimeframeSelect(normalized);
+    if (appState.currentSymbol) {
+        fetchOhlcv(appState.currentSymbol, normalized);
+    }
 }
 
 function renderFromCache(symbol) {
@@ -644,6 +685,7 @@ function pushBarsToChart(ohlcvResponse) {
         return;
     }
     appState.chart.setBars(bars);
+    rehydrateOverlays();
 }
 
 function maybeUpdateChartFromWs(symbol, viewerState) {
@@ -716,6 +758,17 @@ function renderSummary(state) {
     setText(elements.summary.lag, formatNumber(fxcm.lag_seconds, 2));
 }
 
+function syncTimeframeSelect(tf) {
+    if (elements.timeframeSelect) {
+        elements.timeframeSelect.value = tf;
+    }
+}
+
+function normalizeTimeframe(tf) {
+    const value = String(tf || OHLCV_DEFAULT_TF).toLowerCase();
+    return AVAILABLE_TIMEFRAMES.includes(value) ? value : OHLCV_DEFAULT_TF;
+}
+
 function renderOhlcvSummary(ohlcv) {
     const tfEl = document.getElementById("ohlcv-tf");
     const countEl = document.getElementById("ohlcv-count");
@@ -739,6 +792,19 @@ function renderOhlcvSummary(ohlcv) {
     countEl.textContent = String(bars.length);
     lastTimeEl.textContent = formatIsoDateTime(lastBar.time);
     lastCloseEl.textContent = formatNumber(lastBar.close, 2);
+}
+
+function rehydrateOverlays() {
+    if (!appState.chart || !appState.currentSymbol) {
+        return;
+    }
+    const state = appState.latestStates[appState.currentSymbol];
+    if (state) {
+        updateChartFromViewerState(state, {
+            force: true,
+            symbolOverride: appState.currentSymbol,
+        });
+    }
 }
 
 function setBadgeText(elementId, value) {

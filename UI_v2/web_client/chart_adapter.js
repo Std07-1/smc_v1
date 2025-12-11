@@ -51,10 +51,12 @@
         heightRatio: 0.25,
         minHeight: 0.003,
         colors: {
-            bos: "#22c55e",
-            choch: "#f97316",
+            bos: "#4ade80",
+            choch: "#facc15",
         },
         maxEvents: 8,
+        edgeWidth: 3,
+        baseWidth: 2,
     };
 
     const OTE_STYLES = {
@@ -481,13 +483,13 @@
             );
             const isShort = direction === "SHORT";
             const basePrice = isShort ? price + height : price - height;
-            const edgesSeries = createOverlaySeries(color, 2);
+            const edgesSeries = createOverlaySeries(color, STRUCTURE_TRIANGLE.edgeWidth);
             edgesSeries.setData([
                 { time: leftTime, value: basePrice },
                 { time: normalizedTime, value: price },
                 { time: rightTime, value: basePrice },
             ]);
-            const baseSeries = createOverlaySeries(color, 1);
+            const baseSeries = createOverlaySeries(color, STRUCTURE_TRIANGLE.baseWidth);
             baseSeries.setData([
                 { time: leftTime, value: basePrice },
                 { time: rightTime, value: basePrice },
