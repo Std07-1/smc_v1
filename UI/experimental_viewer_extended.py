@@ -84,6 +84,7 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
         table.add_row("Session", str(viewer_state.get("session") or "-"))
         table.add_row("Price", self._format_price(viewer_state.get("price")))
         table.add_row("Pipeline", self._pipeline_label(viewer_state))
+        table.add_row("Pipeline local", self._pipeline_local_label(viewer_state))
         table.add_row("Payload TS", self._format_ts(viewer_state.get("payload_ts")))
         return table
 
@@ -594,6 +595,28 @@ class SmcExperimentalViewerExtended(SmcExperimentalViewer):
             parts.append(f"{ready}/{total}")
         if minimum is not None:
             parts.append(f"min {minimum}")
+
+        return " ".join(parts).strip()
+
+    def _pipeline_local_label(self, viewer_state: dict[str, Any]) -> str:
+        local = viewer_state.get("pipeline_local")
+        if not isinstance(local, dict):
+            return "-"
+
+        state_label = str(local.get("state") or "-").upper()
+
+        def _as_int(value: Any) -> int | None:
+            return int(value) if isinstance(value, (int, float)) else None
+
+        ready = _as_int(local.get("ready_bars"))
+        required = _as_int(local.get("required_bars"))
+        ratio = local.get("ready_ratio")
+
+        parts = [state_label]
+        if ready is not None and required is not None:
+            parts.append(f"{ready}/{required}")
+        if isinstance(ratio, (int, float)):
+            parts.append(f"{float(ratio) * 100:.0f}%")
 
         return " ".join(parts).strip()
 

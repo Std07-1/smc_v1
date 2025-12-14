@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import math
+import time
 from collections import Counter
 from datetime import datetime
 from typing import Any, Protocol
 
 from redis.asyncio import Redis
-from rich.console import Console
 from rich.logging import RichHandler
 
 from config.config import (
@@ -19,6 +19,7 @@ from config.config import (
     UI_SMC_PAYLOAD_SCHEMA_VERSION,
     UI_SMC_SNAPSHOT_TTL_SEC,
 )
+from utils.rich_console import get_rich_console
 from utils.utils import format_price as fmt_price_stage1, format_volume_usd, safe_float
 
 try:  # pragma: no cover - best-effort залежність
@@ -29,11 +30,12 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger("ui.publish_smc_state")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
+    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
     logger.propagate = False
 
 _SEQ = 0
 _CORE_SERIALIZER_MISSING_LOGGED = False
+_LAST_REDIS_PUBLISH_ERROR_TS: float | None = None
 
 
 class SmcStateProvider(Protocol):
@@ -263,8 +265,30 @@ async def publish_smc_state(  # type: ignore
             logger.debug("[SMC] Не вдалося оновити snapshot", exc_info=True)
 
     await _set_snapshot()
-    await redis_conn.publish(REDIS_CHANNEL_SMC_STATE, payload_json)
-    logger.info("[SMC] Опубліковано %d активів", len(serialized))
+    try:
+        await redis_conn.publish(REDIS_CHANNEL_SMC_STATE, payload_json)
+    except Exception:
+        # Redis може коротко пропадати під час docker update/restart.
+        # Важливо не вбивати smc_producer, а тихо пережити та продовжити цикл.
+        global _LAST_REDIS_PUBLISH_ERROR_TS
+        now = time.time()
+        last = _LAST_REDIS_PUBLISH_ERROR_TS
+        _LAST_REDIS_PUBLISH_ERROR_TS = now
+        if last is None or (now - last) > 30.0:
+            logger.warning(
+                "[SMC] Redis недоступний — не вдалося опублікувати smc_state (seq=%s)",
+                seq,
+                exc_info=True,
+            )
+        else:
+            logger.debug(
+                "[SMC] Redis недоступний — пропускаю publish smc_state (seq=%s)",
+                seq,
+                exc_info=True,
+            )
+        return
+
+    logger.debug("[SMC] Опубліковано %d активів", len(serialized))
 
 
 def _prepare_smc_hint(asset: dict[str, Any]) -> None:

@@ -2,6 +2,10 @@
     box-sizing: border-box;
 }
 
+:root {
+    --chart-height: 600px;
+}
+
 body {
     margin: 0;
     font-family: "Segoe UI", Tahoma, sans-serif;
@@ -302,6 +306,68 @@ tbody tr.empty-row td {
     gap: 0.45rem;
 }
 
+.chart-layout-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.chart-height-control {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    min-width: 200px;
+    flex: 1 1 220px;
+}
+
+.chart-height-control--disabled {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.chart-control-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #9da5b4;
+}
+
+#chart-height-range {
+    width: 100%;
+    accent-color: #4ade80;
+}
+
+.chart-height-value {
+    font-size: 0.85rem;
+    color: #e5e7eb;
+}
+
+.chart-fullscreen-btn {
+    padding: 0.5rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    color: #f5f5f5;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.chart-fullscreen-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.chart-fullscreen-btn:active {
+    transform: scale(0.98);
+}
+
 .layer-toggle {
     display: inline-flex;
     align-items: center;
@@ -366,6 +432,10 @@ tbody tr.empty-row td {
     }
 
     .chart-layer-controls {
+        justify-content: flex-end;
+    }
+
+    .chart-layout-controls {
         justify-content: flex-end;
     }
 }
@@ -451,7 +521,7 @@ tbody tr.empty-row td {
 }
 
 .chart-demo-container {
-    height: 460px;
+    height: var(--chart-height, 600px);
     width: 100%;
     border: 1px solid #1f2833;
     border-radius: 8px;
@@ -459,6 +529,7 @@ tbody tr.empty-row td {
     cursor: pointer;
     user-select: none;
     touch-action: none;
+    transition: height 0.2s ease;
 }
 
 .chart-demo-container:active {
@@ -468,4 +539,55 @@ tbody tr.empty-row td {
 .chart-demo-container.vertical-pan-active,
 .chart-demo-container.vertical-pan-active:active {
     cursor: grabbing;
+}
+
+.card-chart--fullscreen {
+    position: fixed;
+    inset: 1rem;
+    width: calc(100vw - 2rem);
+    height: calc(100vh - 2rem);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: #05060b;
+    border: 1px solid #313646;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.75);
+    border-radius: 14px;
+    padding: 1.25rem;
+}
+
+.card-chart--fullscreen .card-chart__header {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.card-chart--fullscreen .chart-layer-controls {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+}
+
+.card-chart--fullscreen .chart-layout-controls {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+}
+
+.card-chart--fullscreen .chart-height-control {
+    display: none;
+}
+
+.card-chart--fullscreen .chart-demo-container {
+    flex: 1 1 0;
+    min-height: 0;
+    height: 100%;
+    max-height: none;
+    margin-top: 0;
+    overflow: visible;
+    transition: none;
+}
+
+body.chart-fullscreen-lock {
+    overflow: hidden;
 }

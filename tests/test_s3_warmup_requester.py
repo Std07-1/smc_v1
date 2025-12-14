@@ -1,0 +1,207 @@
+"""Тести S3 воркера: rate-limit і формування команд для конектора."""
+
+from __future__ import annotations
+
+import json
+
+import pandas as pd
+import pytest
+
+from app.fxcm_warmup_requester import FxcmWarmupRequester
+
+
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.published: list[tuple[str, str]] = []
+
+    async def publish(self, channel: str, message: str) -> int:  # noqa: D401
+        self.published.append((channel, message))
+        return 1
+
+
+class _FakeStore:
+    def __init__(self, df: pd.DataFrame | None) -> None:
+        self._df = df
+
+    async def get_df(self, symbol: str, timeframe: str, limit: int):  # noqa: ANN001
+        return self._df
+
+
+class _SequencedStore:
+    """Повертає різні DF по черзі, щоб симулювати зміну history_state."""
+
+    def __init__(self, sequence: list[pd.DataFrame | None]) -> None:
+        self._seq = list(sequence)
+        self._idx = 0
+
+    async def get_df(self, symbol: str, timeframe: str, limit: int):  # noqa: ANN001
+        if not self._seq:
+            return None
+        value = self._seq[min(self._idx, len(self._seq) - 1)]
+        self._idx += 1
+        return value
+
+
+class _FakeFeed:
+    def __init__(self, market_state: str = "closed") -> None:
+        self.market_state = market_state
+        self.price_state = "ok"
+        self.ohlcv_state = "ok"
+
+
+@pytest.mark.asyncio
+async def test_requester_publishes_warmup_once_then_rate_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_redis = _FakeRedis()
+    fake_store = _FakeStore(df=None)  # 0 барів -> insufficient -> warmup
+
+    # фіксуємо час
+    t0 = 1_700_000_000.0
+    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: t0)
+    monkeypatch.setattr(
+        "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("closed")
+    )
+
+    requester = FxcmWarmupRequester(
+        redis=fake_redis,  # type: ignore[arg-type]
+        store=fake_store,  # type: ignore[arg-type]
+        allowed_pairs={("xauusd", "1m")},
+        min_history_bars_by_symbol={"xauusd": 2000},
+        commands_channel="fxcm:commands",
+        poll_sec=60,
+        cooldown_sec=900,
+        stale_k=3.0,
+    )
+
+    await requester._run_once()
+    assert len(fake_redis.published) == 1
+
+    channel, msg = fake_redis.published[0]
+    assert channel == "fxcm:commands"
+    payload = json.loads(msg)
+    assert payload["type"] == "fxcm_warmup"
+    assert payload["symbol"] == "XAUUSD"
+    assert payload["tf"] == "1m"
+    assert payload["min_history_bars"] == 2000
+    assert isinstance(payload["lookback_minutes"], int)
+    assert payload["lookback_minutes"] >= 1
+    assert payload["reason"] == "insufficient_history"
+    assert payload["s2"]["history_state"] == "insufficient"
+    assert payload["s2"]["bars_count"] == 0
+    assert payload["s2"]["last_open_time_ms"] is None
+    assert payload["fxcm_status"] == {"market": "closed", "price": "ok", "ohlcv": "ok"}
+
+    # другий прогін у той же час -> має бути rate-limited
+    await requester._run_once()
+    assert len(fake_redis.published) == 1
+
+    # пересуваємось за cooldown -> знову publish
+    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: t0 + 901)
+    await requester._run_once()
+    assert len(fake_redis.published) == 2
+
+
+@pytest.mark.asyncio
+async def test_requester_publishes_backfill_when_tail_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_redis = _FakeRedis()
+
+    # 2000 барів є, але хвіст старий
+    now_ms = 1_700_000_000_000
+    last_open_ms = now_ms - (10 * 60_000)
+    df = pd.DataFrame(
+        [
+            {
+                "open_time": last_open_ms / 1000.0,
+                "close_time": last_open_ms / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            }
+        ]
+        * 2000
+    )
+    fake_store = _FakeStore(df=df)
+
+    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: now_ms / 1000.0)
+    monkeypatch.setattr(
+        "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("open")
+    )
+
+    requester = FxcmWarmupRequester(
+        redis=fake_redis,  # type: ignore[arg-type]
+        store=fake_store,  # type: ignore[arg-type]
+        allowed_pairs={("xauusd", "1m")},
+        min_history_bars_by_symbol={"xauusd": 2000},
+        cooldown_sec=1,
+        stale_k=3.0,
+    )
+
+    await requester._run_once()
+    assert len(fake_redis.published) == 1
+    assert fake_redis.published[0][0] == "fxcm:commands"
+    payload = json.loads(fake_redis.published[0][1])
+    assert payload["type"] == "fxcm_backfill"
+    assert payload["reason"] == "stale_tail"
+    assert payload["s2"]["history_state"] == "stale_tail"
+    assert payload["s2"]["last_open_time_ms"] == last_open_ms
+    assert payload["fxcm_status"] == {"market": "open", "price": "ok", "ohlcv": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_requester_resets_active_issue_when_state_becomes_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_redis = _FakeRedis()
+
+    # 1) insufficient -> warmup (publish)
+    # 2) ok -> clear active issue (no publish)
+    # 3) insufficient -> warmup знову (publish без очікування cooldown)
+    df_ok = pd.DataFrame(
+        [
+            {
+                "open_time": 1_700_000_000.0,
+                "close_time": 1_700_000_000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            }
+        ]
+        * 2000
+    )
+
+    fake_store = _SequencedStore([None, df_ok, None])
+
+    t0 = 1_700_000_000.0
+    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: t0)
+    monkeypatch.setattr(
+        "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("open")
+    )
+
+    requester = FxcmWarmupRequester(
+        redis=fake_redis,  # type: ignore[arg-type]
+        store=fake_store,  # type: ignore[arg-type]
+        allowed_pairs={("xauusd", "1m")},
+        min_history_bars_by_symbol={"xauusd": 2000},
+        commands_channel="fxcm:commands",
+        poll_sec=60,
+        cooldown_sec=900,
+        stale_k=3.0,
+    )
+
+    await requester._run_once()
+    assert len(fake_redis.published) == 1
+    assert json.loads(fake_redis.published[0][1])["type"] == "fxcm_warmup"
+
+    await requester._run_once()
+    assert len(fake_redis.published) == 1
+
+    await requester._run_once()
+    assert len(fake_redis.published) == 2
+    assert json.loads(fake_redis.published[1][1])["type"] == "fxcm_warmup"

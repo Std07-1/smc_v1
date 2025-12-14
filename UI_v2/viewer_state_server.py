@@ -10,6 +10,10 @@
 - GET /smc-viewer/snapshot
   Повертає мапу symbol -> SmcViewerState для всіх доступних символів.
 
+Додатково (dev UI):
+- GET / або /index.html
+    Віддає статичний UI з папки UI_v2/web_client, щоб не запускати окремий http.server.
+
 WebSocket-стрім (/smc-viewer/stream) поки не реалізовано; запити туди
 отримують 501 з поясненням у JSON.
 """
@@ -19,15 +23,19 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
+from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from time import perf_counter
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from UI_v2.ohlcv_provider import OhlcvNotFound, OhlcvProvider
-from UI_v2.schemas import OhlcvResponse, SmcViewerState
-from UI_v2.viewer_state_store import ViewerStateStore
 from prometheus_client import Counter, Histogram
+
+from UI_v2.ohlcv_provider import OhlcvNotFoundError, OhlcvProvider
+from UI_v2.schemas import OhlcvResponse
+from UI_v2.viewer_state_store import ViewerStateStore
 
 logger = logging.getLogger("smc_viewer_http")
 
@@ -60,6 +68,11 @@ class ViewerStateHttpServer:
     ohlcv_provider: OhlcvProvider | None = None
     host: str = "127.0.0.1"
     port: int = 8080
+    web_root: Path | None = None
+
+    def __post_init__(self) -> None:
+        if self.web_root is None:
+            self.web_root = Path(__file__).resolve().parent / "web_client"
 
     async def run(self) -> None:
         """Стартує HTTP-сервер і тримає його вічно."""
@@ -162,6 +175,13 @@ class ViewerStateHttpServer:
         query_params = parse_qs(parsed.query)
         flat_query = {k: v[0] for k, v in query_params.items() if v}
 
+        # 0) Статичний UI (щоб не піднімати окремий python -m http.server).
+        if not path.startswith("/smc-viewer/"):
+            static_response = self._try_handle_static(path)
+            if static_response is not None:
+                response_bytes, status = static_response
+                return response_bytes, status, path_for_metrics
+
         if path == "/smc-viewer/ohlcv":
             response_bytes, status = await self._handle_ohlcv(flat_query)
             return response_bytes, status, path_for_metrics
@@ -197,6 +217,76 @@ class ViewerStateHttpServer:
             ),
             404,
             path_for_metrics,
+        )
+
+    def _try_handle_static(self, path: str) -> tuple[bytes, int] | None:
+        """Пробує віддати статичний файл UI; повертає None, якщо шлях не підходить."""
+
+        if self.web_root is None:
+            return None
+
+        # Дозволяємо корінь і типові статики.
+        if path in {"/", ""}:
+            rel = "index.html"
+        else:
+            # Прибираємо ведучий '/', нормалізуємо шлях і забороняємо '..'.
+            rel = path.lstrip("/")
+            if not rel:
+                rel = "index.html"
+            if ".." in rel.replace("\\", "/").split("/"):
+                return (
+                    self._build_response(
+                        status_code=404,
+                        reason="Not Found",
+                        body={"error": "not_found"},
+                    ),
+                    404,
+                )
+
+        resolved = (self.web_root / rel).resolve()
+        try:
+            root_resolved = self.web_root.resolve()
+        except Exception:
+            return None
+
+        # Захист від path traversal.
+        if root_resolved not in resolved.parents and resolved != root_resolved:
+            return (
+                self._build_response(
+                    status_code=404,
+                    reason="Not Found",
+                    body={"error": "not_found"},
+                ),
+                404,
+            )
+
+        if not resolved.exists() or not resolved.is_file():
+            return None
+
+        try:
+            data = resolved.read_bytes()
+        except Exception:
+            logger.exception(
+                "[SMC viewer HTTP] Не вдалося прочитати статичний файл %s", resolved
+            )
+            return (
+                self._build_response(
+                    status_code=500,
+                    reason="Internal Server Error",
+                    body={"error": "static_read_error"},
+                ),
+                500,
+            )
+
+        content_type = self._guess_content_type(resolved)
+        return (
+            self._build_raw_response(
+                status_code=200,
+                reason="OK",
+                body_bytes=data,
+                content_type=content_type,
+            ),
+            200,
         )
 
     async def _handle_get_snapshot_all(self) -> tuple[bytes, int]:
@@ -260,7 +350,7 @@ class ViewerStateHttpServer:
 
         try:
             bars = list(await self.ohlcv_provider.fetch_ohlcv(symbol, timeframe, limit))
-        except OhlcvNotFound:
+        except OhlcvNotFoundError:
             return (
                 self._build_response(
                     status_code=404,
@@ -340,6 +430,41 @@ class ViewerStateHttpServer:
             "Access-Control-Allow-Origin: *",
             "Access-Control-Allow-Headers: Content-Type",
             "Access-Control-Allow-Methods: GET, OPTIONS",
+            "",
+            "",
+        ]
+        head_bytes = "\r\n".join(headers).encode("ascii", errors="replace")
+        return head_bytes + body_bytes
+
+    @staticmethod
+    def _guess_content_type(path: Path) -> str:
+        guessed, _ = mimetypes.guess_type(str(path))
+        if guessed:
+            return (
+                f"{guessed}; charset=utf-8" if guessed.startswith("text/") else guessed
+            )
+        # safe default
+        return "application/octet-stream"
+
+    @staticmethod
+    def _build_raw_response(
+        *,
+        status_code: int,
+        reason: str,
+        body_bytes: bytes,
+        content_type: str,
+    ) -> bytes:
+        """Будує просту HTTP/1.1-відповідь з байтовим тілом."""
+
+        headers = [
+            f"HTTP/1.1 {status_code} {reason}",
+            f"Content-Type: {content_type}",
+            f"Content-Length: {len(body_bytes)}",
+            "Connection: close",
+            "Access-Control-Allow-Origin: *",
+            "Access-Control-Allow-Headers: Content-Type",
+            "Access-Control-Allow-Methods: GET, OPTIONS",
+            "Cache-Control: no-store",
             "",
             "",
         ]

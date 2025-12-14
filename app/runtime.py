@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 from redis.asyncio import Redis
-from rich.console import Console
 from rich.logging import RichHandler
 
 from app.settings import load_datastore_cfg, settings
@@ -21,11 +20,12 @@ from data.fxcm_ingestor import run_fxcm_ingestor
 from data.fxcm_price_stream import run_fxcm_price_stream_listener
 from data.fxcm_status_listener import run_fxcm_status_listener
 from data.unified_store import StoreConfig, StoreProfile, UnifiedDataStore
+from utils.rich_console import get_rich_console
 
 logger = logging.getLogger("app.runtime")
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
-    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=True))
+    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
     logger.propagate = False
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -85,6 +85,28 @@ def _build_allowed_pairs(cfg) -> set[tuple[str, str]] | None:
         for tf in entry.tfs:
             pairs.add((entry.id.strip().lower(), tf.strip().lower()))
     return pairs or None
+
+
+def _build_contract_min_history_bars(cfg) -> dict[str, int] | None:
+    """Формує мапу symbol->min_history_bars з fxcm_contract або повертає None."""
+
+    contract = getattr(getattr(cfg, "smc_universe", None), "fxcm_contract", None)
+    symbols = getattr(contract, "symbols", None) if contract else None
+    if not contract or not symbols:
+        return None
+
+    out: dict[str, int] = {}
+    for entry in symbols:
+        if not getattr(entry, "enabled", True):
+            continue
+        sym = str(getattr(entry, "id", "")).strip().lower()
+        if not sym:
+            continue
+        try:
+            out[sym] = int(getattr(entry, "min_history_bars", 0) or 0)
+        except Exception:
+            continue
+    return out or None
 
 
 def start_fxcm_tasks(
@@ -228,5 +250,6 @@ __all__ = (
     "launch_experimental_viewer",
     "noop_healthcheck",
     "_build_allowed_pairs",
+    "_build_contract_min_history_bars",
     "start_fxcm_tasks",
 )

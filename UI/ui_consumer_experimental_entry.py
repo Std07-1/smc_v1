@@ -24,6 +24,7 @@ from config.config import (
 )
 from UI.experimental_viewer import SmcExperimentalViewer
 from UI.experimental_viewer_extended import SmcExperimentalViewerExtended
+from utils.rich_console import get_rich_console
 
 SMC_FEED_CHANNEL = REDIS_CHANNEL_SMC_STATE
 SMC_SNAPSHOT_KEY = REDIS_SNAPSHOT_KEY_SMC
@@ -33,9 +34,7 @@ CLI_LOGGER = logging.getLogger("smc_viewer.cli")
 if not CLI_LOGGER.handlers:
     CLI_LOGGER.setLevel(logging.INFO)
     CLI_LOGGER.addHandler(
-        RichHandler(
-            console=Console(stderr=True), show_path=False, rich_tracebacks=False
-        )
+        RichHandler(console=get_rich_console(), show_path=False, rich_tracebacks=False)
     )
     CLI_LOGGER.propagate = False
 

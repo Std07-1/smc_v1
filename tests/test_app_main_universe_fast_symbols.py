@@ -11,7 +11,7 @@ def test_validate_fast_symbols_warns_on_missing_symbols(caplog) -> None:
     fast_symbols = ["xauusd", "eurusd"]
     allowed_pairs = {("xauusd", "1m")}
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="app.main"):
         _validate_fast_symbols_against_universe(fast_symbols, allowed_pairs)
 
     records = [rec for rec in caplog.records if "SMC_UNIVERSE" in rec.msg]
@@ -22,7 +22,7 @@ def test_validate_fast_symbols_legacy_mode_info(caplog) -> None:
     fast_symbols = ["xauusd"]
     allowed_pairs = None
 
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="app.main"):
         _validate_fast_symbols_against_universe(fast_symbols, allowed_pairs)
 
     records = [rec for rec in caplog.records if "SMC_UNIVERSE" in rec.msg]

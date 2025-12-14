@@ -42,12 +42,12 @@ from typing import Any
 
 import pandas as pd
 from redis.asyncio import Redis
-from rich.console import Console
 from rich.logging import RichHandler
 
 from app.settings import settings
-from data.fxcm_status_listener import note_fxcm_bar_close
+from data.fxcm_status_listener import get_fxcm_feed_state, note_fxcm_bar_close
 from data.unified_store import UnifiedDataStore
+from utils.rich_console import get_rich_console
 
 try:  # pragma: no cover - опціональна залежність
     from prometheus_client import Counter as PromCounter  # type: ignore[import]
@@ -57,7 +57,7 @@ except Exception:  # pragma: no cover - у тестах/CI клієнта мож
 logger = logging.getLogger("fxcm_ingestor")
 if not logger.handlers:  # guard від подвійного підключення
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
+    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
     logger.propagate = False
 
 FXCM_OHLCV_CHANNEL = "fxcm:ohlcv"
@@ -91,10 +91,95 @@ PROM_FXCM_UNSIGNED_PAYLOAD = _build_counter(
     "ai_one_fxcm_unsigned_payload_total",
     "Кількість FXCM пакетів без підпису при вимозі HMAC.",
 )
+PROM_FXCM_OHLCV_BARS_TOTAL = _build_counter(
+    "ai_one_fxcm_ohlcv_bars_total",
+    "Кількість OHLCV барів, отриманих з FXCM каналу (лише complete=True).",
+    labelnames=("tf", "synthetic"),
+)
+PROM_FXCM_OHLCV_INCOMPLETE_SKIPPED_TOTAL = _build_counter(
+    "ai_one_fxcm_ohlcv_incomplete_skipped_total",
+    "Кількість OHLCV барів з complete=False, які пропущено (live-бар у UDS не пишемо).",
+    labelnames=("tf",),
+)
 
 _UNEXPECTED_SIG_LOGGED = False
 _NON_CONTRACT_LOGGED = 0
 _NON_CONTRACT_LOG_LIMIT = 5
+
+_LAST_GATE_ALLOWED: bool | None = None
+_LAST_GATE_REASON: str | None = None
+
+
+def _is_ingest_allowed_by_status() -> tuple[bool, str]:
+    """Визначає, чи дозволений інжест на основі ``fxcm:status``.
+
+    ВАЖЛИВО: цей "gate" не впливає на запуск процесу — лише на рішення
+    "писати бари в UDS чи пропустити пакет".
+
+    Поточна policy:
+    - market=closed -> UDS не поповнюємо (очікуємо відкриття ринку);
+    - market=open, але price!=ok або ohlcv!=ok -> також не пишемо;
+    - status=unknown -> не блокуємо (щоб не ламати cold-start).
+    """
+
+    state = get_fxcm_feed_state()
+    market = (state.market_state or "").strip().lower() or "unknown"
+    price = (state.price_state or "").strip().lower() or ""
+    ohlcv = (state.ohlcv_state or "").strip().lower() or ""
+
+    if market == "closed":
+        return False, "market=closed"
+    if market == "open":
+        if price and price != "ok":
+            return False, f"price={price}"
+        if ohlcv and ohlcv != "ok":
+            return False, f"ohlcv={ohlcv}"
+        return True, "ok"
+
+    # Статус ще не прогрітий або має невідоме значення.
+    # Не блокуємо, щоб процес міг стартувати та чекати валідного status.
+    return True, "status=unknown"
+
+
+def _maybe_log_gate_transition(allowed: bool, reason: str) -> None:
+    global _LAST_GATE_ALLOWED, _LAST_GATE_REASON
+    if _LAST_GATE_ALLOWED == allowed and _LAST_GATE_REASON == reason:
+        return
+    _LAST_GATE_ALLOWED = allowed
+    _LAST_GATE_REASON = reason
+    logger.info(
+        "[FXCM_INGEST] Gate status: %s (%s)",
+        "ALLOW" if allowed else "BLOCK",
+        reason,
+    )
+
+
+def _sanitize_bar(bar: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Санітизує бар до базових OHLCV полів для UDS.
+
+    Додаткові поля (microstructure, meta) ігноруємо.
+    """
+
+    try:
+        open_time = int(bar["open_time"])
+        close_time = int(bar["close_time"])
+        o = float(bar["open"])
+        h = float(bar["high"])
+        low_value = float(bar["low"])
+        c = float(bar["close"])
+        v = float(bar["volume"])
+    except Exception:
+        return None
+
+    return {
+        "open_time": open_time,
+        "close_time": close_time,
+        "open": o,
+        "high": h,
+        "low": low_value,
+        "close": c,
+        "volume": v,
+    }
 
 
 def _bars_payload_to_df(bars: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
@@ -289,11 +374,6 @@ async def _process_payload(
     else:
         if sig:
             _log_unexpected_sig_once(symbol, interval)
-
-    df = _bars_payload_to_df(bars)
-    if df.empty:
-        return 0, None, None
-
     symbol_norm = str(symbol).lower().strip()
     interval_norm = str(interval).lower().strip()
 
@@ -308,6 +388,65 @@ async def _process_payload(
             _NON_CONTRACT_LOGGED += 1
         return 0, None, None
 
+    allowed, reason = _is_ingest_allowed_by_status()
+    _maybe_log_gate_transition(allowed, reason)
+    if not allowed:
+        return 0, None, None
+
+    normalized_bars: list[dict[str, Any]] = []
+    synthetic_flags: list[bool] = []
+    synthetic_count = 0
+    incomplete_skipped = 0
+    invalid_skipped = 0
+
+    for bar in bars:
+        if not isinstance(bar, Mapping):
+            continue
+
+        complete = bar.get("complete", True) is not False
+        synthetic = bar.get("synthetic") is True
+
+        if not complete:
+            incomplete_skipped += 1
+            PROM_FXCM_OHLCV_INCOMPLETE_SKIPPED_TOTAL.labels(tf=interval_norm).inc()
+            continue  # live-бар у datastore не пишемо
+
+        sanitized = _sanitize_bar(bar)
+        if sanitized is None:
+            invalid_skipped += 1
+            continue
+
+        if synthetic:
+            synthetic_count += 1
+
+        normalized_bars.append(sanitized)
+        synthetic_flags.append(synthetic)
+
+    if incomplete_skipped or synthetic_count:
+        logger.debug(
+            "[FXCM_INGEST] Фільтрація барів: symbol=%s tf=%s complete=%d skipped_incomplete=%d synthetic=%d",
+            symbol_norm,
+            interval_norm,
+            len(normalized_bars),
+            incomplete_skipped,
+            synthetic_count,
+        )
+
+    if invalid_skipped:
+        logger.debug(
+            "[FXCM_INGEST] Пропущено барів з некоректними полями: symbol=%s tf=%s skipped_invalid=%d",
+            symbol_norm,
+            interval_norm,
+            invalid_skipped,
+        )
+
+    if not normalized_bars:
+        return 0, None, None
+
+    df = _bars_payload_to_df(normalized_bars)
+    if df.empty:
+        return 0, None, None
+
     try:
         await store.put_bars(symbol_norm, interval_norm, df)
     except Exception as exc:  # noqa: BLE001
@@ -318,6 +457,13 @@ async def _process_payload(
             exc,
         )
         return 0, None, None
+
+    # Метрики інкрементуємо лише після успішного запису в UDS.
+    for is_synth in synthetic_flags:
+        PROM_FXCM_OHLCV_BARS_TOTAL.labels(
+            tf=interval_norm,
+            synthetic="true" if is_synth else "false",
+        ).inc()
 
     try:
         close_series = df["close_time"].dropna()
@@ -335,7 +481,7 @@ async def run_fxcm_ingestor(
     redis_host: str | None = None,
     redis_port: int | None = None,
     channel: str = FXCM_OHLCV_CHANNEL,
-    log_every_n: int = 1,
+    log_every_n: int = 50,
     hmac_secret: str | None = None,
     hmac_algo: str = "sha256",
     hmac_required: bool = False,

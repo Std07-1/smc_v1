@@ -62,6 +62,12 @@ class UiSmcMeta(TypedDict, total=False):
     pipeline_ready_assets: int
     pipeline_min_ready: int
     pipeline_assets_total: int
+    pipeline_ready_assets_min: int
+    pipeline_min_ready_bars: int
+    pipeline_target_bars: int
+    pipeline_processed_assets: int
+    pipeline_skipped_assets: int
+    cycle_duration_ms: float
     fxcm: FxcmMeta
 
 
@@ -123,6 +129,15 @@ class SmcViewerZones(TypedDict, total=False):
     raw: dict[str, Any]
 
 
+class SmcViewerPipelineLocal(TypedDict, total=False):
+    """Локальний (per-symbol) pipeline-стан з asset.stats."""
+
+    state: str
+    ready_bars: int
+    required_bars: int
+    ready_ratio: float
+
+
 class SmcViewerState(TypedDict, total=False):
     """Агрегований стан одного активу для SMC viewer."""
 
@@ -135,6 +150,7 @@ class SmcViewerState(TypedDict, total=False):
     structure: SmcViewerStructure
     liquidity: SmcViewerLiquidity
     zones: SmcViewerZones
+    pipeline_local: SmcViewerPipelineLocal
     fxcm: FxcmMeta | None
     meta: UiSmcMeta
 

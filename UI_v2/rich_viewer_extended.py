@@ -46,6 +46,7 @@ class SmcRichViewerExtended:
 
         summary_panel = self._build_summary_panel(state)
         fxcm_panel = self._build_fxcm_panel(state)
+        ohlcv_panel = self._build_ohlcv_panel(state)
         events_panel = self._build_events_panel(state)
         ote_panel = self._build_ote_panel(state)
         pools_panel = self._build_pools_panel(state)
@@ -54,6 +55,8 @@ class SmcRichViewerExtended:
         top_panels: list[Panel] = [summary_panel]
         if fxcm_panel is not None:
             top_panels.append(fxcm_panel)
+        if ohlcv_panel is not None:
+            top_panels.append(ohlcv_panel)
 
         top_row = Columns(top_panels, expand=True)
 
@@ -75,6 +78,76 @@ class SmcRichViewerExtended:
             title=title_text,
             border_style="magenta",
         )
+
+    def _build_ohlcv_panel(self, state: SmcViewerState) -> Panel | None:
+        payload = state.get("ohlcv_debug")
+        if not isinstance(payload, dict):
+            return None
+
+        tf = str(payload.get("tf") or "-")
+        complete_bars = payload.get("complete_bars")
+        live_bar = payload.get("live_bar")
+
+        total = payload.get("synthetic_60m_total")
+        synth = payload.get("synthetic_60m_synth")
+        pct = payload.get("synthetic_60m_pct")
+
+        header = Table.grid(expand=True)
+        header.add_column(justify="left")
+        header.add_column(justify="right")
+        try:
+            pct_str = f"{float(pct):.0f}%" if pct is not None else "-"
+        except Exception:
+            pct_str = "-"
+        header.add_row(
+            f"Synthetic last 60m: {synth}/{total} ({pct_str})",
+            f"TF: {tf}",
+        )
+
+        table = Table(expand=True)
+        table.add_column("t", justify="left", style="dim")
+        table.add_column("O", justify="right")
+        table.add_column("H", justify="right")
+        table.add_column("L", justify="right")
+        table.add_column("C", justify="right")
+        table.add_column("tag", justify="left")
+
+        any_rows = False
+
+        if isinstance(live_bar, dict):
+            table.add_row(
+                str(live_bar.get("open_time") or "-"),
+                self._format_price(live_bar.get("open")),
+                self._format_price(live_bar.get("high")),
+                self._format_price(live_bar.get("low")),
+                self._format_price(live_bar.get("close")),
+                "LIVE",
+            )
+            any_rows = True
+
+        if isinstance(complete_bars, list):
+            rows = complete_bars[-8:]
+            for bar in rows:
+                if not isinstance(bar, dict):
+                    continue
+                table.add_row(
+                    str(bar.get("open_time") or "-"),
+                    self._format_price(bar.get("open")),
+                    self._format_price(bar.get("high")),
+                    self._format_price(bar.get("low")),
+                    self._format_price(bar.get("close")),
+                    "OK",
+                )
+                any_rows = True
+
+        if not any_rows:
+            table.add_row("-", "-", "-", "-", "-", "-")
+
+        layout = Table.grid(expand=True)
+        layout.add_row(header)
+        layout.add_row(table)
+
+        return Panel(layout, title="OHLCV", border_style="white")
 
     # -- Блоки верхнього рівня -----------------------------------------------
 
@@ -105,6 +178,7 @@ class SmcRichViewerExtended:
         table.add_row("Session", str(state.get("session") or "-"))
         table.add_row("Price", self._format_price(state.get("price")))
         table.add_row("Pipeline", self._pipeline_label(state))
+        table.add_row("Pipeline local", self._pipeline_local_label(state))
         table.add_row("Legs", str(len(legs)))
         table.add_row("Swings", str(len(swings)))
         table.add_row("Events", str(len(events)))
@@ -311,5 +385,27 @@ class SmcRichViewerExtended:
             parts.append(f"{ready}/{total}")
         if minimum is not None:
             parts.append(f"min {minimum}")
+
+        return " ".join(parts).strip()
+
+    def _pipeline_local_label(self, state: SmcViewerState) -> str:
+        local = state.get("pipeline_local") or {}
+        if not isinstance(local, dict):
+            return "-"
+
+        state_label = str(local.get("state") or "-").upper()
+
+        def _as_int(value: Any) -> int | None:
+            return int(value) if isinstance(value, (int, float)) else None
+
+        ready = _as_int(local.get("ready_bars"))
+        required = _as_int(local.get("required_bars"))
+        ratio = local.get("ready_ratio")
+
+        parts = [state_label]
+        if ready is not None and required is not None:
+            parts.append(f"{ready}/{required}")
+        if isinstance(ratio, (int, float)):
+            parts.append(f"{float(ratio) * 100:.0f}%")
 
         return " ".join(parts).strip()

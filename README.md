@@ -22,7 +22,8 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 
 Документацію по SMC знайдеш у `docs/smc_core_overview.md`, `docs/smc_structure.md`,
 `docs/smc_liquidity.md`. Детальний контракт інтеграції FXCM описано в
-`docs/fxcm_integration.md`.
+`docs/fxcm_integration.md`, а короткий аудит каналів/інваріантів — у
+`docs/fxcm_contract_audit.md`.
 
 ---
 
@@ -41,7 +42,7 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 
 - `app.main` виконує `bootstrap()` → `UnifiedDataStore` → `run_fxcm_ingestor` / `run_fxcm_status_listener` → `screening_producer` → `UI.publish_full_state`.
 - `_warmup_datastore_from_snapshots()` підтягує останні JSONL-файли з `datastore/`, щоб прискорити прогрів RAM перед запуском.
-- Уся жива історія надходить **лише** через Redis-канали зовнішнього FXCM конектора (`fxcm:ohlcv`, `fxcm:heartbeat`, `fxcm:market_status`).
+- Уся жива історія надходить **лише** через Redis-канали зовнішнього FXCM конектора: OHLCV через `fxcm:ohlcv`, price snapshots через `fxcm:price_tik`, а агрегований стан/health — через `fxcm:status`.
 - `_await_fxcm_history()` очікує поки стрім заповнить мінімальний `SCREENING_LOOKBACK` на `1m`; за потреби логи підказують, які символи ще не отримали дані.
 - Детальний конспект дивись у `docs/stage1_pipeline.md`, щоб не перечитувати `app/main.py` під час аудиту пайплайна.
 

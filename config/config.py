@@ -56,12 +56,16 @@ __all__ = [
     "SMC_PIPELINE_ENABLED",
     "SMC_REFRESH_INTERVAL",
     "SMC_BATCH_SIZE",
+    "SMC_MAX_ASSETS_PER_CYCLE",
+    "SMC_CYCLE_BUDGET_MS",
+    "_FALSE_ENV_VALUES",
 ]
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATASTORE_BASE_DIR = str(_PROJECT_ROOT / "datastore")
 NAMESPACE = "ai_one"
 
+_FALSE_ENV_VALUES = {"1"}
 
 # ───────────────────────────── Допоміжні типи ─────────────────────────────
 
@@ -135,6 +139,10 @@ REDIS_SNAPSHOT_KEY_SMC_VIEWER: str = f"{NAMESPACE}:ui:smc_viewer_snapshot"
 #: Канал для адмін-команд (узгоджено з AdminCfg.commands_channel)
 ADMIN_COMMANDS_CHANNEL: str = f"{NAMESPACE}:admin:commands"
 
+#: Канал команд для FXCM-конектора (S3 warmup/backfill requester -> connector subscriber)
+#: Важливо: цей канал НЕ має namespace `ai_one:*`, бо конектор живе в окремому репо.
+FXCM_COMMANDS_CHANNEL: str = "fxcm:commands"
+
 #: Ключі для агрегованих статистик у Redis
 STATS_CORE_KEY: str = f"{NAMESPACE}:stats:core"
 STATS_HEALTH_KEY: str = f"{NAMESPACE}:stats:health"
@@ -193,6 +201,21 @@ PRICE_TICK_STALE_SECONDS = 15
 # Коли вважати снапшот повністю протухлим і видаляти його з кешу
 PRICE_TICK_DROP_SECONDS = 120
 
+# ───────────────────────────── S2/S3 (SMC-core) ─────────────────────────────
+# Важливо: це бізнес/стратегічні параметри. Не керуємо ними через ENV.
+
+# S2 поріг stale_tail: age_ms > stale_k * tf_ms
+SMC_S2_STALE_K: float = 3.0
+
+# S3 requester (warmup/backfill) — вимкнено за замовчуванням.
+SMC_S3_REQUESTER_ENABLED: bool = False
+SMC_S3_POLL_SEC: int = 60
+SMC_S3_COOLDOWN_SEC: int = 900
+SMC_S3_COMMANDS_CHANNEL: str = FXCM_COMMANDS_CHANNEL
+
+# Rich status bar у консолі (TTY-гейт залишається в коді).
+SMC_CONSOLE_STATUS_BAR_ENABLED: bool = True
+
 REACTIVE_STAGE1 = False
 SCREENING_LOOKBACK = 240
 SCREENING_BATCH_SIZE = 12
@@ -205,6 +228,13 @@ TRADE_REFRESH_INTERVAL = 3  # цикл Stage1 синхронізовано з 2�
 SMC_REFRESH_INTERVAL = 5  # окремий цикл для SmcCore без Stage1 логіки
 SMC_BATCH_SIZE = 12
 SMC_PIPELINE_ENABLED = True
+
+# SMC capacity / scheduler v0
+# 0 або <0 → legacy-режим (обробляємо всі ready-активи за цикл)
+SMC_MAX_ASSETS_PER_CYCLE: int = 4
+
+# М'який бюджет тривалості циклу (поки лише для логів/телеметрії)
+SMC_CYCLE_BUDGET_MS: int = 400
 
 
 # ───────────────────────────── Логування / Метрики ───────────────────────────

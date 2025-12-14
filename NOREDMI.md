@@ -51,6 +51,7 @@
    - Планувальник на черзі задач (symbol, tf) з м'яким лімітом задач/часу (орієнтир 200–400 мс/цикл).
    - Деградація при рості універсуму: зменшення частоти per symbol без дропів LIVE.
    - Acceptance: метрики циклу (`tasks_taken`, `cycle_ms`, `skipped_due_budget`); предиктивне логування при зміні FXCM_FAST_SYMBOLS.
+   - TODO (після v0): round-robin/черга, щоб не голодував «хвіст» списку при `SMC_MAX_ASSETS_PER_CYCLE`.
 
 7) **UI_v2 / телеметрія (S)**
    - У payload додати стани FSM (COLD/WARMUP/LIVE) і причину блокування (наприклад, `missing_history`, `stale_last_bar`).

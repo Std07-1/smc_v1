@@ -13,6 +13,7 @@ from typing import Any, cast
 from UI_v2.schemas import (
     VIEWER_STATE_SCHEMA_VERSION,
     FxcmMeta,
+    SmcViewerPipelineLocal,
     SmcViewerState,
     UiSmcAssetPayload,
     UiSmcMeta,
@@ -69,6 +70,22 @@ def build_viewer_state(
 
     stats = _as_dict(asset_dict.get("stats"))
 
+    pipeline_local: SmcViewerPipelineLocal = {}
+    if stats:
+        state_local = stats.get("pipeline_state_local")
+        ready_bars = stats.get("pipeline_ready_bars")
+        required_bars = stats.get("pipeline_required_bars")
+        ready_ratio = stats.get("pipeline_ready_ratio")
+
+        if state_local is not None:
+            pipeline_local["state"] = str(state_local)
+        if isinstance(ready_bars, (int, float)):
+            pipeline_local["ready_bars"] = int(ready_bars)
+        if isinstance(required_bars, (int, float)):
+            pipeline_local["required_bars"] = int(required_bars)
+        if isinstance(ready_ratio, (int, float)):
+            pipeline_local["ready_ratio"] = float(ready_ratio)
+
     price_value = _extract_price(asset_dict, stats)
 
     raw_events = _simplify_events(smc_structure.get("events"))
@@ -124,6 +141,7 @@ def build_viewer_state(
         "structure": structure_block,
         "liquidity": liquidity_block,
         "zones": {"raw": zones_raw},
+        "pipeline_local": pipeline_local,
     }
 
     if fxcm_source is not None:

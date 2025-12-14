@@ -1,13 +1,78 @@
-// Базове HTTP/WS налаштування для локального режиму.
-const HTTP_BASE_URL = "http://127.0.0.1:8080";
-const WS_BASE_URL = "ws://127.0.0.1:8081";
+// Базове HTTP/WS налаштування.
+// Публічний режим: працюємо в same-origin (через reverse-proxy), без жорстких 127.0.0.1:8080/8081.
+function buildHttpBaseUrl() {
+    try {
+        return window.location.origin;
+    } catch (_e) {
+        // Fallback для нестандартних середовищ; у браузері сюди не маємо потрапляти.
+        return "http://127.0.0.1:8080";
+    }
+}
+
+function buildWsBaseUrl() {
+    try {
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        return `${proto}//${window.location.host}`;
+    } catch (_e) {
+        return "ws://127.0.0.1:8081";
+    }
+}
+
+function isLocalHostname(hostname) {
+    return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function isFxcmWsEnabled() {
+    // FXCM WS міст (8082) — dev інтерфейс; у публічному режимі вимкнений, щоб не було reconnect-циклів.
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        const flag = (params.get("fxcm_ws") || "").trim().toLowerCase();
+        if (flag === "1" || flag === "true") {
+            return true;
+        }
+        return isLocalHostname(window.location.hostname);
+    } catch (_e) {
+        return false;
+    }
+}
+
+function isFxcmWsSameOrigin() {
+    // Якщо FXCM WS міст прокситься у same-origin (nginx/Cloudflare tunnel),
+    // підключаємось до wss://<домен>/fxcm/... замість прямого :8082.
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        const flag = (params.get("fxcm_ws_same_origin") || "").trim().toLowerCase();
+        return flag === "1" || flag === "true";
+    } catch (_e) {
+        return false;
+    }
+}
+
+function buildFxcmWsBaseUrl() {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    if (isFxcmWsSameOrigin()) {
+        return `${proto}//${window.location.host}`;
+    }
+    return `${proto}//${window.location.hostname}:8082`;
+}
+
+const HTTP_BASE_URL = buildHttpBaseUrl();
+const WS_BASE_URL = buildWsBaseUrl();
+const FXCM_WS_ENABLED = isFxcmWsEnabled();
+const FXCM_OHLCV_WS_BASE_URL = FXCM_WS_ENABLED ? buildFxcmWsBaseUrl() : null;
+const FXCM_TICKS_WS_BASE_URL = FXCM_OHLCV_WS_BASE_URL;
 const DEFAULT_SYMBOL = "xauusd";
 const OHLCV_DEFAULT_TF = "1m";
 const OHLCV_DEFAULT_LIMIT = 500;
 const AVAILABLE_TIMEFRAMES = ["1m", "5m"];
+const CHART_HEIGHT_MIN = 600;
+const CHART_HEIGHT_MAX = 900;
+const CHART_HEIGHT_STEP = 20;
+const CHART_HEIGHT_DEFAULT = 600;
 const STORAGE_KEYS = {
     symbol: "smc_viewer_selected_symbol",
     timeframe: "smc_viewer_selected_tf",
+    chartHeight: "smc_viewer_chart_height",
 };
 
 let lastOhlcvResponse = null;
@@ -165,6 +230,10 @@ function getOverlaySeqKey(state) {
 }
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
+const OHLCV_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
+const TICK_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
+
+const FXCM_LIVE_STALE_MS = 5000;
 
 const appState = {
     snapshot: {},
@@ -175,8 +244,24 @@ const appState = {
     ws: null,
     reconnectAttempt: 0,
     reconnectTimer: null,
+    ohlcvWs: null,
+    ohlcvReconnectAttempt: 0,
+    ohlcvReconnectTimer: null,
+    ohlcvLiveOpenTimeSec: null,
+    ohlcvLiveCandle: null,
+    tickWs: null,
+    tickReconnectAttempt: 0,
+    tickReconnectTimer: null,
+    tickLiveOpenTimeSec: null,
+    tickLiveCandle: null,
+    tickLastEmitMs: 0,
+    lastCompleteCandle: null,
     lastPayloadTs: null,
     lastLagSeconds: null,
+    fxcmLiveLastSeenMs: null,
+    fxcmLiveOffTimer: null,
+    uiStatusState: null,
+    uiStatusDetail: "",
     chart: null,
     chartState: {
         overlaySeqBySymbol: Object.create(null),
@@ -187,6 +272,10 @@ const appState = {
             ote: true,
             zones: true,
         },
+    },
+    chartUi: {
+        heightPx: CHART_HEIGHT_DEFAULT,
+        fullscreen: false,
     },
 };
 
@@ -199,6 +288,12 @@ document.addEventListener("DOMContentLoaded", () => {
     bindUi();
     initChartController();
     bootstrap().catch((err) => console.error("[UI] Помилка старту:", err));
+});
+
+window.addEventListener("beforeunload", () => {
+    cleanupSocket();
+    cleanupOhlcvSocket();
+    cleanupTickSocket();
 });
 
 function cacheElements() {
@@ -230,6 +325,11 @@ function cacheElements() {
         zones: document.getElementById("zones-body"),
     };
     elements.chartContainer = document.getElementById("chart-container");
+    elements.chartCard = document.querySelector(".card-chart");
+    elements.chartHeightControl = document.querySelector(".chart-height-control");
+    elements.chartHeightRange = document.getElementById("chart-height-range");
+    elements.chartHeightValue = document.getElementById("chart-height-value");
+    elements.chartFullscreenBtn = document.getElementById("chart-fullscreen-btn");
     elements.layerToggles = {
         events: document.getElementById("layer-toggle-events"),
         pools: document.getElementById("layer-toggle-pools"),
@@ -248,6 +348,7 @@ function initChartController() {
     }
     try {
         appState.chart = window.createChartController(elements.chartContainer);
+        scheduleChartResize();
     } catch (error) {
         console.error("[UI] Не вдалося створити chartController", error);
         appState.chart = null;
@@ -282,10 +383,13 @@ function bindUi() {
     elements.reconnectBtn.addEventListener("click", () => {
         if (appState.currentSymbol) {
             openViewerSocket(appState.currentSymbol);
+            openOhlcvSocket(appState.currentSymbol, appState.currentTimeframe);
+            openTickSocket(appState.currentSymbol);
         }
     });
 
     bindLayerToggles();
+    initChartLayoutControls();
 }
 
 function bindLayerToggles() {
@@ -352,6 +456,8 @@ async function bootstrap() {
     renderFromCache(initialSymbol);
     await fetchOhlcv(initialSymbol, appState.currentTimeframe);
     openViewerSocket(initialSymbol);
+    openOhlcvSocket(initialSymbol, appState.currentTimeframe);
+    openTickSocket(initialSymbol);
 }
 
 async function reloadSnapshot(manual) {
@@ -405,20 +511,29 @@ async function fetchOhlcv(symbol, timeframe = appState.currentTimeframe || OHLCV
             renderOhlcvSummary(null);
             if (appState.chart) {
                 appState.chart.clearAll();
+                if (typeof appState.chart.clearLiveBar === "function") {
+                    appState.chart.clearLiveBar();
+                }
             }
+            resetTickLiveState();
             return;
         }
         const data = await response.json();
         lastOhlcvResponse = data;
         renderOhlcvSummary(data);
         pushBarsToChart(data);
+        openOhlcvSocket(symbol, normalizedTf);
     } catch (err) {
         console.error("[UI] OHLCV request error", err);
         lastOhlcvResponse = null;
         renderOhlcvSummary(null);
         if (appState.chart) {
             appState.chart.clearAll();
+            if (typeof appState.chart.clearLiveBar === "function") {
+                appState.chart.clearLiveBar();
+            }
         }
+        resetTickLiveState();
     }
 }
 
@@ -476,6 +591,8 @@ function handleSymbolChange(symbol) {
     renderFromCache(symbol);
     fetchOhlcv(symbol, appState.currentTimeframe);
     openViewerSocket(symbol);
+    openOhlcvSocket(symbol, appState.currentTimeframe);
+    openTickSocket(symbol);
 }
 
 function handleTimeframeChange(nextTf) {
@@ -486,8 +603,10 @@ function handleTimeframeChange(nextTf) {
     appState.currentTimeframe = normalized;
     syncTimeframeSelect(normalized);
     persistTimeframe(normalized);
+    resetTickLiveState();
     if (appState.currentSymbol) {
         fetchOhlcv(appState.currentSymbol, normalized);
+        openOhlcvSocket(appState.currentSymbol, normalized);
     }
 }
 
@@ -581,6 +700,9 @@ function clearReconnectTimer() {
 }
 
 function setStatus(state, detail = "") {
+    appState.uiStatusState = state;
+    appState.uiStatusDetail = detail;
+
     const pill = elements.wsStatus;
     pill.classList.remove(
         "status-connected",
@@ -588,36 +710,70 @@ function setStatus(state, detail = "") {
         "status-reconnecting",
         "status-stale",
     );
+
+    let label = "";
     switch (state) {
         case "connected":
             pill.classList.add("status-connected");
-            pill.textContent = detail ? `Підключено (${detail})` : "Підключено";
+            label = detail ? `Підключено (${detail})` : "Підключено";
             break;
         case "connecting":
             pill.classList.add("status-reconnecting");
-            pill.textContent = detail ? `Підключення (${detail})` : "Підключення";
+            label = detail ? `Підключення (${detail})` : "Підключення";
             break;
         case "reconnecting":
             pill.classList.add("status-reconnecting");
-            pill.textContent = detail
+            label = detail
                 ? `Перепідключення (${detail})`
                 : "Перепідключення";
             break;
         case "stale":
             pill.classList.add("status-stale");
-            pill.textContent = detail ? `Без стріму (${detail})` : "Без стріму";
+            label = detail ? `Без стріму (${detail})` : "Без стріму";
             break;
         case "error":
             pill.classList.add("status-disconnected");
-            pill.textContent = detail ? `Помилка (${detail})` : "Помилка";
+            label = detail ? `Помилка (${detail})` : "Помилка";
             break;
         case "loading":
             pill.classList.add("status-reconnecting");
-            pill.textContent = detail || "Завантаження...";
+            label = detail || "Завантаження...";
             break;
         default:
             pill.classList.add("status-disconnected");
-            pill.textContent = detail ? `Відключено (${detail})` : "Відключено";
+            label = detail ? `Відключено (${detail})` : "Відключено";
+    }
+
+    const liveSuffix = FXCM_WS_ENABLED ? ` • LIVE: ${isFxcmLiveOn() ? "ON" : "OFF"}` : "";
+    pill.textContent = label + liveSuffix;
+}
+
+function isFxcmLiveOn() {
+    const lastSeen = appState.fxcmLiveLastSeenMs;
+    if (!Number.isFinite(lastSeen) || lastSeen <= 0) {
+        return false;
+    }
+    return Date.now() - lastSeen <= FXCM_LIVE_STALE_MS;
+}
+
+function noteFxcmLiveSeen() {
+    appState.fxcmLiveLastSeenMs = Date.now();
+
+    if (appState.fxcmLiveOffTimer) {
+        clearTimeout(appState.fxcmLiveOffTimer);
+        appState.fxcmLiveOffTimer = null;
+    }
+
+    // Один таймер лише для вимкнення індикатора (не рендер-таймер графіка).
+    appState.fxcmLiveOffTimer = setTimeout(() => {
+        appState.fxcmLiveOffTimer = null;
+        if (appState.uiStatusState) {
+            setStatus(appState.uiStatusState, appState.uiStatusDetail);
+        }
+    }, FXCM_LIVE_STALE_MS + 50);
+
+    if (appState.uiStatusState) {
+        setStatus(appState.uiStatusState, appState.uiStatusDetail);
     }
 }
 
@@ -711,6 +867,396 @@ function maybeUpdateChartFromWs(symbol, viewerState) {
         symbolOverride: symbol,
         force: false,
     });
+}
+
+function openOhlcvSocket(symbol, timeframe) {
+    if (!FXCM_WS_ENABLED || !FXCM_OHLCV_WS_BASE_URL) {
+        cleanupOhlcvSocket();
+        return;
+    }
+    if (!symbol) {
+        cleanupOhlcvSocket();
+        return;
+    }
+
+    const symUpper = String(symbol || "").toUpperCase();
+    const tf = normalizeTimeframe(timeframe);
+    const key = `${symUpper}:${tf}`;
+
+    // Якщо WS вже відкритий для того ж key — не чіпаємо.
+    if (
+        appState.ohlcvWs &&
+        appState.ohlcvWs.readyState === WebSocket.OPEN &&
+        appState.ohlcvWs.__key === key
+    ) {
+        return;
+    }
+
+    cleanupOhlcvSocket();
+    const wsUrl = `${FXCM_OHLCV_WS_BASE_URL}/fxcm/ohlcv?symbol=${encodeURIComponent(symUpper)}&tf=${encodeURIComponent(tf)}`;
+
+    try {
+        const ws = new WebSocket(wsUrl);
+        ws.__key = key;
+        appState.ohlcvWs = ws;
+
+        ws.onopen = () => {
+            appState.ohlcvReconnectAttempt = 0;
+            clearOhlcvReconnectTimer();
+            console.info(`[OHLCV_WS] Connected ${key}`);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                handleOhlcvWsPayload(payload);
+            } catch (err) {
+                console.warn("[OHLCV_WS] Не вдалося розпарсити повідомлення", err);
+            }
+        };
+
+        ws.onclose = () => {
+            console.warn(`[OHLCV_WS] Disconnected ${key}`);
+            scheduleOhlcvReconnect(symUpper, tf);
+        };
+
+        ws.onerror = (err) => {
+            console.warn("[OHLCV_WS] Помилка", err);
+            try {
+                ws.close();
+            } catch (_e) {
+                // ignore
+            }
+        };
+    } catch (err) {
+        console.warn("[OHLCV_WS] Не вдалося створити WebSocket", err);
+    }
+}
+
+function cleanupOhlcvSocket() {
+    if (appState.ohlcvWs) {
+        appState.ohlcvWs.onopen = null;
+        appState.ohlcvWs.onmessage = null;
+        appState.ohlcvWs.onclose = null;
+        appState.ohlcvWs.onerror = null;
+        try {
+            appState.ohlcvWs.close();
+        } catch (_e) {
+            // ignore
+        }
+        appState.ohlcvWs = null;
+    }
+    appState.ohlcvLiveOpenTimeSec = null;
+    appState.ohlcvLiveCandle = null;
+    clearOhlcvReconnectTimer();
+}
+
+function timeframeToSeconds(tf) {
+    const normalized = normalizeTimeframe(tf);
+    switch (normalized) {
+        case "5m":
+            return 300;
+        case "1m":
+        default:
+            return 60;
+    }
+}
+
+function normalizeTickTimestampToSeconds(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) {
+        return null;
+    }
+    return num > 1e12 ? num / 1000 : num;
+}
+
+function resetTickLiveState() {
+    appState.tickLiveOpenTimeSec = null;
+    appState.tickLiveCandle = null;
+    appState.tickLastEmitMs = 0;
+    if (appState.chart && typeof appState.chart.clearLiveBar === "function") {
+        appState.chart.clearLiveBar();
+    }
+}
+
+function openTickSocket(symbol) {
+    if (!FXCM_WS_ENABLED || !FXCM_TICKS_WS_BASE_URL) {
+        cleanupTickSocket();
+        return;
+    }
+    if (!symbol) {
+        cleanupTickSocket();
+        return;
+    }
+
+    const symUpper = String(symbol || "").toUpperCase();
+    const key = `${symUpper}`;
+
+    if (
+        appState.tickWs &&
+        appState.tickWs.readyState === WebSocket.OPEN &&
+        appState.tickWs.__key === key
+    ) {
+        return;
+    }
+
+    cleanupTickSocket();
+    const wsUrl = `${FXCM_TICKS_WS_BASE_URL}/fxcm/ticks?symbol=${encodeURIComponent(symUpper)}`;
+
+    try {
+        const ws = new WebSocket(wsUrl);
+        ws.__key = key;
+        appState.tickWs = ws;
+
+        ws.onopen = () => {
+            appState.tickReconnectAttempt = 0;
+            clearTickReconnectTimer();
+            console.info(`[TICK_WS] Connected ${key}`);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                handleTickWsPayload(payload);
+            } catch (err) {
+                console.warn("[TICK_WS] Не вдалося розпарсити повідомлення", err);
+            }
+        };
+
+        ws.onclose = () => {
+            console.warn(`[TICK_WS] Disconnected ${key}`);
+            scheduleTickReconnect(symUpper);
+        };
+
+        ws.onerror = (err) => {
+            console.warn("[TICK_WS] Помилка", err);
+            try {
+                ws.close();
+            } catch (_e) {
+                // ignore
+            }
+        };
+    } catch (err) {
+        console.warn("[TICK_WS] Не вдалося створити WebSocket", err);
+    }
+}
+
+function cleanupTickSocket() {
+    if (appState.tickWs) {
+        appState.tickWs.onopen = null;
+        appState.tickWs.onmessage = null;
+        appState.tickWs.onclose = null;
+        appState.tickWs.onerror = null;
+        try {
+            appState.tickWs.close();
+        } catch (_e) {
+            // ignore
+        }
+        appState.tickWs = null;
+    }
+    clearTickReconnectTimer();
+}
+
+function scheduleTickReconnect(symbolUpper) {
+    if (!FXCM_WS_ENABLED) {
+        return;
+    }
+    const currentSymbol = (appState.currentSymbol || "").toUpperCase();
+    if (!symbolUpper || currentSymbol !== symbolUpper) {
+        return;
+    }
+    const attempt = Math.min(
+        appState.tickReconnectAttempt,
+        TICK_RECONNECT_DELAYS_MS.length - 1,
+    );
+    const delay = TICK_RECONNECT_DELAYS_MS[attempt];
+    appState.tickReconnectAttempt += 1;
+    clearTickReconnectTimer();
+    appState.tickReconnectTimer = setTimeout(() => {
+        openTickSocket(symbolUpper);
+    }, delay);
+}
+
+function clearTickReconnectTimer() {
+    if (appState.tickReconnectTimer) {
+        clearTimeout(appState.tickReconnectTimer);
+        appState.tickReconnectTimer = null;
+    }
+}
+
+function handleTickWsPayload(payload) {
+    if (!payload) {
+        return;
+    }
+    const symbol = String(payload.symbol || "").toUpperCase();
+    const currentSymbol = (appState.currentSymbol || "").toUpperCase();
+    if (!symbol || symbol !== currentSymbol) {
+        return;
+    }
+    if (!appState.chart || typeof appState.chart.setLiveBar !== "function") {
+        return;
+    }
+
+    const mid = Number(payload.mid);
+    if (!Number.isFinite(mid)) {
+        return;
+    }
+
+    const tsSec =
+        normalizeTickTimestampToSeconds(payload.tick_ts) ??
+        normalizeTickTimestampToSeconds(payload.snap_ts) ??
+        Date.now() / 1000;
+    const tfSec = timeframeToSeconds(appState.currentTimeframe);
+    const candleStart = Math.floor(tsSec / tfSec) * tfSec;
+
+    // throttle, щоб не "забивати" UI при частих тиках
+    const nowMs = Date.now();
+    const shouldRender =
+        !appState.tickLastEmitMs || nowMs - appState.tickLastEmitMs >= 200;
+    if (shouldRender) {
+        appState.tickLastEmitMs = nowMs;
+    }
+
+    let candle = appState.tickLiveCandle;
+    if (!candle || appState.tickLiveOpenTimeSec !== candleStart) {
+        const baseFromOhlcv =
+            appState.ohlcvLiveOpenTimeSec === candleStart && appState.ohlcvLiveCandle
+                ? appState.ohlcvLiveCandle
+                : null;
+        const baseOpen =
+            baseFromOhlcv?.open ??
+            appState.lastCompleteCandle?.close ??
+            mid;
+
+        candle = {
+            time: candleStart,
+            open: Number(baseOpen),
+            high: Math.max(Number(baseOpen), mid),
+            low: Math.min(Number(baseOpen), mid),
+            close: mid,
+        };
+        appState.tickLiveCandle = candle;
+        appState.tickLiveOpenTimeSec = candleStart;
+    } else {
+        candle = {
+            time: candle.time,
+            open: candle.open,
+            high: Math.max(candle.high, mid),
+            low: Math.min(candle.low, mid),
+            close: mid,
+        };
+        appState.tickLiveCandle = candle;
+    }
+
+    // Рендеримо live-бар; якщо throttle активний — пропустимо кадр.
+    if (shouldRender) {
+        appState.chart.setLiveBar(candle);
+    }
+}
+
+function scheduleOhlcvReconnect(symbolUpper, tf) {
+    if (!FXCM_WS_ENABLED) {
+        return;
+    }
+    const currentSymbol = (appState.currentSymbol || "").toUpperCase();
+    const currentTf = normalizeTimeframe(appState.currentTimeframe);
+    if (!symbolUpper || !tf || currentSymbol !== symbolUpper || currentTf !== tf) {
+        return;
+    }
+
+    const attempt = Math.min(
+        appState.ohlcvReconnectAttempt,
+        OHLCV_RECONNECT_DELAYS_MS.length - 1,
+    );
+    const delay = OHLCV_RECONNECT_DELAYS_MS[attempt];
+    appState.ohlcvReconnectAttempt += 1;
+
+    clearOhlcvReconnectTimer();
+    appState.ohlcvReconnectTimer = setTimeout(() => {
+        openOhlcvSocket(symbolUpper, tf);
+    }, delay);
+}
+
+function clearOhlcvReconnectTimer() {
+    if (appState.ohlcvReconnectTimer) {
+        clearTimeout(appState.ohlcvReconnectTimer);
+        appState.ohlcvReconnectTimer = null;
+    }
+}
+
+function handleOhlcvWsPayload(payload) {
+    if (!payload || !Array.isArray(payload.bars)) {
+        return;
+    }
+    const symbol = String(payload.symbol || "").toUpperCase();
+    const tf = String(payload.tf || payload.timeframe || "").toLowerCase();
+    const currentSymbol = (appState.currentSymbol || "").toUpperCase();
+    const currentTf = normalizeTimeframe(appState.currentTimeframe);
+    if (!symbol || !tf || symbol !== currentSymbol || tf !== currentTf) {
+        return;
+    }
+    if (!appState.chart) {
+        return;
+    }
+
+    for (const bar of payload.bars) {
+        if (!bar) {
+            continue;
+        }
+        const openTimeMs = Number(bar.open_time);
+        if (!Number.isFinite(openTimeMs) || openTimeMs <= 0) {
+            continue;
+        }
+
+        const candle = {
+            time: Math.floor(openTimeMs / 1000),
+            open: Number(bar.open),
+            high: Number(bar.high),
+            low: Number(bar.low),
+            close: Number(bar.close),
+            volume: Number(bar.volume ?? 0),
+        };
+        if (
+            !Number.isFinite(candle.open) ||
+            !Number.isFinite(candle.high) ||
+            !Number.isFinite(candle.low) ||
+            !Number.isFinite(candle.close)
+        ) {
+            continue;
+        }
+
+        const isComplete = bar.complete !== false;
+        if (!isComplete) {
+            noteFxcmLiveSeen();
+            if (typeof appState.chart.setLiveBar === "function") {
+                appState.chart.setLiveBar(candle);
+                appState.ohlcvLiveOpenTimeSec = candle.time;
+                appState.ohlcvLiveCandle = candle;
+            }
+            continue;
+        }
+
+        appState.chart.updateLastBar(candle);
+        appState.lastCompleteCandle = candle;
+
+        if (
+            appState.ohlcvLiveOpenTimeSec !== null &&
+            appState.ohlcvLiveOpenTimeSec === candle.time &&
+            typeof appState.chart.clearLiveBar === "function"
+        ) {
+            appState.chart.clearLiveBar();
+            appState.ohlcvLiveOpenTimeSec = null;
+            appState.ohlcvLiveCandle = null;
+        }
+
+        if (
+            appState.tickLiveOpenTimeSec !== null &&
+            appState.tickLiveOpenTimeSec === candle.time
+        ) {
+            appState.tickLiveOpenTimeSec = null;
+            appState.tickLiveCandle = null;
+        }
+    }
 }
 
 function updateChartFromViewerState(state, options = {}) {
@@ -826,6 +1372,13 @@ function loadPersistedPreferences() {
                 storage.setItem(STORAGE_KEYS.symbol, normalizedSymbol);
             }
         }
+        const storedHeight = storage.getItem(STORAGE_KEYS.chartHeight);
+        if (storedHeight) {
+            const numericHeight = Number(storedHeight);
+            if (Number.isFinite(numericHeight)) {
+                appState.chartUi.heightPx = clampChartHeight(numericHeight);
+            }
+        }
     } catch (err) {
         console.warn("[UI] Не вдалося зчитати налаштування з localStorage", err);
     }
@@ -887,6 +1440,147 @@ function rehydrateOverlays() {
             symbolOverride: appState.currentSymbol,
         });
     }
+}
+
+function initChartLayoutControls() {
+    if (elements.chartHeightRange) {
+        elements.chartHeightRange.min = String(CHART_HEIGHT_MIN);
+        elements.chartHeightRange.max = String(CHART_HEIGHT_MAX);
+        elements.chartHeightRange.step = String(CHART_HEIGHT_STEP);
+        elements.chartHeightRange.value = String(appState.chartUi.heightPx);
+        const handleRangeChange = (event) => {
+            const nextValue = Number(event.target.value);
+            if (Number.isFinite(nextValue)) {
+                applyChartHeight(nextValue);
+            }
+        };
+        elements.chartHeightRange.addEventListener("input", handleRangeChange);
+        elements.chartHeightRange.addEventListener("change", handleRangeChange);
+    }
+    applyChartHeight(appState.chartUi.heightPx, { persist: false });
+    updateFullscreenButtonState();
+    if (elements.chartFullscreenBtn) {
+        elements.chartFullscreenBtn.addEventListener("click", toggleChartFullscreen);
+    }
+    document.addEventListener("keydown", handleFullscreenKeydown);
+    setHeightControlEnabled(true);
+}
+
+function applyChartHeight(value, options = {}) {
+    const nextValue = clampChartHeight(value);
+    appState.chartUi.heightPx = nextValue;
+    document.documentElement.style.setProperty("--chart-height", `${nextValue}px`);
+    scheduleChartResize();
+    if (elements.chartHeightRange && elements.chartHeightRange.value !== String(nextValue)) {
+        elements.chartHeightRange.value = String(nextValue);
+    }
+    updateChartHeightLabel(nextValue);
+    if (options.persist !== false) {
+        persistChartHeight(nextValue);
+    }
+}
+
+function setHeightControlEnabled(enabled) {
+    if (elements.chartHeightRange) {
+        elements.chartHeightRange.disabled = !enabled;
+        elements.chartHeightRange.setAttribute("aria-disabled", enabled ? "false" : "true");
+    }
+    if (elements.chartHeightControl) {
+        elements.chartHeightControl.classList.toggle("chart-height-control--disabled", !enabled);
+    }
+}
+
+function clampChartHeight(value) {
+    if (!Number.isFinite(value)) {
+        return CHART_HEIGHT_DEFAULT;
+    }
+    return Math.min(CHART_HEIGHT_MAX, Math.max(CHART_HEIGHT_MIN, Math.round(value)));
+}
+
+function updateChartHeightLabel(value) {
+    if (elements.chartHeightValue) {
+        elements.chartHeightValue.textContent = `${value} px`;
+    }
+}
+
+function persistChartHeight(value) {
+    const storage = getStorage();
+    if (!storage) {
+        return;
+    }
+    try {
+        storage.setItem(STORAGE_KEYS.chartHeight, String(value));
+    } catch (err) {
+        console.warn("[UI] Не вдалося зберегти висоту чарта", err);
+    }
+}
+
+function toggleChartFullscreen() {
+    if (appState.chartUi.fullscreen) {
+        exitChartFullscreen();
+    } else {
+        enterChartFullscreen();
+    }
+}
+
+function enterChartFullscreen() {
+    if (!elements.chartCard) {
+        return;
+    }
+    elements.chartCard.classList.add("card-chart--fullscreen");
+    document.body.classList.add("chart-fullscreen-lock");
+    appState.chartUi.fullscreen = true;
+    updateFullscreenButtonState();
+    setHeightControlEnabled(false);
+    scheduleChartResize();
+}
+
+function exitChartFullscreen() {
+    if (!elements.chartCard) {
+        return;
+    }
+    elements.chartCard.classList.remove("card-chart--fullscreen");
+    document.body.classList.remove("chart-fullscreen-lock");
+    appState.chartUi.fullscreen = false;
+    updateFullscreenButtonState();
+    setHeightControlEnabled(true);
+    scheduleChartResize();
+}
+
+function updateFullscreenButtonState() {
+    if (!elements.chartFullscreenBtn) {
+        return;
+    }
+    if (appState.chartUi.fullscreen) {
+        elements.chartFullscreenBtn.textContent = "Завершити повний екран";
+        elements.chartFullscreenBtn.setAttribute("aria-pressed", "true");
+    } else {
+        elements.chartFullscreenBtn.textContent = "На весь екран";
+        elements.chartFullscreenBtn.setAttribute("aria-pressed", "false");
+    }
+}
+
+function handleFullscreenKeydown(event) {
+    if (event.key === "Escape" && appState.chartUi.fullscreen) {
+        exitChartFullscreen();
+    }
+}
+
+function scheduleChartResize() {
+    if (typeof window === "undefined") {
+        return;
+    }
+    if (!appState.chart || typeof appState.chart.resizeToContainer !== "function") {
+        return;
+    }
+    const raf = window.requestAnimationFrame || window.setTimeout;
+    raf(() => {
+        try {
+            appState.chart.resizeToContainer();
+        } catch (err) {
+            console.warn("[UI] chart resize failed", err);
+        }
+    });
 }
 
 function setBadgeText(elementId, value) {

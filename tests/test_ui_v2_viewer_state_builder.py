@@ -184,6 +184,28 @@ def test_build_viewer_state_basic() -> None:
     assert "fxcm" not in state or state["fxcm"] is None
 
 
+def test_build_viewer_state_includes_pipeline_local_from_stats() -> None:
+    asset = _make_basic_asset(
+        stats={
+            "session_tag": "London",
+            "current_price": 2412.5,
+            "pipeline_state_local": "WARMUP",
+            "pipeline_ready_bars": 120,
+            "pipeline_required_bars": 200,
+            "pipeline_ready_ratio": 0.6,
+        }
+    )
+    meta = _make_basic_meta()
+
+    state: SmcViewerState = build_viewer_state(asset, meta, fxcm_block=None, cache=None)
+
+    pipeline_local = cast(dict, state.get("pipeline_local"))
+    assert pipeline_local["state"] == "WARMUP"
+    assert pipeline_local["ready_bars"] == 120
+    assert pipeline_local["required_bars"] == 200
+    assert pipeline_local["ready_ratio"] == pytest.approx(0.6)
+
+
 def test_build_viewer_state_cache_backfills_events_and_zones() -> None:
     """Кеш має бекфілити події та зони, якщо в новому пейлоаді їх немає."""
 

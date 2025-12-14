@@ -1,4 +1,14 @@
 (function () {
+    const CANDLE_COLORS = {
+        up: "#1ed760",
+        down: "#ef476f",
+        live: "#facc15",
+    };
+
+    const VOLUME_WINDOW_SIZE = 200;
+    const OPACITY_MIN = 0.25;
+    const OPACITY_MAX = 1.0;
+
     const DEFAULT_CHART_OPTIONS = {
         layout: {
             background: { color: "#0e111d" },
@@ -90,6 +100,61 @@
         };
     }
 
+    function normalizeVolume(bar) {
+        if (!bar) {
+            return 0;
+        }
+        const value = Number(bar.volume);
+        if (!Number.isFinite(value) || value <= 0) {
+            return 0;
+        }
+        return value;
+    }
+
+    function clamp(value, min, max) {
+        if (!Number.isFinite(value)) {
+            return min;
+        }
+        return Math.min(max, Math.max(min, value));
+    }
+
+    function hexToRgba(hex, alpha) {
+        if (typeof hex !== "string" || !hex.startsWith("#") || hex.length !== 7) {
+            return hex;
+        }
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        if (![r, g, b].every(Number.isFinite)) {
+            return hex;
+        }
+        const a = clamp(alpha, 0, 1);
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+
+    function computeRecentMaxVolume(volumes) {
+        if (!Array.isArray(volumes) || volumes.length === 0) {
+            return 0;
+        }
+        const tail = volumes.slice(Math.max(0, volumes.length - VOLUME_WINDOW_SIZE));
+        let maxValue = 0;
+        for (const v of tail) {
+            const num = Number(v);
+            if (Number.isFinite(num) && num > maxValue) {
+                maxValue = num;
+            }
+        }
+        return maxValue;
+    }
+
+    function volumeToOpacity(volume, recentMax) {
+        if (!Number.isFinite(recentMax) || recentMax <= 0) {
+            return OPACITY_MAX;
+        }
+        const norm = clamp(Number(volume) / recentMax, 0, 1);
+        return OPACITY_MIN + norm * (OPACITY_MAX - OPACITY_MIN);
+    }
+
     function createChartController(container) {
         if (!container) {
             throw new Error("chart_adapter: контейнер не передано");
@@ -100,13 +165,49 @@
 
         const chart = LightweightCharts.createChart(container, DEFAULT_CHART_OPTIONS);
         const candles = chart.addCandlestickSeries({
-            upColor: "#1ed760",
-            wickUpColor: "#1ed760",
-            downColor: "#ef476f",
-            wickDownColor: "#ef476f",
+            upColor: CANDLE_COLORS.up,
+            wickUpColor: CANDLE_COLORS.up,
+            downColor: CANDLE_COLORS.down,
+            wickDownColor: CANDLE_COLORS.down,
             borderVisible: false,
         });
+        const liveCandles = chart.addCandlestickSeries({
+            upColor: "rgba(250, 204, 21, 0.18)",
+            wickUpColor: CANDLE_COLORS.live,
+            downColor: "rgba(250, 204, 21, 0.18)",
+            wickDownColor: CANDLE_COLORS.live,
+            borderVisible: true,
+            borderUpColor: CANDLE_COLORS.live,
+            borderDownColor: CANDLE_COLORS.live,
+        });
+
+        const volume = chart.addHistogramSeries({
+            priceScaleId: "volume",
+            priceFormat: {
+                type: "volume",
+            },
+            base: 0,
+        });
+        const liveVolume = chart.addHistogramSeries({
+            priceScaleId: "volume",
+            priceFormat: {
+                type: "volume",
+            },
+            base: 0,
+        });
+        chart.priceScale("volume").applyOptions({
+            scaleMargins: {
+                top: 0.82,
+                bottom: 0.0,
+            },
+            borderVisible: false,
+        });
+
         let lastBar = null;
+        let lastLiveBar = null;
+        let lastLiveVolume = 0;
+        let recentVolumeMax = 0;
+        let recentVolumes = [];
         let eventMarkers = [];
         let poolLines = [];
         let rangeAreas = [];
@@ -120,6 +221,7 @@
             manualRange: null,
             lastAutoRange: null,
         };
+        let lastContainerSize = { width: 0, height: 0 };
         const interactionCleanup = [];
         const verticalPanState = {
             active: false,
@@ -158,24 +260,121 @@
         });
 
         setupPriceScaleInteractions();
+        setupResizeHandling();
 
         function setBars(bars) {
             resetManualPriceScale({ silent: true });
             if (!Array.isArray(bars) || bars.length === 0) {
                 candles.setData([]);
+                liveCandles.setData([]);
+                volume.setData([]);
+                liveVolume.setData([]);
                 lastBar = null;
+                lastLiveBar = null;
+                lastLiveVolume = 0;
+                recentVolumeMax = 0;
+                recentVolumes = [];
                 chartTimeRange = { min: null, max: null };
                 return;
             }
+
             const normalized = bars
-                .map(normalizeBar)
+                .map((bar) => {
+                    const candle = normalizeBar(bar);
+                    if (!candle) {
+                        return null;
+                    }
+                    return {
+                        candle,
+                        volume: normalizeVolume(bar),
+                    };
+                })
                 .filter(Boolean)
-                .sort((a, b) => a.time - b.time);
-            candles.setData(normalized);
-            lastBar = normalized.length ? normalized[normalized.length - 1] : null;
-            updateBarTimeSpanFromBars(normalized);
-            updateTimeRangeFromBars(normalized);
+                .sort((a, b) => a.candle.time - b.candle.time);
+
+            const candleData = normalized.map((row) => row.candle);
+            const volumeValues = normalized.map((row) => row.volume);
+            recentVolumes = volumeValues.slice(Math.max(0, volumeValues.length - VOLUME_WINDOW_SIZE));
+            recentVolumeMax = computeRecentMaxVolume(volumeValues);
+
+            const styledCandles = candleData.map((bar, index) => {
+                const vol = volumeValues[index] ?? 0;
+                if (!(recentVolumeMax > 0)) {
+                    return bar;
+                }
+                const isUp = Number(bar.close) >= Number(bar.open);
+                const alpha = volumeToOpacity(vol, recentVolumeMax);
+                const base = isUp ? CANDLE_COLORS.up : CANDLE_COLORS.down;
+                const rgba = hexToRgba(base, alpha);
+                return {
+                    ...bar,
+                    color: rgba,
+                    wickColor: rgba,
+                    borderColor: rgba,
+                };
+            });
+
+            candles.setData(styledCandles);
+            if (recentVolumeMax > 0) {
+                const volumeData = candleData.map((bar, index) => {
+                    const vol = volumeValues[index] ?? 0;
+                    const isUp = Number(bar.close) >= Number(bar.open);
+                    const alpha = clamp(volumeToOpacity(vol, recentVolumeMax) * 0.6, 0.12, 0.85);
+                    const base = isUp ? CANDLE_COLORS.up : CANDLE_COLORS.down;
+                    return {
+                        time: bar.time,
+                        value: vol,
+                        color: hexToRgba(base, alpha),
+                    };
+                });
+                volume.setData(volumeData);
+            } else {
+                volume.setData([]);
+            }
+
+            lastBar = candleData.length ? candleData[candleData.length - 1] : null;
+            // Якщо live-бар більше не відповідає історії — скинемо.
+            if (lastLiveBar && lastBar && lastLiveBar.time < lastBar.time) {
+                clearLiveBar();
+            }
+            updateBarTimeSpanFromBars(candleData);
+            updateTimeRangeFromBars(candleData);
             chart.timeScale().fitContent();
+        }
+
+        function setLiveBar(bar) {
+            const normalized = normalizeBar(bar);
+            if (!normalized) {
+                return;
+            }
+            const vol = normalizeVolume(bar);
+            lastLiveVolume = vol;
+            // Тримаємо рівно одну "живу" свічку.
+            if (!lastLiveBar || normalized.time !== lastLiveBar.time) {
+                liveCandles.setData([normalized]);
+            } else {
+                liveCandles.update(normalized);
+            }
+            lastLiveBar = normalized;
+
+            if (vol > 0) {
+                liveVolume.setData([
+                    {
+                        time: normalized.time,
+                        value: vol,
+                        color: "rgba(250, 204, 21, 0.35)",
+                    },
+                ]);
+            } else {
+                liveVolume.setData([]);
+            }
+        }
+
+        function clearLiveBar() {
+            liveCandles.setData([]);
+            liveVolume.setData([]);
+            lastLiveBar = null;
+            lastLiveVolume = 0;
         }
 
         function updateLastBar(bar) {
@@ -183,6 +382,7 @@
             if (!normalized) {
                 return;
             }
+            const vol = normalizeVolume(bar);
             if (!lastBar || normalized.time >= lastBar.time) {
                 if (lastBar && normalized.time > lastBar.time) {
                     const diff = normalized.time - lastBar.time;
@@ -193,7 +393,42 @@
                         );
                     }
                 }
-                candles.update(normalized);
+
+                if (lastBar && normalized.time === lastBar.time && recentVolumes.length) {
+                    recentVolumes[recentVolumes.length - 1] = vol;
+                } else if (lastBar && normalized.time > lastBar.time) {
+                    recentVolumes.push(vol);
+                    if (recentVolumes.length > VOLUME_WINDOW_SIZE) {
+                        recentVolumes.shift();
+                    }
+                }
+                recentVolumeMax = computeRecentMaxVolume(recentVolumes);
+
+                let candleToWrite = normalized;
+                if (recentVolumeMax > 0) {
+                    const isUp = Number(normalized.close) >= Number(normalized.open);
+                    const alpha = volumeToOpacity(vol, recentVolumeMax);
+                    const base = isUp ? CANDLE_COLORS.up : CANDLE_COLORS.down;
+                    const rgba = hexToRgba(base, alpha);
+                    candleToWrite = {
+                        ...normalized,
+                        color: rgba,
+                        wickColor: rgba,
+                        borderColor: rgba,
+                    };
+                }
+                candles.update(candleToWrite);
+
+                if (recentVolumeMax > 0) {
+                    const isUp = Number(normalized.close) >= Number(normalized.open);
+                    const alpha = clamp(volumeToOpacity(vol, recentVolumeMax) * 0.6, 0.12, 0.85);
+                    const base = isUp ? CANDLE_COLORS.up : CANDLE_COLORS.down;
+                    volume.update({
+                        time: normalized.time,
+                        value: vol,
+                        color: hexToRgba(base, alpha),
+                    });
+                }
                 lastBar = normalized;
                 if (chartTimeRange.min == null) {
                     chartTimeRange.min = normalized.time;
@@ -434,7 +669,14 @@
 
         function clearAll() {
             candles.setData([]);
+            liveCandles.setData([]);
+            volume.setData([]);
+            liveVolume.setData([]);
             lastBar = null;
+            lastLiveBar = null;
+            lastLiveVolume = 0;
+            recentVolumeMax = 0;
+            recentVolumes = [];
             clearEvents();
             clearPools();
             clearRanges();
@@ -448,13 +690,17 @@
         return {
             setBars,
             updateLastBar,
+            setLiveBar,
+            clearLiveBar,
             setEvents,
             setOteZones,
             setLiquidityPools,
             setRanges,
             setZones,
+            resizeToContainer,
             clearAll,
             dispose() {
+                clearLiveBar();
                 clearStructureTriangles();
                 clearOteOverlays();
                 interactionCleanup.splice(0).forEach((cleanup) => {
@@ -468,6 +714,28 @@
                 chart.remove();
             },
         };
+
+        function resizeToContainer() {
+            if (!container || typeof container.getBoundingClientRect !== "function") {
+                return;
+            }
+            const rect = container.getBoundingClientRect();
+            const width = Math.floor(rect.width);
+            const height = Math.floor(rect.height);
+            if (
+                !Number.isFinite(width) ||
+                !Number.isFinite(height) ||
+                width <= 0 ||
+                height <= 0
+            ) {
+                return;
+            }
+            if (lastContainerSize.width === width && lastContainerSize.height === height) {
+                return;
+            }
+            lastContainerSize = { width, height };
+            chart.applyOptions({ width, height });
+        }
 
         function renderStructureTriangle(evt) {
             if (!evt) {
@@ -825,6 +1093,36 @@
                     applyManualRange(nextRange);
                 }
             }
+        }
+
+        function setupResizeHandling() {
+            if (!container || typeof window === "undefined") {
+                return;
+            }
+            const schedule = () => {
+                const raf = window.requestAnimationFrame || window.setTimeout;
+                raf(() => resizeToContainer());
+            };
+            if (typeof ResizeObserver !== "undefined") {
+                const resizeObserver = new ResizeObserver(() => {
+                    schedule();
+                });
+                resizeObserver.observe(container);
+                interactionCleanup.push(() => {
+                    try {
+                        resizeObserver.disconnect();
+                    } catch (err) {
+                        console.warn("chart_adapter: не вдалося відписатися від ResizeObserver", err);
+                    }
+                });
+            } else {
+                const handleResize = () => {
+                    schedule();
+                };
+                window.addEventListener("resize", handleResize);
+                interactionCleanup.push(() => window.removeEventListener("resize", handleResize));
+            }
+            schedule();
         }
 
         function getRelativePointer(event) {

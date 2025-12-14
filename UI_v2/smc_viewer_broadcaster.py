@@ -10,12 +10,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from time import perf_counter
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 try:  # pragma: no cover - залежність опційна для юніт-тестів
     from redis.asyncio import Redis
@@ -287,40 +288,67 @@ class SmcViewerBroadcaster:
         """
         await self.load_initial_snapshot()
 
-        pubsub = self.redis.pubsub()
-        await pubsub.subscribe(self.cfg.smc_state_channel)
-        logger.info(
-            "[SMC viewer] Підписка на канал %s",
-            self.cfg.smc_state_channel,
-        )
-
-        async for message in pubsub.listen():
-            if not isinstance(message, Mapping):
-                continue
-            if message.get("type") != "message":
-                continue
-
-            data = message.get("data")
-            if isinstance(data, bytes):
-                data = data.decode("utf-8", errors="replace")
-
+        backoff_sec = 1.0
+        while True:
+            pubsub = self.redis.pubsub()
             try:
-                payload: UiSmcStatePayload = json.loads(data)  # type: ignore[assignment]
-            except Exception:
-                logger.warning(
-                    "[SMC viewer] Некоректне повідомлення у %s",
+                await pubsub.subscribe(self.cfg.smc_state_channel)
+                logger.info(
+                    "[SMC viewer] Підписка на канал %s",
                     self.cfg.smc_state_channel,
+                )
+
+                async for message in pubsub.listen():
+                    backoff_sec = 1.0
+                    if not isinstance(message, Mapping):
+                        continue
+                    if message.get("type") != "message":
+                        continue
+
+                    data = message.get("data")
+                    if isinstance(data, bytes):
+                        data = data.decode("utf-8", errors="replace")
+
+                    try:
+                        payload_raw = data if data is not None else ""
+                        payload: UiSmcStatePayload = json.loads(  # type: ignore[assignment]
+                            payload_raw
+                        )
+                    except Exception:
+                        logger.warning(
+                            "[SMC viewer] Некоректне повідомлення у %s",
+                            self.cfg.smc_state_channel,
+                            exc_info=True,
+                        )
+                        continue
+
+                    await _process_smc_payload_with_metrics(
+                        payload=payload,
+                        cache_by_symbol=self.cache_by_symbol,
+                        snapshot_by_symbol=self.snapshot_by_symbol,
+                        save_snapshot_cb=self._save_viewer_snapshot,
+                        publish_cb=self._publish_viewer_states,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                SMC_VIEWER_ERRORS_TOTAL.inc()
+                logger.warning(
+                    "[SMC viewer] Втрачено з'єднання з Redis (pubsub). Повтор через %.1f с.",
+                    backoff_sec,
                     exc_info=True,
                 )
-                continue
-
-            await _process_smc_payload_with_metrics(
-                payload=payload,
-                cache_by_symbol=self.cache_by_symbol,
-                snapshot_by_symbol=self.snapshot_by_symbol,
-                save_snapshot_cb=self._save_viewer_snapshot,
-                publish_cb=self._publish_viewer_states,
-            )
+                await asyncio.sleep(backoff_sec)
+                backoff_sec = min(backoff_sec * 2.0, 60.0)
+            finally:
+                try:
+                    await pubsub.unsubscribe(self.cfg.smc_state_channel)
+                except Exception:
+                    pass
+                try:
+                    await pubsub.close()
+                except Exception:
+                    pass
 
     async def _publish_viewer_states(
         self,

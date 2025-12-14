@@ -15,16 +15,16 @@ from collections.abc import Mapping
 from typing import Any
 
 from redis.asyncio import Redis
-from rich.console import Console
 from rich.logging import RichHandler
 
 from app.settings import settings
 from data.unified_store import UnifiedDataStore
+from utils.rich_console import get_rich_console
 
 logger = logging.getLogger("fxcm_price_stream")
 if not logger.handlers:  # guard від подвійного налаштування
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
+    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
     logger.propagate = False
 
 

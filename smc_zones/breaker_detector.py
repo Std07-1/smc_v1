@@ -9,7 +9,6 @@ from datetime import date, datetime, timedelta
 from typing import Literal, cast
 
 import pandas as pd
-from rich.console import Console
 from rich.logging import RichHandler
 
 from smc_core.config import SmcCoreConfig
@@ -21,12 +20,13 @@ from smc_core.smc_types import (
     SmcZone,
     SmcZoneType,
 )
+from utils.rich_console import get_rich_console
 from utils.utils import safe_float
 
 logger = logging.getLogger("smc_zones.breaker_detector")
 if not logger.handlers:  # pragma: no cover - ініціалізація логера
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=True))
+    logger.setLevel(logging.INFO)
+    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
     logger.propagate = False
 
 

@@ -35,6 +35,11 @@ class _DummyRedis:
         self.published.append((channel, message))
 
 
+class _DummyRedisPublishFails(_DummyRedis):
+    async def publish(self, channel: str, message: str) -> None:
+        raise ConnectionError("redis down")
+
+
 def test_publish_smc_state_serializes_payload() -> None:
     manager = _DummyStateManager(
         [
@@ -148,3 +153,26 @@ def test_publish_smc_state_normalizes_breaker_zones() -> None:
     breaker = payload["assets"][0]["smc"]["zones"]["breaker_zones"][0]
     assert abs(breaker["price_min"] - 2000.0) < 1e-6
     assert abs(breaker["price_max"] - 2500.0) < 1e-6
+
+
+def test_publish_smc_state_does_not_crash_when_redis_publish_fails() -> None:
+    manager = _DummyStateManager(
+        [
+            {
+                "symbol": "xauusd",
+                "stats": {"current_price": 2000.0},
+                "smc_hint": {"structure": {}, "liquidity": {}, "zones": {}},
+            }
+        ]
+    )
+    redis = _DummyRedisPublishFails()
+
+    # Не має піднімати виключення, якщо Redis коротко недоступний.
+    asyncio.run(
+        publish_smc_state(
+            manager,
+            object(),
+            redis,  # type: ignore
+            meta_extra={"cycle_seq": 1},
+        )
+    )

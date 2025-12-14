@@ -24,6 +24,7 @@ from smc_core.smc_types import (
 from smc_zones.breaker_detector import detect_breakers
 from smc_zones.fvg_detector import detect_fvg_zones
 from smc_zones.orderblock_detector import detect_order_blocks
+from utils.utils import safe_float as _safe_float
 
 
 def compute_zones_state(
@@ -186,15 +187,6 @@ def _last_close(frame: pd.DataFrame | None) -> float | None:
         return None
 
 
-def _safe_float(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):  # pragma: no cover - захист від нечислових значень
-        return None
-
-
 def _build_meta(
     all_zones: Sequence[SmcZone],
     orderblocks: Sequence[SmcZone],
@@ -251,7 +243,7 @@ def _build_meta(
     return meta
 
 
-def _extract_ob_params(cfg: SmcCoreConfig) -> dict[str, float | int]:
+def _extract_ob_params(cfg: SmcCoreConfig) -> dict[str, float | int | None]:
     return {
         "ob_leg_min_atr_mul": cfg.ob_leg_min_atr_mul,
         "ob_leg_max_bars": cfg.ob_leg_max_bars,

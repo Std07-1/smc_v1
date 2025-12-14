@@ -8,8 +8,11 @@ from rich.panel import Panel
 
 from UI_v2.debug_viewer_v2 import (
     DebugViewerState,
+    OhlcvDebugState,
     _apply_snapshot_payload,
+    _parse_fxcm_ohlcv_message,
     _render_layout,
+    _update_ohlcv_debug_from_stream,
 )
 from UI_v2.rich_viewer_extended import SmcRichViewerExtended
 
@@ -71,3 +74,38 @@ def test_render_layout_placeholder_when_missing_state() -> None:
     layout = _render_layout(viewer_state, renderer)
 
     assert isinstance(layout, Panel)
+
+
+def test_parse_fxcm_ohlcv_message_accepts_bytes_json() -> None:
+    raw = b'{"symbol":"XAUUSD","tf":"5m","bars":[{"open_time": 1, "open": 1, "high": 1, "low": 1, "close": 1, "volume": 0, "complete": false}]}'
+
+    parsed = _parse_fxcm_ohlcv_message(raw)
+
+    assert parsed is not None
+    symbol, tf, bars = parsed
+    assert symbol == "XAUUSD"
+    assert tf == "5m"
+    assert len(bars) == 1
+
+
+def test_update_ohlcv_debug_tracks_live_and_synthetic_window() -> None:
+    state = OhlcvDebugState(symbol="XAUUSD", tf="5m", limit=10)
+    now_ms = 10_000
+
+    bars = [
+        {
+            "open_time": 5_000,
+            "close_time": 8_000,
+            "complete": False,
+            "synthetic": False,
+        },
+        {"open_time": 0, "close_time": 4_000, "complete": True, "synthetic": True},
+        {"open_time": 5_000, "close_time": 9_000, "complete": True, "synthetic": False},
+    ]
+
+    _update_ohlcv_debug_from_stream(state, tf="5m", bars=bars, now_ms=now_ms)
+
+    assert state.live_bar is not None
+    assert state.live_bar["complete"] is False
+    assert state.synthetic_total_60m == 2
+    assert state.synthetic_synth_60m == 1

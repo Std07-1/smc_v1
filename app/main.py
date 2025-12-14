@@ -11,15 +11,17 @@ from typing import Any
 
 from dotenv import load_dotenv
 from redis.asyncio import Redis
-from rich.console import Console
 from rich.logging import RichHandler
 
+from app.console_status_bar import run_console_status_bar
+from app.fxcm_warmup_requester import build_requester_from_config
 from app.runtime import (
+    _build_allowed_pairs,
+    _build_contract_min_history_bars,
     bootstrap,
     create_redis_client,
     launch_experimental_viewer,
     noop_healthcheck,
-    _build_allowed_pairs,
     start_fxcm_tasks,
 )
 from app.settings import settings
@@ -39,6 +41,7 @@ from config.config import (
     UI_V2_DEBUG_VIEWER_SYMBOLS,
 )
 from data.unified_store import UnifiedDataStore
+from UI_v2.fxcm_ohlcv_ws_server import FxcmOhlcvWsServer
 from UI_v2.ohlcv_provider import OhlcvProvider, UnifiedStoreOhlcvProvider
 from UI_v2.smc_viewer_broadcaster import (
     SmcViewerBroadcaster,
@@ -47,12 +50,15 @@ from UI_v2.smc_viewer_broadcaster import (
 from UI_v2.viewer_state_server import ViewerStateHttpServer
 from UI_v2.viewer_state_store import ViewerStateStore
 from UI_v2.viewer_state_ws_server import ViewerStateWsServer
+from utils.rich_console import get_rich_console
 
 logger = logging.getLogger("app.main")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=Console(stderr=True), show_path=True))
-    logger.propagate = False
+    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
+    # Під pytest caplog навішує handler на root logger; щоб він бачив записи,
+    # вмикаємо propagate лише у тестовому середовищі.
+    logger.propagate = "pytest" in sys.modules
 
 load_dotenv()
 
@@ -144,6 +150,19 @@ async def run_pipeline() -> None:
         redis_conn, source = create_redis_client(decode_responses=True)
         logger.info("[SMC] Redis async клієнт створено (%s)", source)
 
+        # Живий статус у консолі (Rich Live) — не блокує пайплайн.
+        # Вимикається через SMC_CONSOLE_STATUS_BAR=0.
+        tasks.append(
+            asyncio.create_task(
+                run_console_status_bar(
+                    redis_conn=redis_conn,
+                    snapshot_key=REDIS_SNAPSHOT_KEY_SMC,
+                    console=get_rich_console(),
+                ),
+                name="console_status_bar",
+            )
+        )
+
         symbols = await _init_fast_symbols(datastore, fast_symbols=FXCM_FAST_SYMBOLS)
         if not symbols:
             return
@@ -155,8 +174,23 @@ async def run_pipeline() -> None:
         logger.info("[SMC] SmcStateManager створено count=%d", len(state_manager.state))
 
         allowed_pairs = _build_allowed_pairs(cfg)
+        contract_min_bars = _build_contract_min_history_bars(cfg)
         _validate_fast_symbols_against_universe(symbols, allowed_pairs)
         fxcm_tasks = start_fxcm_tasks(datastore, allowed_pairs=allowed_pairs)
+
+        requester = build_requester_from_config(
+            redis=redis_conn,
+            store=datastore,
+            allowed_pairs=allowed_pairs,
+            min_history_bars_by_symbol=contract_min_bars,
+        )
+        if requester is not None:
+            tasks.append(
+                asyncio.create_task(
+                    requester.run_forever(),
+                    name="fxcm_warmup_requester",
+                )
+            )
         health_task = asyncio.create_task(noop_healthcheck())
         tasks.append(health_task)
 
@@ -180,6 +214,7 @@ async def run_pipeline() -> None:
                 lookback=SCREENING_LOOKBACK,
                 interval_sec=SMC_REFRESH_INTERVAL,
                 state_manager=state_manager,
+                contract_min_bars=contract_min_bars,
             )
         )
         tasks.append(smc_task)
@@ -257,6 +292,20 @@ def _launch_ui_v2_tasks(datastore: UnifiedDataStore | None) -> list[asyncio.Task
             )
         )
 
+    fxcm_ohlcv_ws_enabled = _env_flag("FXCM_OHLCV_WS_ENABLED", True)
+    fxcm_ohlcv_ws_host = os.getenv("FXCM_OHLCV_WS_HOST", host) or host
+    fxcm_ohlcv_ws_port = _env_int("FXCM_OHLCV_WS_PORT", 8082)
+    if fxcm_ohlcv_ws_enabled:
+        tasks.append(
+            asyncio.create_task(
+                _run_fxcm_ohlcv_ws_server(
+                    host=fxcm_ohlcv_ws_host,
+                    port=fxcm_ohlcv_ws_port,
+                ),
+                name="fxcm_ohlcv_ws_server",
+            )
+        )
+
     logger.info(
         "[UI_v2] Активовано стек viewer (HTTP %s:%d, WS %s:%s, snapshot=%s, ws=%s)",
         host,
@@ -266,6 +315,12 @@ def _launch_ui_v2_tasks(datastore: UnifiedDataStore | None) -> list[asyncio.Task
         snapshot_key,
         "on" if ws_enabled else "off",
     )
+    if fxcm_ohlcv_ws_enabled:
+        logger.info(
+            "[UI_v2] FXCM OHLCV WS увімкнено: %s:%d (/fxcm/ohlcv)",
+            fxcm_ohlcv_ws_host,
+            fxcm_ohlcv_ws_port,
+        )
     _launch_ui_v2_debug_viewer()
     return tasks
 
@@ -340,6 +395,29 @@ async def _run_ui_v2_ws_server(
         await server.run()
     except asyncio.CancelledError:
         logger.info("[UI_v2] WS server task cancelled")
+        raise
+    finally:
+        await redis.close()
+
+
+async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
+    """Фоновий WebSocket сервер для проксування каналу fxcm:ohlcv у браузер."""
+
+    redis = Redis(
+        host=settings.redis_host,
+        port=settings.redis_port,
+        decode_responses=False,
+    )
+    server = FxcmOhlcvWsServer(
+        redis=redis,
+        channel_name="fxcm:ohlcv",
+        host=host,
+        port=port,
+    )
+    try:
+        await server.run()
+    except asyncio.CancelledError:
+        logger.info("[UI_v2] FXCM OHLCV WS server task cancelled")
         raise
     finally:
         await redis.close()

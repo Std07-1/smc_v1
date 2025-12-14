@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, Sequence
+from typing import Any, Protocol
 
 from data.unified_store import UnifiedDataStore
 from UI_v2.schemas import OhlcvBar
 
 
-class OhlcvNotFound(Exception):
+class OhlcvNotFoundError(Exception):
     """Піднімається, коли OHLCV-даних для symbol/tf немає."""
 
 
@@ -23,6 +24,7 @@ class OhlcvProvider(Protocol):
         limit: int,
     ) -> Sequence[OhlcvBar]:
         """Повертає останні ``limit`` барів або кидає виняток."""
+        raise NotImplementedError
 
 
 def _to_millis(value: Any) -> int | None:
@@ -71,7 +73,7 @@ class UnifiedStoreOhlcvProvider:
         limit = max(1, limit)
         df = await self.store.get_df(symbol, timeframe, limit=limit)
         if df is None or df.empty:
-            raise OhlcvNotFound(f"OHLCV порожній для {symbol} {timeframe}")
+            raise OhlcvNotFoundError(f"OHLCV порожній для {symbol} {timeframe}")
 
         sort_col = None
         for candidate in ("close_time", "open_time"):
@@ -91,7 +93,13 @@ class UnifiedStoreOhlcvProvider:
             low_v = _safe_float(record.get("low"))
             close_v = _safe_float(record.get("close"))
             volume_v = _safe_float(record.get("volume")) or 0.0
-            if None in (time_ms, open_v, high_v, low_v, close_v):
+            if (
+                time_ms is None
+                or open_v is None
+                or high_v is None
+                or low_v is None
+                or close_v is None
+            ):
                 continue
             bars.append(
                 {
@@ -105,6 +113,6 @@ class UnifiedStoreOhlcvProvider:
             )
 
         if not bars:
-            raise OhlcvNotFound(f"OHLCV недоступний для {symbol} {timeframe}")
+            raise OhlcvNotFoundError(f"OHLCV недоступний для {symbol} {timeframe}")
 
         return bars

@@ -1,0 +1,568 @@
+# UPDATE.md
+
+Журнал змін (оновлюється **кожного разу**, коли я роблю будь-які правки у репозиторії).
+
+## Формат запису (конвенція)
+
+Кожен запис має містити:
+
+- **Дата/час** (локально) + коротка назва зміни.
+- **Що змінено**: 3–10 пунктів по суті.
+- **Де**: ключові файли/модулі.
+- **Тести/перевірка**: що саме запускалось і результат.
+- **Примітки/ризики** (за потреби): що може вплинути на рантайм.
+
+---
+
+## 2025-12-13 — S2/S3: `fxcm:commands` + стабільний payload + тести requester-а
+
+**Що змінено**
+
+- Зафіксовано дефолтний канал команд для FXCM-конектора: `fxcm:commands` (без fallback на `ai_one:admin:commands`).
+- Уніфіковано S2-логіку в pure-функцію `classify_history()` (insufficient/stale_tail) та вирівняно ключ `last_open_time_ms`.
+- Оновлено S3 requester: стабільна JSON-схема команди з блоками `s2{...}` та `fxcm_status{...}`, INFO-лог у заданому форматі.
+- Додано/закріплено reset “active issue”: при переході history_state в `ok` requester очищає rate-limit,
+  щоб при наступному погіршенні можна було одразу знову відправити команду.
+- Додано мінімальну документацію контракту S2/S3.
+
+**Де**
+
+- config/config.py
+- app/fxcm_history_state.py
+- app/fxcm_warmup_requester.py
+- app/smc_producer.py
+- tests/test_s2_history_state.py
+- tests/test_s3_warmup_requester.py
+- docs/uds_smc_update_2025-12-13.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_s2_history_state.py tests/test_s3_warmup_requester.py` → `8 passed`.
+
+---
+
+## 2025-12-14 — Public Viewer (UI_v2) на ПК: same-origin фронт + Docker nginx allowlist + tunnel
+
+**Що змінено**
+
+- У UI_v2 фронтенді прибрано жорсткі дефолти `127.0.0.1:8080/8081/8082`: тепер HTTP працює через `window.location.origin`, WS — через `ws://|wss://` + `window.location.host` (same-origin).
+- FXCM dev WS міст (8082) вимкнений за замовчуванням у публічному режимі, щоб не було нескінченних reconnect’ів; дозволяється лише на `localhost/127.0.0.1` або з явним `?fxcm_ws=1`.
+- Додано периметр для публічного доступу без VPS: `deploy/viewer_public/` (Docker Compose) з `nginx` allowlist + rate-limit та `cloudflared` tunnel.
+- У nginx allowlist додано статику за розширеннями (js/css/…); API/WS прокситься лише по потрібних маршрутах; усе інше → 404.
+- Для WS proxy додано `proxy_read_timeout`/`proxy_send_timeout` 3600s; також приховується `Access-Control-Allow-Origin` з бекенду (same-origin).
+- Додано короткий Troubleshooting у runbook (найчастіші фейли: `0.0.0.0`, статика allowlist, WS upgrade, token).
+- Виправлено nginx конфіг на формат `conf.d/default.conf` (замість main `nginx.conf`), щоб уникнути restart-loop контейнера.
+- Переведено `cloudflared` на Cloudflare Quick Tunnel без домену/токена (публічний URL `https://*.trycloudflare.com` береться з логів).
+- Уточнено `UI_v2/web_client/README.md`: FXCM WS міст (8082) — локальний dev-інтерфейс і не має використовуватись у публічному режимі.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/README.md
+- deploy/viewer_public/docker-compose.yml
+- deploy/viewer_public/nginx.conf
+- deploy/viewer_public/.env.template
+- deploy/viewer_public/README.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py`.
+
+---
+
+## 2025-12-14 — Документація: синхронізація FXCM контрактів (channels/payload/HMAC/commands)
+
+**Що змінено**
+
+- Уточнено контракт `fxcm:ohlcv`: додано `source` (опційно), описано `complete/synthetic` як опційні бар-поля та правило: UDS зберігає лише complete.
+- Зафіксовано правило HMAC: `sig` рахується/перевіряється лише по `{"symbol","tf","bars"}` (root-поля на кшталт `source` не входять у підпис).
+- Додано/уточнено огляд каналів `fxcm:status`, `fxcm:price_tik` та `fxcm:commands` (включно з `fxcm_set_universe` як частиною контракту конектора).
+- Прибрано двозначність щодо cadence `fxcm:price_tik`: це cadence конектора, а не «таймер оновлення UI».
+- Оновлено `.github/copilot-memory.md`: live-канали зафіксовано як `fxcm:ohlcv`/`fxcm:price_tik`/`fxcm:status`, а `fxcm:heartbeat`/`fxcm:market_status` — як опційна телеметрія.
+
+**Де**
+
+- docs/fxcm_integration.md
+- docs/fxcm_contract_audit.md
+- docs/uds_smc_update_2025-12-13.md
+- docs/stage1_pipeline.md
+- docs/fxcm_status_of_conector.md
+- README.md
+- .github/copilot-memory.md
+
+**Тести/перевірка**
+
+- Не запускалось (зміни лише в документації).
+
+---
+
+## 2025-12-14 — Документація: UI_v2 + FXCM (live-bar, volume, джерело істини)
+
+**Що змінено**
+
+- Зафіксовано нюанс UI_v2: volume-серія є, але в основному UI-шляху live-бар з FXCM WS будується без `volume`, тому live-volume може бути нульовим; dev стенд (`chart_demo.js`) передає `volume`.
+- Додано явні посилання на “джерело істини” контрактів у цьому репо: `data/fxcm_schema.py` + `tests/test_fxcm_schema_and_ingestor_contract.py`.
+- Додано посилання в кореневий README на `docs/fxcm_contract_audit.md`, щоб не перечитувати код під час звірки інтеграції.
+
+**Де**
+
+- UI_v2/web_client/README.md
+- docs/fxcm_tick_agg_update_2025-12-13.md
+- docs/fxcm_contract_audit.md
+- docs/fxcm_integration.md
+- README.md
+
+**Тести/перевірка**
+
+- Не запускалось (зміни лише в документації).
+
+---
+
+## 2025-12-14 — Документація: актуалізація `stage1_pipeline.md` під SMC-only runtime
+
+**Що змінено**
+
+- Переписано `docs/stage1_pipeline.md` як довідник реального `app.main` пайплайна (SMC-only): прибрано застарілий Stage1 моніторинг (`AssetMonitorStage1`, `screening_producer`) та `_await_fxcm_history()`.
+- Додано посилання на джерело істини FXCM-контрактів у цьому репо: `data/fxcm_schema.py` + `tests/test_fxcm_schema_and_ingestor_contract.py`.
+- Оновлено діагностику: актуальні log-теги та канали (`fxcm:*`, `ui.metrics`).
+
+**Де**
+
+- docs/stage1_pipeline.md
+
+**Тести/перевірка**
+
+- Не запускалось (зміни лише в документації).
+
+---
+
+## 2025-12-14 — UI_v2: live-volume для FXCM live-барів + опційний same-origin WS
+
+**Що змінено**
+
+- `UI_v2/web_client/app.js`: у `handleOhlcvWsPayload()` live-бар тепер прокидає `volume` у `setLiveBar(...)`, щоб live-volume histogram міг малюватися, якщо `bar.volume` присутній у повідомленні.
+- `UI_v2/web_client/app.js`: додано прапор `?fxcm_ws_same_origin=1` для підключення до FXCM WS у same-origin (коли `/fxcm/*` прокситься через nginx), замість жорсткого `:8082`.
+- `UI_v2/web_client/app.js`: додано легкий індикатор `LIVE: ON/OFF` (ON якщо бачили `complete=false` за останні ~5s).
+- Документація: уточнено runbook і описано мінімальний шлях доставки live-барів у прод-режимі через reverse-proxy.
+- Додано окремий runbook: `docs/runbook_tradingview_like_live_public_domain.md`.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/README.md
+- deploy/viewer_public/nginx.conf
+- deploy/viewer_public/README.md
+
+**Тести/перевірка**
+
+- Не запускалось (JS/UI зміни + документація).
+
+---
+
+## 2025-12-13 — Rich status bar: S2/S3 поля + індикатор конектора (conn)
+
+**Що змінено**
+
+- У Rich status bar додано рядок `conn`: показує свіжість `fxcm:status` (age) та стан `ok/lag/down` з підсвіткою.
+- Додано рядок `s2`: лічильники проблем історії (insufficient/stale_tail/unknown) + активний символ/стан ("поточна тема").
+- Додано рядок `s3`: індикатор requester-а (on/off), канал, лічильники, та остання відправлена команда (type/symbol/tf/reason/age).
+- SMC producer тепер кладе S2 summary у `meta`, щоб status bar показував це навіть коли SMC у WARMUP/IDLE.
+
+**Де**
+
+- app/console_status_bar.py
+- app/fxcm_warmup_requester.py
+- app/smc_producer.py
+- tests/test_app_console_status_bar.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py` → `5 passed`.
+
+## 2025-12-13 — Shared Rich Console + FXCM WS bridge (UI_v2) + розширення тестів
+
+**Що змінено**
+
+- Уніфіковано Rich Console: замінили локальні `Console(stderr=True)` на спільний singleton (`get_rich_console()`),
+  щоб прибрати артефакти Rich Live/логів у PowerShell/VS Code.
+- Додано shim `app/rich_console.py` для сумісності імпортів (канонічний console в `utils/rich_console.py`).
+- Додано WS-проксі для FXCM у UI_v2: трансляція `fxcm:ohlcv` та `fxcm:price_tik` у браузер (`/fxcm/ohlcv`, `/fxcm/ticks`).
+- Посилено/уточнено юніт-тести: WS query parsing, роздача статики (content-type + path traversal),
+  стабільність publish при короткій недоступності Redis, точність тестів логування/пайплайн-мети.
+
+**Де**
+
+- utils/rich_console.py
+- app/rich_console.py
+- data/unified_store.py
+- data/fxcm_price_stream.py
+- smc_structure/event_history.py
+- smc_zones/breaker_detector.py
+- smc_zones/fvg_detector.py
+- smc_zones/orderblock_detector.py
+- UI_v2/fxcm_ohlcv_ws_server.py
+- tests/test_utils_rich_console.py
+- tests/test_ui_v2_fxcm_ws_server.py
+- tests/test_ui_v2_static_http.py
+- tests/test_publish_smc_state.py
+- tests/test_app_main_universe_fast_symbols.py
+- tests/test_app_smc_producer_pipeline_meta.py
+
+**Тести/перевірка**
+
+- Запущено таргетно:
+  `pytest tests/test_utils_rich_console.py tests/test_ui_v2_fxcm_ws_server.py tests/test_ui_v2_static_http.py`
+  `tests/test_publish_smc_state.py tests/test_app_main_universe_fast_symbols.py tests/test_app_smc_producer_pipeline_meta.py`
+  → `19 passed`.
+
+---
+
+## 2025-12-13 — IDLE режим SMC по `fxcm:status` ("система чекає/спить, але статус видно")
+
+**Що змінено**
+
+- Додано політику "IDLE" для SMC-циклу: коли ринок закритий або фід деградований, важкі обчислення SMC пропускаються.
+- При IDLE система **залишається живою** й продовжує публікувати стан/метадані (щоб UI/оператор бачив статус), а цикл робить `sleep`.
+- Додано причини (reason) для прозорості: окремо для `market=closed`, `price!=ok`, `ohlcv!=ok`, а також "ok".
+
+**Де**
+
+- app/smc_producer.py
+
+**Тести/перевірка**
+
+- Запущено таргетні тести пайплайн-метаданих/локальної логіки SMC producer: `11 passed` (файл(и): `tests/test_app_smc_producer_pipeline_meta.py`, `tests/test_app_smc_producer_pipeline_local.py`).
+
+**Примітки/ризики**
+
+- Це **не** стоп процесу: лише гейтінг важких циклів. Слухач `fxcm:status` та публікація стану мають залишатися активними.
+
+---
+
+## 2025-12-13 — Rich Live status bar у консолі для SMC пайплайна
+
+**Що змінено**
+
+- Додано консольний "живий" status bar (Rich Live), який оновлюється в одному рядку та не конфліктує з логами RichHandler у PowerShell/VS Code.
+- Status bar читає SMC snapshot із Redis (`REDIS_SNAPSHOT_KEY_SMC`) і показує базові стани: `pipeline_state`, FXCM market/price/ohlcv та Redis up/down.
+- Додано перемикач через ENV: `SMC_CONSOLE_STATUS_BAR=0` вимикає панель.
+- Додано TTY-перевірку **саме по stderr** (бо і Live, і RichHandler пишуть у stderr) + ранній вихід без polling, якщо stderr не TTY.
+- У `app.main` використовується **спільний** `Console(stderr=True)` для RichHandler і Live (менше шансів на "затирання" логів).
+- Додано явне `redirect_stderr=True` у Rich Live та `force_terminal=True` для спільного Console, щоб панель перерисовувалась на місці (без дублювання блоків) і логи гарантовано друкувались над нею.
+
+**Де**
+
+- app/console_status_bar.py
+- app/main.py
+
+**Тести/перевірка**
+
+- Додано тести побудови snapshot: `tests/test_app_console_status_bar.py`.
+- Запущено таргетно: `pytest tests/test_app_smc_producer_fxcm_idle.py tests/test_app_console_status_bar.py` → `6 passed`.
+- Додатково перевірено: `pytest tests/test_app_console_status_bar.py` → `3 passed`.
+
+---
+
+## 2025-12-13 — Гейтінг запису OHLCV в UDS по статусу ринку/фіду (без падіння процесу)
+
+**Що змінено**
+
+- Повернуто/закріплено поведінку: ingest-процес не завершується, але **не пише** OHLCV в UDS при `market=closed` або коли `price/ohlcv != ok`.
+- При "status unknown" (cold-start) ingest дозволений (щоб система стартувала незалежно від порядку подій).
+
+**Де**
+
+- data/fxcm_ingestor.py
+
+**Тести/перевірка**
+
+- Оновлено контрактні тести на кейс `market=closed` → очікуємо **0 записів в UDS** (skip-write).
+- Запускались таргетні pytest-тести для контракту інгесту (див. наступний запис про файл тестів).
+
+---
+
+## 2025-12-13 — Розширення Rich status bar: pipeline/cycle + age snapshot
+
+**Що змінено**
+
+- Розширено консольний status bar: тепер показує не лише mode/market/ticks/redis, а й ключові метрики пайплайна.
+- Додано: вік останнього SMC snapshot (age), pipeline ready/total/pct, capacity (processed/skipped), cycle seq/duration.
+- Додано: компактний блок стану FXCM (proc/price/ohlcv) у вигляді одного рядка.
+- Ліміт інформаційних рядків піднято до 8 (залишається один Panel у Live, без спаму логами).
+
+**Де**
+
+- app/console_status_bar.py
+
+**Тести/перевірка**
+
+- Оновлено/додано тести: `tests/test_app_console_status_bar.py`.
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py tests/test_utils_rich_console.py` → `passed`.
+
+---
+
+## 2025-12-13 — Rich status bar: FXCM session (name/state + to_close/to_open)
+
+**Що змінено**
+
+- Додано відображення FXCM session: `session_name:session_state` + таймери `to_close`/`to_open` (якщо доступні).
+- Ліміт рядків у панелі збільшено до 10, щоб не відсікати вже додані поля.
+
+**Де**
+
+- app/console_status_bar.py
+
+**Тести/перевірка**
+
+- Оновлено тести: `tests/test_app_console_status_bar.py`.
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py tests/test_utils_rich_console.py` → `passed`.
+
+---
+
+## 2025-12-13 — Rich status bar: підсвітка FXCM session state
+
+**Що змінено**
+
+- Додано підсвітку `session_state` у рядку `sess` (open→green, closed→yellow, error→red), таймери `to_close/to_open` — cyan.
+- Зміна лише в рендері (payload/snapshot без змін).
+
+**Де**
+
+- app/console_status_bar.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py tests/test_utils_rich_console.py` → `passed`.
+
+---
+
+## 2025-12-13 — Rich status bar: явний стан SMC (RUN/IDLE/WARMUP) + poll замість sleep
+
+**Що змінено**
+
+- Додано рядок `smc`, який явно показує стан: `RUN` (SMC рахує), `IDLE` (гейтінг по FXCM), `WARMUP` (недостатньо даних), `WAIT` (невідомо/очікування), + причина.
+- Рядок `sleep` перейменовано на `poll` і виправлено формат: тепер для малих інтервалів показує `ms` замість округлення до `0s`.
+- Це прибирає плутанину “sleep 0s” і відповідає на питання «SMC зараз спить чи працює».
+
+**Де**
+
+- app/console_status_bar.py
+
+**Тести/перевірка**
+
+- Оновлено тести: `tests/test_app_console_status_bar.py`.
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py tests/test_utils_rich_console.py` → `passed`.
+
+---
+
+## 2025-12-13 — Rich status bar: uptime (робочий час) у рядку `cycle`
+
+**Що змінено**
+
+- У рядок `cycle` додано “робочий час” (uptime) процесу з відступом: `up=...`.
+- Формат показує дні, коли тривалість перевищує 23:59 (наприклад `2d 03h12m`).
+
+**Де**
+
+- app/console_status_bar.py
+
+**Тести/перевірка**
+
+- Оновлено тести: `tests/test_app_console_status_bar.py`.
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py` → `passed`.
+
+---
+
+## 2025-12-13 — Rich status bar: sess узгоджено з `market=closed`
+
+**Що змінено**
+
+- Якщо `market=closed`, рядок `sess` більше не показує `open` (примусово `CLOSED`, якщо не error-стан).
+- При `market=closed` не показуємо `to_close` (щоб не вводило в оману), лишаємо `to_open`.
+
+**Де**
+
+- app/console_status_bar.py
+
+**Тести/перевірка**
+
+- Оновлено тести: `tests/test_app_console_status_bar.py`.
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py` → `passed`.
+
+---
+
+## 2025-12-13 — Rich status bar: підсвітка FXCM proc/price/ohlcv + менше шуму
+
+**Що змінено**
+
+- У рядку `fxcm` додано підсвітку станів `proc/price/ohlcv`: ok→green, stale/lag→yellow, down/error→red.
+- Рядок `lag` більше не показується як `0s` (показуємо лише якщо lag > 0).
+- У рядку `smc` підсвічено причину `fxcm_market_closed` (щоб швидко читалось при IDLE).
+- Зміни лише у рендері (payload/snapshot без змін).
+
+**Де**
+
+- app/console_status_bar.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py tests/test_utils_rich_console.py` → `passed`.
+
+---
+
+## 2025-12-13 — Redis FXCM OHLCV ingest: дефолт без лог-спаму
+
+**Що змінено**
+
+- Для інжестора `fxcm:ohlcv` піднято дефолт `log_every_n`: тепер без явного налаштування не логуються кожні 1–2 бари.
+- Це зменшує шум у консолі та I/O навантаження при великому universe.
+
+**Де**
+
+- data/fxcm_ingestor.py
+
+**Тести/перевірка**
+
+- Логічна зміна дефолту (поведінка інжесту даних не змінюється). За потреби можна прогнати контракт: `pytest tests/test_fxcm_schema_and_ingestor_contract.py`.
+
+---
+
+## 2025-12-13 — Контракт/схеми FXCM повідомлень + юніт-тести контракту
+
+**Що змінено**
+
+- Додано модуль зі схемами/валідацією для FXCM payload:
+  - OHLCV бари (`fxcm:ohlcv`), включно з підтримкою `complete` та forward-compatible extra полів.
+  - Тіки (`fxcm:price_tik`).
+  - Статус (`fxcm:status`).
+- Закріплено контракт інгесту: в UDS потрапляють лише **complete=true** бари; додаткові (мікроструктурні) поля не мають «просочуватись» у канонічний OHLCV у UDS.
+
+**Де**
+
+- data/fxcm_schema.py
+- data/fxcm_ingestor.py
+- tests/test_fxcm_schema_and_ingestor_contract.py
+
+**Тести/перевірка**
+
+- Додано/оновлено `tests/test_fxcm_schema_and_ingestor_contract.py` (валідація схем + поведінка інгесту на невалідних/неповних барах, гейтінг по статусу).
+
+---
+
+## 2025-12-13 — Юніт-тести idle-рішень SMC (детермінована перевірка reason)
+
+**Що змінено**
+
+- Додано окремий тестовий файл, який перевіряє рішення "бігти/не бігти" для SMC-циклу на базі `fxcm:status`.
+- Перевіряються кейси:
+  - `market=closed` → IDLE (`fxcm_market_closed`)
+  - `market=open`, `price=ok`, `ohlcv=ok` → RUN (`fxcm_ok`)
+  - `price=stale` → IDLE (`fxcm_price_stale`)
+  - `ohlcv=lag` → IDLE (`fxcm_ohlcv_lag`)
+
+**Де**
+
+- tests/test_app_smc_producer_fxcm_idle.py
+
+**Тести/перевірка**
+
+- `pytest tests/test_app_smc_producer_fxcm_idle.py` → `4 passed`.
+
+---
+
+## 2025-12-xx — (історично в цій сесії) UI live-стрімінг, tick-апдейти, та стійкість до рестартів Redis
+
+> Примітка: цей блок зафіксовано ретроспективно зі стислою деталізацією; точні команди тестів/прогони не відновлюю без логів.
+
+**Що змінено**
+
+- UI_v2 почав отримувати live OHLCV і/або тіки через WS-проксі з Redis (оновлення графіка без ручного refresh).
+- Додано частіші оновлення свічки через агрегування тіків між close барами.
+- Прибрано потребу в окремому статичному сервері: web-клієнт `UI_v2/web_client` віддається з бекенду.
+- Додано backoff/reconnect для pubsub-споживачів, щоб пайплайн не падав при рестарті Redis.
+
+**Де**
+
+- UI_v2/fxcm_ohlcv_ws_server.py
+- UI_v2/viewer_state_server.py
+- UI_v2/web_client/*
+- UI_v2/smc_viewer_broadcaster.py
+- UI/publish_smc_state.py
+
+**Тести/перевірка**
+
+- Додавались таргетні тести для критичних змін (деталі — у відповідних тестових файлах у `tests/`).
+
+---
+
+## 2025-12-13 — Tick-agg адаптація: soft-валидація барів + dev chart (volume panel, opacity)
+
+**Що змінено**
+
+- `fxcm:ohlcv` schema: додано per-bar soft-валидацію — некоректні бари відкидаються, а відсутність `complete/synthetic` не вважається помилкою.
+- Dev chart playground: додано volume histogram під свічками та opacity/насиченість свічок від нормованого volume (max за останні N барів).
+- Gap-check інструмент: додано режим `--snapshot-file` для перевірки пропусків по локальному jsonl snapshot без Redis/UDS.
+- Додано коротку документацію про перехід конектора на tick-agg і правила трактування `complete/synthetic`.
+
+**Де**
+
+- data/fxcm_schema.py
+- tests/test_fxcm_schema_and_ingestor_contract.py
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/web_client/chart_demo.js
+- tools/uds_ohlcv_gap_check.py
+- docs/fxcm_tick_agg_update_2025-12-13.md
+
+**Тести/перевірка**
+
+- Оновлено тести контракту схем: `pytest tests/test_fxcm_schema_and_ingestor_contract.py`.
+
+---
+
+## 2025-12-13 — UI_v2 web_client: README з арх-описом (порти/ендпойнти/Redis/CORS/безпека)
+
+**Що змінено**
+
+- Розширено README для UI_v2 web client як “контекст-дамп” для архітектора.
+- Додано опис стеку UI_v2 у рамках `python -m app.main`: broadcaster, HTTP (статика+REST), WS viewer_state, FXCM WS міст.
+- Зафіксовано дефолтні порти/ENV-параметри та точні endpoints.
+- Додано перелік Redis ключів/каналів (SMC snapshot/state → viewer snapshot/channel; FXCM dev канали).
+- Додано зауваження щодо CORS (`Access-Control-Allow-Origin: *`) та відсутності auth/TLS + рекомендації для прод.
+
+**Де**
+
+- UI_v2/web_client/README.md
+
+**Тести/перевірка**
+
+- Без змін у коді рантайму; лише документація.
+
+---
+
+## 2025-12-13 — S2 history_state (insufficient/stale_tail) + S3 warmup/backfill requester (Redis commands)
+
+**Що змінено**
+
+- Додано S2-логіку класифікації історії в UDS для (symbol, tf): `ok | insufficient | stale_tail`.
+- У `smc_producer` додано перевірку `stale_tail`: актив із протухлим хвостом не вважається ready; у stats додається блок `history_state/needs_warmup/needs_backfill`.
+- Додано S3 воркер requester, який (за флагом) періодично проходить по whitelist з `fxcm_contract` і публікує команди `fxcm_warmup` / `fxcm_backfill` у Redis канал (дефолт `ai_one:admin:commands`) з rate-limit.
+- Додано конфіг для S2/S3 у `config.config` (без керування через ENV): enable/poll/cooldown/channel/stale_k.
+
+**Де**
+
+- app/fxcm_history_state.py
+- app/fxcm_warmup_requester.py
+- app/smc_producer.py
+- app/main.py
+
+**Тести/перевірка**
+
+- Додано юніт-тести S2: `tests/test_s2_history_state.py`.
+- Додано юніт-тести S3 requester: `tests/test_s3_warmup_requester.py`.
+
+---
+
+## Нагадування (обов’язково далі)
+
+- Кожна нова правка в коді → **новий запис** сюди.
+- Кожна нова правка → **таргетні тести** + запис у секції "Тести/перевірка" з результатом.

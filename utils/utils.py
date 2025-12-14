@@ -22,7 +22,6 @@ from datetime import datetime, time
 from typing import Any
 
 import pandas as pd
-from rich.console import Console
 from rich.logging import RichHandler
 
 # ── Конфіг/константи проєкту ───────────────────────────────────────────────
@@ -33,6 +32,7 @@ from config.config import (
     TICK_SIZE_MAP,
 )
 from config.constants import ASSET_STATE
+from utils.rich_console import get_rich_console
 
 _HAS_RICH = True
 
@@ -41,7 +41,7 @@ _logger = logging.getLogger("app.utils")
 if not _logger.handlers:  # захист від повторної ініціалізації
     _logger.setLevel(logging.INFO)
     if _HAS_RICH:
-        _logger.addHandler(RichHandler(console=Console(stderr=True), show_path=False))
+        _logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
     else:  # pragma: no cover - fallback без rich
         _logger.addHandler(logging.StreamHandler())
     _logger.propagate = False
@@ -738,7 +738,6 @@ __all__ = [
     "first_not_none",
     # dataframe/timestamp
     "ensure_timestamp_column",
-    "normalize_trigger_reasons",
     # форматування
     "format_volume_usd",
     "format_open_interest",

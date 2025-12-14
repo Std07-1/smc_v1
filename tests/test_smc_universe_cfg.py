@@ -25,7 +25,7 @@ def test_valid_universe_single_symbol() -> None:
         }
     }
 
-    cfg = DataStoreCfg(**data)
+    cfg = DataStoreCfg(**data)  # type: ignore
 
     fxcm = cfg.smc_universe.fxcm_contract
     assert fxcm is not None
@@ -55,7 +55,7 @@ def test_invalid_tf_raises_error() -> None:
     }
 
     with pytest.raises(ValidationError):
-        DataStoreCfg(**data)
+        DataStoreCfg(**data)  # type: ignore
 
 
 def test_duplicate_symbol_tf_rejected() -> None:
@@ -79,7 +79,7 @@ def test_duplicate_symbol_tf_rejected() -> None:
     }
 
     with pytest.raises(ValidationError):
-        DataStoreCfg(**data)
+        DataStoreCfg(**data)  # type: ignore
 
 
 def test_missing_universe_defaults_to_empty() -> None:

@@ -90,6 +90,12 @@ class SmcExperimentalViewer:
             "meta": meta_snapshot,
             "price": price_value,
             "session": session_value,
+            "pipeline_local": {
+                "state": stats.get("pipeline_state_local"),
+                "ready_bars": stats.get("pipeline_ready_bars"),
+                "required_bars": stats.get("pipeline_required_bars"),
+                "ready_ratio": stats.get("pipeline_ready_ratio"),
+            },
             "structure": {
                 "trend": structure.get("trend"),
                 "bias": structure.get("bias"),

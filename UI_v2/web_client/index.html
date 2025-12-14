@@ -102,6 +102,14 @@
                         <span class="layer-toggle__text">Zones</span>
                     </label>
                 </div>
+                <div class="chart-layout-controls" role="group" aria-label="Керування розміром чарта">
+                    <label class="chart-height-control" for="chart-height-range">
+                        <span class="chart-control-label">Висота</span>
+                        <input type="range" id="chart-height-range" min="600" max="900" step="20" value="600" />
+                        <span id="chart-height-value" class="chart-height-value">600 px</span>
+                    </label>
+                    <button id="chart-fullscreen-btn" type="button" class="chart-fullscreen-btn">На весь екран</button>
+                </div>
             </div>
             <div id="chart-container" class="chart-demo-container"></div>
         </section>

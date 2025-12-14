@@ -1,8 +1,8 @@
-# Stage1 data pipeline та холодний старт
+# SMC pipeline та холодний старт (Stage1 legacy)
 
-> ⚠️ Stage1 пайплайн і тригери **заморожені**: документ слугує лише довідником. Будь-які зміни в Stage1 або його тригерах заборонені без окремого наказу; поточний фокус команди повністю на SMC-core.
+> ⚠️ Stage1 пайплайн і тригери **заморожені** і в поточному `smc_v1` не є основним рантайм-шляхом. Вхідна точка `python -m app.main` запускає **SMC-only** пайплайн.
 
-Короткий конспект про те, як `app.main` отримує дані, чого очікувати під час холодного старту і де шукати налаштування.
+Короткий конспект: як `app.main` отримує FXCM дані, що відбувається на холодному старті та де шукати актуальні контракти/налаштування, щоб не перечитувати код.
 
 ## 1. Порядок запуску `app.main`
 
@@ -11,20 +11,25 @@
    - `_warmup_datastore_from_snapshots()` виконується одразу після старту, прогріваючи RAM+Redis локальними JSONL снапшотами.
 2. **FXCM ingest та статус**
    - `run_fxcm_ingestor()` підписується на Redis-канал `fxcm:ohlcv` і кожен пакет від зовнішнього FXCM конектора пише у `UnifiedDataStore.put_bars()`.
-   - `run_fxcm_status_listener()` слухає `fxcm:heartbeat`, `fxcm:market_status` **та `fxcm:status`** (агрегований процес/market/price/ohlcv), формуючи `FxcmFeedState` для UI/Stage1.
-3. **Stage1 моніторинг**
-   - `AssetMonitorStage1` отримує дані з `UnifiedDataStore`, готує сирі сигнали й делегує їх `AssetStateManager`.
-   - `screening_producer` обходить `FXCM_FAST_SYMBOLS`, збирає стани та передає їх у `UI.publish_full_state`.
+   - `run_fxcm_status_listener()` слухає агрегований канал `fxcm:status` (process/market/price/ohlcv/session/note), формуючи `FxcmFeedState` для UI/SMC. Детальні канали `fxcm:heartbeat`/`fxcm:market_status` у цьому репо більше не є обов'язковими.
+   - `run_fxcm_price_stream_listener()` слухає `fxcm:price_tik` і оновлює кеш живих цін у `UnifiedDataStore` (останній bid/ask/mid).
+3. **SMC цикл**
+   - `smc_producer` читає історичні бари з `UnifiedDataStore` (для whitelisted символів), рахує SMC-core та публікує агрегований стан у Redis для UI.
 4. **UI/споживачі**
-   - Історичний канал `ai_one:ui:asset_state` видалено; UI працює лише з чистим SMC-снапшотом `ai_one:ui:smc_state`, який формує `publish_smc_state`.
-   - `meta` у payload містить `cycle_seq`, `cycle_started_ts` та `cycle_ready_ts`, що дозволяє UI синхронізуватись із циклами `screening_producer` без дрібних розсинхронів.
-      - `UI.experimental_viewer_extended` читає payload із `ai_one:ui:smc_state`.
+   - UI_v2 піднімає HTTP+WS інтерфейси для read-only перегляду (див. `UI_v2/web_client/README.md`).
+   - Метрики для UI публікуються окремим таском у канал `ui.metrics`.
 
 ## 2. Єдине джерело даних
 
-- Уся жива історія приходить **лише** з зовнішнього FXCM конектора (Python 3.7) через канали `fxcm:ohlcv`, `fxcm:heartbeat`, `fxcm:market_status` та агрегований статус `fxcm:status`.
+- Уся жива історія приходить **лише** з зовнішнього FXCM конектора (Python 3.7): OHLCV-бари через `fxcm:ohlcv`, price snapshots через `fxcm:price_tik`, а телеметрія/health — через агрегований статус `fxcm:status`.
 - Локальні warmup-скрипти й прямі виклики біржових API видалені, щоб не дублювати функціонал конектора.
 - Будь-який календар, warmup чи дедуплікація реалізується саме у зовнішньому сервісі; Stage1 тільки читає Redis.
+
+Джерело істини для FXCM-контрактів у цьому репо:
+
+- мінімальна схема повідомлень: `data/fxcm_schema.py`;
+- інваріанти інжесту (наприклад, skip live-барів `complete=false`): `tests/test_fxcm_schema_and_ingestor_contract.py`;
+- огляд каналів/ланцюжка даних: `docs/fxcm_contract_audit.md` та `docs/fxcm_integration.md`.
 
 > Канал `fxcm:status` публікує компактний JSON (`process/market/price/ohlcv/session/note`). `FxcmFeedState` зберігає ці поля (`price_state`, `ohlcv_state`, countdown до сесій) і додає їх в `stats` кожного активу та мета-блок UI.
 
@@ -33,9 +38,7 @@
 | Крок | Що відбувається | Що контролює |
 | --- | --- | --- |
 | Snapshot warmup | `_warmup_datastore_from_snapshots()` прогріває RAM+Redis останніми файлами `datastore/*_bars_<tf>_snapshot.jsonl`. | Bootstrap (`datastore.yaml`) |
-| Очікування стріму | `_await_fxcm_history()` чекає, поки `fxcm:ohlcv` заповнить мінімум `SCREENING_LOOKBACK` барів (`1m`) для whitelisted символів. | `SCREENING_LOOKBACK` |
-
-> Якщо стрім ще не вийшов на потрібний обсяг, Stage1 продовжує слухати канал і логувати `[FXCM Stream]` попередження до появи необхідної історії.
+| Очікування даних | Після старту інжестора історія в `UnifiedDataStore` доповнюється живим стрімом `fxcm:ohlcv` (лише `complete=true`). До появи достатньої історії SMC цикл може працювати з обмеженнями або пропускати ітерації (залежить від конфігу/контракту). | `SCREENING_LOOKBACK` (lookback для SMC), fxcm_contract (якщо заданий) |
 
 Повний опис послідовності warmup → ingest → UI зібрано нижче, щоб уникнути повторного читання `app/main.py` при кожному аудиті.
 
@@ -43,15 +46,15 @@
 
 | Файл | Поле | Призначення |
 | --- | --- | --- |
-| `config/config.py` | `FXCM_FAST_SYMBOLS` | whitelist Stage1 / список символів для інжесту |
-| `config/config.py` | `SCREENING_LOOKBACK` | мінімальний обсяг історії для Stage1 |
+| `config/config.py` | `FXCM_FAST_SYMBOLS` | whitelist символів для пайплайна (SMC/UI) |
+| `config/config.py` | `SCREENING_LOOKBACK` | lookback барів для `smc_producer` |
 | `app/settings.py` | `Settings.fxcm_*` | HMAC / канали / host Redis для інжестора |
 | `data/datastore.yaml` | `base_dir`, `namespace`, `write_behind` | структура файлів для snapshot warmup |
 
 ## 5. Діагностика
 
-- **Логи `app.main`**: шукай `[Warmup]`, `[FXCM Stream]`, `[Pipeline]`.
-- **Redis**: `ai_one:ui:snapshot`, `ai_one:ui:metrics`, Pub/Sub `fxcm:ohlcv` (для перевірки сирих пакетів).
+- **Логи `app.main`**: шукай `[Warmup]`, `[FXCM_INGEST]`, `[FXCM_STATUS]`, `[FXCM_PRICE]`, `[Pipeline]`.
+- **Redis**: Pub/Sub `fxcm:ohlcv`, `fxcm:price_tik`, `fxcm:status`; метрики для UI публікуються в `ui.metrics`.
 - **Prometheus**: якщо увімкнено, корисні `ai_one_fxcm_feed_lag_seconds`, `ai_one_fxcm_feed_state`.
 
 Ці нотатки достатні, щоб не поринати в код при перевірці запуску пайплайна.
