@@ -255,6 +255,7 @@ const appState = {
     tickLiveOpenTimeSec: null,
     tickLiveCandle: null,
     tickLastEmitMs: 0,
+    prevCompleteCandle: null,
     lastCompleteCandle: null,
     lastPayloadTs: null,
     lastLagSeconds: null,
@@ -277,6 +278,11 @@ const appState = {
         heightPx: CHART_HEIGHT_DEFAULT,
         fullscreen: false,
     },
+
+    ui: {
+        view: "overview",
+        filtersOpen: false,
+    },
 };
 
 const elements = {};
@@ -285,6 +291,7 @@ loadPersistedPreferences();
 
 document.addEventListener("DOMContentLoaded", () => {
     cacheElements();
+    initUiViews();
     bindUi();
     initChartController();
     bootstrap().catch((err) => console.error("[UI] Помилка старту:", err));
@@ -330,12 +337,259 @@ function cacheElements() {
     elements.chartHeightRange = document.getElementById("chart-height-range");
     elements.chartHeightValue = document.getElementById("chart-height-value");
     elements.chartFullscreenBtn = document.getElementById("chart-fullscreen-btn");
+    elements.chartLayerMenuBtn = document.getElementById("chart-layer-menu-btn");
+    elements.chartLayerMenu = document.getElementById("chart-layer-menu");
     elements.layerToggles = {
         events: document.getElementById("layer-toggle-events"),
         pools: document.getElementById("layer-toggle-pools"),
         ote: document.getElementById("layer-toggle-ote"),
         zones: document.getElementById("layer-toggle-zones"),
     };
+
+    elements.views = {
+        overview: document.getElementById("view-overview"),
+        chart: document.getElementById("view-chart"),
+    };
+    elements.chartSlots = {
+        overview: document.getElementById("overview-chart-slot"),
+        chart: document.getElementById("chart-slot"),
+    };
+    elements.overviewEventsList = document.getElementById("overview-events-list");
+
+    elements.bottomNav = document.getElementById("bottom-nav");
+    elements.drawer = {
+        root: document.getElementById("filters-drawer"),
+        closeBtn: document.getElementById("drawer-close"),
+        timeframeSelect: document.getElementById("timeframe-select-mobile"),
+        layers: {
+            events: document.getElementById("drawer-layer-events"),
+            pools: document.getElementById("drawer-layer-pools"),
+            ote: document.getElementById("drawer-layer-ote"),
+            zones: document.getElementById("drawer-layer-zones"),
+        },
+    };
+    elements.mobile = {
+        headerOverview: document.getElementById("mobile-header-overview"),
+        headerChart: document.getElementById("mobile-header-chart"),
+        overviewSymbol: document.getElementById("m-overview-symbol"),
+        overviewPrice: document.getElementById("m-overview-price"),
+        overviewDelta: document.getElementById("m-overview-delta"),
+        overviewWs: document.getElementById("m-overview-ws"),
+        chartSymbol: document.getElementById("m-chart-symbol"),
+        chartPrice: document.getElementById("m-chart-price"),
+        backBtn: document.getElementById("m-chart-back"),
+        menuBtn: document.getElementById("m-chart-menu"),
+    };
+}
+
+function initUiViews() {
+    const initial = getViewFromUrl() || "overview";
+    setView(initial, { pushHistory: false });
+
+    window.addEventListener("popstate", () => {
+        const view = getViewFromUrl() || "overview";
+        setView(view, { pushHistory: false });
+    });
+
+    bindMobileUi();
+    scheduleMobileChartHeight();
+    window.addEventListener("resize", scheduleMobileChartHeight);
+    window.addEventListener("orientationchange", scheduleMobileChartHeight);
+}
+
+function getViewFromUrl() {
+    try {
+        const url = new URL(window.location.href);
+        const view = String(url.searchParams.get("view") || "").toLowerCase();
+        if (view === "chart") return "chart";
+        if (view === "overview") return "overview";
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+function setView(view, { pushHistory } = { pushHistory: true }) {
+    const isMobile =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 768px)").matches;
+
+    const next = isMobile && view === "overview" ? "overview" : "chart";
+    appState.ui.view = next;
+
+    document.body.classList.remove("ui-view-overview", "ui-view-chart");
+    document.body.classList.add(next === "chart" ? "ui-view-chart" : "ui-view-overview");
+
+    updateBottomNavSelection(next);
+    moveChartCardToActiveSlot(next);
+    scheduleChartResize();
+    scheduleMobileChartHeight();
+
+    if (pushHistory) {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set("view", next);
+            window.history.pushState({ view: next }, "", url);
+        } catch {
+            // ignore
+        }
+    }
+}
+
+function updateBottomNavSelection(view) {
+    if (!elements.bottomNav) {
+        return;
+    }
+    const buttons = elements.bottomNav.querySelectorAll("button[data-view]");
+    buttons.forEach((btn) => {
+        const v = String(btn.getAttribute("data-view") || "").toLowerCase();
+        if (v === view) {
+            btn.setAttribute("aria-current", "page");
+        } else {
+            btn.removeAttribute("aria-current");
+        }
+    });
+}
+
+function moveChartCardToActiveSlot(view) {
+    if (!elements.chartCard) {
+        return;
+    }
+    const target = view === "chart" ? elements.chartSlots.chart : elements.chartSlots.overview;
+    if (!target) {
+        return;
+    }
+    if (elements.chartCard.parentElement !== target) {
+        target.appendChild(elements.chartCard);
+    }
+}
+
+function bindMobileUi() {
+    if (elements.bottomNav) {
+        elements.bottomNav.addEventListener("click", (evt) => {
+            const btn = evt.target.closest("button");
+            if (!btn) {
+                return;
+            }
+            const view = btn.getAttribute("data-view");
+            const action = btn.getAttribute("data-action");
+            if (view === "overview" || view === "chart") {
+                setView(view, { pushHistory: true });
+                return;
+            }
+            if (action === "filters") {
+                setDrawerOpen(!appState.ui.filtersOpen);
+            }
+        });
+    }
+
+    if (elements.mobile?.backBtn) {
+        elements.mobile.backBtn.addEventListener("click", () => {
+            setView("overview", { pushHistory: true });
+        });
+    }
+    if (elements.mobile?.menuBtn) {
+        elements.mobile.menuBtn.addEventListener("click", () => {
+            setDrawerOpen(true);
+        });
+    }
+
+    if (elements.drawer?.closeBtn) {
+        elements.drawer.closeBtn.addEventListener("click", () => {
+            setDrawerOpen(false);
+        });
+    }
+
+    if (elements.drawer?.timeframeSelect) {
+        elements.drawer.timeframeSelect.value = normalizeTimeframe(appState.currentTimeframe);
+        elements.drawer.timeframeSelect.addEventListener("change", (event) => {
+            const tf = normalizeTimeframe(event.target.value);
+            if (elements.timeframeSelect) {
+                elements.timeframeSelect.value = tf;
+            }
+            handleTimeframeChange(tf);
+        });
+    }
+
+    Object.entries(elements.drawer?.layers || {}).forEach(([key, el]) => {
+        if (!el) return;
+        el.addEventListener("change", () => {
+            const checked = Boolean(el.checked);
+            const desktopToggle = elements.layerToggles?.[key];
+            if (desktopToggle) {
+                desktopToggle.checked = checked;
+            }
+            appState.chartState.layersVisibility[key] = checked;
+            rehydrateOverlays({ force: true });
+        });
+    });
+
+    syncDrawerFromDesktopControls();
+}
+
+function syncDrawerFromDesktopControls() {
+    if (elements.drawer?.timeframeSelect) {
+        elements.drawer.timeframeSelect.value = normalizeTimeframe(appState.currentTimeframe);
+    }
+    Object.entries(elements.drawer?.layers || {}).forEach(([key, el]) => {
+        if (!el) return;
+        const desktopToggle = elements.layerToggles?.[key];
+        if (desktopToggle) {
+            el.checked = Boolean(desktopToggle.checked);
+        }
+    });
+}
+
+function setDrawerOpen(isOpen) {
+    appState.ui.filtersOpen = Boolean(isOpen);
+    if (!elements.drawer?.root) {
+        return;
+    }
+    if (appState.ui.filtersOpen) {
+        elements.drawer.root.classList.add("is-open");
+    } else {
+        elements.drawer.root.classList.remove("is-open");
+    }
+}
+
+let mobileChartHeightRaf = null;
+function scheduleMobileChartHeight() {
+    if (typeof window === "undefined") {
+        return;
+    }
+    const raf = window.requestAnimationFrame || window.setTimeout;
+    if (mobileChartHeightRaf) {
+        return;
+    }
+    mobileChartHeightRaf = raf(() => {
+        mobileChartHeightRaf = null;
+        updateMobileChartHeightVar();
+    });
+}
+
+function updateMobileChartHeightVar() {
+    const vh = Number(window.innerHeight || 0);
+    if (!Number.isFinite(vh) || vh <= 0) {
+        return;
+    }
+
+    const headerEl =
+        appState.ui.view === "chart"
+            ? elements.mobile?.headerChart
+            : elements.mobile?.headerOverview;
+    const headerH = headerEl?.offsetHeight || 0;
+    const bottomH = elements.bottomNav?.offsetHeight || 0;
+
+    // Простий евристичний розрахунок. Мета: не "вилазити" за екран,
+    // без прив'язки до точних висот блоків (вони залежать від контенту).
+    const reserve = appState.ui.view === "chart" ? 160 : 420;
+    const target = Math.max(220, Math.min(720, vh - headerH - bottomH - reserve));
+
+    document.documentElement.style.setProperty(
+        "--mobile-chart-height",
+        `${Math.round(target)}px`,
+    );
 }
 
 function initChartController() {
@@ -369,27 +623,84 @@ function bindUi() {
         });
     }
 
-    elements.refreshBtn.addEventListener("click", async () => {
-        try {
-            await reloadSnapshot(true);
-            if (appState.currentSymbol) {
-                await fetchOhlcv(appState.currentSymbol, appState.currentTimeframe);
+    if (elements.refreshBtn) {
+        elements.refreshBtn.addEventListener("click", async () => {
+            try {
+                await reloadSnapshot(true);
+                if (appState.currentSymbol) {
+                    await fetchOhlcv(
+                        appState.currentSymbol,
+                        appState.currentTimeframe,
+                    );
+                }
+            } catch (err) {
+                console.error("[UI] Snapshot error:", err);
             }
-        } catch (err) {
-            console.error("[UI] Snapshot error:", err);
-        }
-    });
+        });
+    }
 
-    elements.reconnectBtn.addEventListener("click", () => {
-        if (appState.currentSymbol) {
-            openViewerSocket(appState.currentSymbol);
-            openOhlcvSocket(appState.currentSymbol, appState.currentTimeframe);
-            openTickSocket(appState.currentSymbol);
-        }
-    });
+    if (elements.reconnectBtn) {
+        elements.reconnectBtn.addEventListener("click", () => {
+            if (appState.currentSymbol) {
+                openViewerSocket(appState.currentSymbol);
+                openOhlcvSocket(appState.currentSymbol, appState.currentTimeframe);
+                openTickSocket(appState.currentSymbol);
+            }
+        });
+    }
 
     bindLayerToggles();
+    bindChartLayerMenu();
     initChartLayoutControls();
+    syncDrawerFromDesktopControls();
+}
+
+function bindChartLayerMenu() {
+    const btn = elements.chartLayerMenuBtn;
+    const menu = elements.chartLayerMenu;
+    if (!btn || !menu) {
+        return;
+    }
+
+    const setOpen = (open) => {
+        if (open) {
+            menu.removeAttribute("hidden");
+            btn.setAttribute("aria-expanded", "true");
+        } else {
+            menu.setAttribute("hidden", "");
+            btn.setAttribute("aria-expanded", "false");
+        }
+    };
+
+    const toggle = () => {
+        const isOpen = !menu.hasAttribute("hidden");
+        setOpen(!isOpen);
+    };
+
+    btn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggle();
+    });
+
+    document.addEventListener("click", (event) => {
+        if (menu.hasAttribute("hidden")) {
+            return;
+        }
+        if (menu.contains(event.target) || btn.contains(event.target)) {
+            return;
+        }
+        setOpen(false);
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") {
+            return;
+        }
+        if (!menu.hasAttribute("hidden")) {
+            setOpen(false);
+        }
+    });
 }
 
 function bindLayerToggles() {
@@ -404,6 +715,10 @@ function bindLayerToggles() {
         checkbox.checked = defaultValue !== false;
         checkbox.addEventListener("change", () => {
             appState.chartState.layersVisibility[layerKey] = checkbox.checked;
+            const drawerToggle = elements.drawer?.layers?.[layerKey];
+            if (drawerToggle) {
+                drawerToggle.checked = checkbox.checked;
+            }
             const symbol = appState.currentSymbol;
             const state = symbol ? appState.latestStates[symbol] : null;
             if (state) {
@@ -602,6 +917,9 @@ function handleTimeframeChange(nextTf) {
     }
     appState.currentTimeframe = normalized;
     syncTimeframeSelect(normalized);
+    if (elements.drawer?.timeframeSelect) {
+        elements.drawer.timeframeSelect.value = normalized;
+    }
     persistTimeframe(normalized);
     resetTickLiveState();
     if (appState.currentSymbol) {
@@ -703,49 +1021,52 @@ function setStatus(state, detail = "") {
     appState.uiStatusState = state;
     appState.uiStatusDetail = detail;
 
-    const pill = elements.wsStatus;
+    const liveSuffix = FXCM_WS_ENABLED ? ` • LIVE: ${isFxcmLiveOn() ? "ON" : "OFF"}` : "";
+    const label = buildStatusLabel(state, detail) + liveSuffix;
+
+    applyStatusToPill(elements.wsStatus, state, label);
+    applyStatusToPill(elements.mobile?.overviewWs, state, label);
+}
+
+function buildStatusLabel(state, detail) {
+    switch (state) {
+        case "connected":
+            return detail ? `Підключено (${detail})` : "Підключено";
+        case "connecting":
+            return detail ? `Підключення (${detail})` : "Підключення";
+        case "reconnecting":
+            return detail ? `Перепідключення (${detail})` : "Перепідключення";
+        case "stale":
+            return detail ? `Без стріму (${detail})` : "Без стріму";
+        case "error":
+            return detail ? `Помилка (${detail})` : "Помилка";
+        case "loading":
+            return detail || "Завантаження...";
+        default:
+            return detail ? `Відключено (${detail})` : "Відключено";
+    }
+}
+
+function applyStatusToPill(pill, state, text) {
+    if (!pill) {
+        return;
+    }
     pill.classList.remove(
         "status-connected",
         "status-disconnected",
         "status-reconnecting",
         "status-stale",
     );
-
-    let label = "";
-    switch (state) {
-        case "connected":
-            pill.classList.add("status-connected");
-            label = detail ? `Підключено (${detail})` : "Підключено";
-            break;
-        case "connecting":
-            pill.classList.add("status-reconnecting");
-            label = detail ? `Підключення (${detail})` : "Підключення";
-            break;
-        case "reconnecting":
-            pill.classList.add("status-reconnecting");
-            label = detail
-                ? `Перепідключення (${detail})`
-                : "Перепідключення";
-            break;
-        case "stale":
-            pill.classList.add("status-stale");
-            label = detail ? `Без стріму (${detail})` : "Без стріму";
-            break;
-        case "error":
-            pill.classList.add("status-disconnected");
-            label = detail ? `Помилка (${detail})` : "Помилка";
-            break;
-        case "loading":
-            pill.classList.add("status-reconnecting");
-            label = detail || "Завантаження...";
-            break;
-        default:
-            pill.classList.add("status-disconnected");
-            label = detail ? `Відключено (${detail})` : "Відключено";
+    if (state === "connected") {
+        pill.classList.add("status-connected");
+    } else if (state === "stale") {
+        pill.classList.add("status-stale");
+    } else if (state === "connecting" || state === "reconnecting" || state === "loading") {
+        pill.classList.add("status-reconnecting");
+    } else {
+        pill.classList.add("status-disconnected");
     }
-
-    const liveSuffix = FXCM_WS_ENABLED ? ` • LIVE: ${isFxcmLiveOn() ? "ON" : "OFF"}` : "";
-    pill.textContent = label + liveSuffix;
+    pill.textContent = text;
 }
 
 function isFxcmLiveOn() {
@@ -790,6 +1111,7 @@ function renderAll(state, options = {}) {
     updatePayloadMeta(state);
     renderSummary(state);
     renderEvents(state.structure?.events || []);
+    renderOverviewEvents(state.structure?.events || []);
     renderOteZones(state.structure?.ote_zones || []);
     renderPools(state.liquidity?.pools || []);
     renderZones(state.zones?.raw?.zones || []);
@@ -809,7 +1131,9 @@ function updatePayloadMeta(state) {
     appState.lastLagSeconds = lagSeconds;
 
     if (elements.payloadTs) {
-        elements.payloadTs.textContent = payloadTs ? formatIsoDateTime(payloadTs) : "-";
+        elements.payloadTs.textContent = payloadTs
+            ? `ts: ${formatLocalDateTime(payloadTs)}`
+            : "ts: -";
     }
     if (elements.payloadLag) {
         elements.payloadLag.textContent =
@@ -832,6 +1156,16 @@ function renderEmptyState(message = "Немає даних") {
     setText(elements.summary.process, "-");
     setText(elements.summary.lag, "-");
 
+    setText(elements.mobile?.overviewSymbol, "-");
+    setText(elements.mobile?.overviewPrice, "-");
+    setText(elements.mobile?.overviewDelta, "-");
+    setText(elements.mobile?.chartSymbol, "-");
+    setText(elements.mobile?.chartPrice, "-");
+
+    if (elements.overviewEventsList) {
+        elements.overviewEventsList.innerHTML = `<div class="overview-event"><div class="overview-event__time">-</div><div class="overview-event__title">${message}</div><div class="overview-event__price">-</div></div>`;
+    }
+
     [
         { el: elements.tables.events, cols: 4 },
         { el: elements.tables.ote, cols: 4 },
@@ -841,6 +1175,38 @@ function renderEmptyState(message = "Немає даних") {
         if (!el) return;
         el.innerHTML = `<tr class="empty-row"><td colspan="${cols}">${message}</td></tr>`;
     });
+}
+
+function renderOverviewEvents(events) {
+    if (!elements.overviewEventsList) {
+        return;
+    }
+
+    const filtered = (events || [])
+        .filter((evt) => {
+            const kind = (evt?.type || evt?.event_type || "").toUpperCase();
+            return kind.includes("BOS") || kind.includes("CHOCH");
+        })
+        .slice(-5)
+        .reverse();
+
+    if (!filtered.length) {
+        elements.overviewEventsList.innerHTML =
+            '<div class="overview-event"><div class="overview-event__time">-</div><div class="overview-event__title">Немає подій</div><div class="overview-event__price">-</div></div>';
+        return;
+    }
+
+    elements.overviewEventsList.innerHTML = filtered
+        .map((evt) => {
+            const direction = normalizeDirection(evt.direction || evt.dir);
+            const title = `${evt.type || evt.event_type || "-"} ${direction}`.trim();
+            return `<div class="overview-event">
+    <div class="overview-event__time">${formatTime(evt.ts || evt.time || evt.timestamp)}</div>
+    <div class="overview-event__title">${title}</div>
+    <div class="overview-event__price">${formatNumber(evt.price ?? evt.level ?? evt.value)}</div>
+  </div>`;
+        })
+        .join("");
 }
 
 function pushBarsToChart(ohlcvResponse) {
@@ -1237,7 +1603,9 @@ function handleOhlcvWsPayload(payload) {
         }
 
         appState.chart.updateLastBar(candle);
+        appState.prevCompleteCandle = appState.lastCompleteCandle;
         appState.lastCompleteCandle = candle;
+        renderMobileDelta();
 
         if (
             appState.ohlcvLiveOpenTimeSec !== null &&
@@ -1313,6 +1681,29 @@ function renderSummary(state) {
     setText(elements.summary.market, fxcm.market_state || "-");
     setText(elements.summary.process, fxcm.process_state || fxcm.price_state || "-");
     setText(elements.summary.lag, formatNumber(fxcm.lag_seconds, 2));
+
+    const symbolText = state.symbol || appState.currentSymbol || "-";
+    const priceText = formatNumber(state.price);
+    setText(elements.mobile?.overviewSymbol, symbolText);
+    setText(elements.mobile?.chartSymbol, symbolText);
+    setText(elements.mobile?.overviewPrice, priceText);
+    setText(elements.mobile?.chartPrice, priceText);
+    renderMobileDelta();
+}
+
+function renderMobileDelta() {
+    const prev = Number(appState.prevCompleteCandle?.close);
+    const curr = Number(appState.lastCompleteCandle?.close);
+    if (!elements.mobile?.overviewDelta) {
+        return;
+    }
+    if (!Number.isFinite(prev) || !Number.isFinite(curr) || prev === 0) {
+        elements.mobile.overviewDelta.textContent = "-";
+        return;
+    }
+    const deltaPct = ((curr - prev) / prev) * 100;
+    const sign = deltaPct > 0 ? "+" : "";
+    elements.mobile.overviewDelta.textContent = `${sign}${formatNumber(deltaPct, 2)}%`;
 }
 
 function syncTimeframeSelect(tf) {
@@ -1529,6 +1920,7 @@ function enterChartFullscreen() {
     }
     elements.chartCard.classList.add("card-chart--fullscreen");
     document.body.classList.add("chart-fullscreen-lock");
+    document.documentElement.classList.add("chart-fullscreen-lock");
     appState.chartUi.fullscreen = true;
     updateFullscreenButtonState();
     setHeightControlEnabled(false);
@@ -1541,6 +1933,7 @@ function exitChartFullscreen() {
     }
     elements.chartCard.classList.remove("card-chart--fullscreen");
     document.body.classList.remove("chart-fullscreen-lock");
+    document.documentElement.classList.remove("chart-fullscreen-lock");
     appState.chartUi.fullscreen = false;
     updateFullscreenButtonState();
     setHeightControlEnabled(true);
@@ -1552,11 +1945,15 @@ function updateFullscreenButtonState() {
         return;
     }
     if (appState.chartUi.fullscreen) {
-        elements.chartFullscreenBtn.textContent = "Завершити повний екран";
         elements.chartFullscreenBtn.setAttribute("aria-pressed", "true");
+        elements.chartFullscreenBtn.setAttribute("aria-label", "Вийти з повного екрана");
+        elements.chartFullscreenBtn.setAttribute("title", "Вийти з повного екрана");
+        elements.chartFullscreenBtn.classList.add("chart-fullscreen-btn--active");
     } else {
-        elements.chartFullscreenBtn.textContent = "На весь екран";
         elements.chartFullscreenBtn.setAttribute("aria-pressed", "false");
+        elements.chartFullscreenBtn.setAttribute("aria-label", "Повний екран");
+        elements.chartFullscreenBtn.setAttribute("title", "Повний екран");
+        elements.chartFullscreenBtn.classList.remove("chart-fullscreen-btn--active");
     }
 }
 
@@ -1718,6 +2115,9 @@ function renderRows(tbody, rows, renderer, columnsCount) {
 }
 
 function setText(node, value) {
+    if (!node) {
+        return;
+    }
     node.textContent = value == null || value === "" ? "-" : String(value);
 }
 
@@ -1753,4 +2153,53 @@ function formatIsoDateTime(value) {
         return "-";
     }
     return date.toISOString().replace(".000Z", "Z");
+}
+
+function toDateSmart(value) {
+    if (value === null || value === undefined) {
+        return null;
+    }
+
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    if (typeof value === "number") {
+        if (!Number.isFinite(value)) return null;
+        const ms = value > 1e12 ? value : value * 1000;
+        const date = new Date(ms);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    const asString = String(value).trim();
+    if (!asString) {
+        return null;
+    }
+
+    const numeric = Number(asString);
+    if (Number.isFinite(numeric)) {
+        const ms = numeric > 1e12 ? numeric : numeric * 1000;
+        const date = new Date(ms);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    const date = new Date(asString);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatLocalDateTime(value) {
+    const date = toDateSmart(value);
+    if (!date) {
+        return "-";
+    }
+
+    const pad2 = (n) => String(n).padStart(2, "0");
+    const dd = pad2(date.getDate());
+    const mm = pad2(date.getMonth() + 1);
+    const hh = pad2(date.getHours());
+    const mi = pad2(date.getMinutes());
+    const ss = pad2(date.getSeconds());
+
+    // Компактно і зрозуміло: DD.MM HH:MM:SS (локальний час)
+    return `${dd}.${mm} ${hh}:${mi}:${ss}`;
 }

@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="styles.css" />
 </head>
 
-<body>
+<body class="ui-view-overview">
     <header class="app-header">
         <div class="header-left">
             <label for="symbol-select">Символ:</label>
@@ -18,11 +18,9 @@
                 <option value="1m">1m</option>
                 <option value="5m">5m</option>
             </select>
-            <button id="refresh-btn" type="button">Оновити snapshot</button>
         </div>
         <div class="header-right">
             <span id="ws-status" class="status-pill status-disconnected">Відключено</span>
-            <button id="reconnect-btn" type="button">Перепідключити</button>
             <div class="status-meta">
                 <span class="status-meta__item" id="payload-ts">Payload ts: -</span>
                 <span class="status-meta__item" id="payload-lag">Lag (s): -</span>
@@ -30,24 +28,46 @@
         </div>
     </header>
 
+    <header id="mobile-header-overview" class="mobile-header mobile-header--overview"
+        aria-label="Мобільна шапка: огляд">
+        <div class="mobile-header__left">
+            <div class="mobile-header__symbol" id="m-overview-symbol">XAUUSD</div>
+            <div class="mobile-header__price" id="m-overview-price">-</div>
+        </div>
+        <div class="mobile-header__right">
+            <div class="mobile-header__delta" id="m-overview-delta">-</div>
+            <span id="m-overview-ws" class="status-pill status-disconnected">Відключено</span>
+        </div>
+    </header>
+
+    <header id="mobile-header-chart" class="mobile-header mobile-header--chart" aria-label="Мобільна шапка: графік">
+        <div class="mobile-header__left">
+            <button id="m-chart-back" type="button" class="mobile-icon-btn" aria-label="Назад до огляду">Огляд</button>
+            <div class="mobile-header__symbol" id="m-chart-symbol">XAUUSD</div>
+            <div class="mobile-header__price" id="m-chart-price">-</div>
+        </div>
+        <div class="mobile-header__right">
+            <button id="m-chart-menu" type="button" class="mobile-icon-btn" aria-label="Фільтри">⋮</button>
+        </div>
+    </header>
+
     <main class="app-main">
-        <section class="summary" aria-labelledby="summary-title">
-            <h2 id="summary-title">Summary</h2>
+        <section class="summary" aria-label="Підсумок">
             <div class="summary-grid">
                 <div>
-                    <span class="label">Symbol</span>
+                    <span class="label">Символ</span>
                     <span id="summary-symbol" class="value">-</span>
                 </div>
                 <div>
-                    <span class="label">Price</span>
+                    <span class="label">Ціна</span>
                     <span id="summary-price" class="value">-</span>
                 </div>
                 <div>
-                    <span class="label">Session</span>
+                    <span class="label">Сесія</span>
                     <span id="summary-session" class="value">-</span>
                 </div>
                 <div>
-                    <span class="label">Trend</span>
+                    <span class="label">Тренд</span>
                     <span id="summary-trend" class="summary-badge">-</span>
                 </div>
                 <div>
@@ -55,155 +75,218 @@
                     <span id="summary-bias" class="summary-badge">-</span>
                 </div>
                 <div>
-                    <span class="label">Range State</span>
+                    <span class="label">Діапазон</span>
                     <span id="summary-range" class="summary-badge">-</span>
                 </div>
                 <div>
-                    <span class="label">AMD Phase</span>
+                    <span class="label">AMD</span>
                     <span id="summary-amd" class="summary-badge">-</span>
                 </div>
                 <div>
-                    <span class="label">FX Market</span>
+                    <span class="label">FX</span>
                     <span id="summary-market" class="value">-</span>
                 </div>
                 <div>
-                    <span class="label">FX Process</span>
+                    <span class="label">Процес</span>
                     <span id="summary-process" class="value">-</span>
                 </div>
                 <div>
-                    <span class="label">Lag (s)</span>
+                    <span class="label">Лаг (с)</span>
                     <span id="summary-lag" class="value">-</span>
                 </div>
             </div>
         </section>
 
-        <section class="card card-chart" aria-labelledby="chart-title">
-            <div class="card-chart__header">
-                <h2 id="chart-title" class="card-title">Price Chart</h2>
-                <div class="chart-layer-controls" role="group" aria-label="Керування шарами">
-                    <label class="layer-toggle">
-                        <input type="checkbox" id="layer-toggle-events" checked />
-                        <span class="layer-toggle__dot layer-toggle__dot--events" aria-hidden="true"></span>
-                        <span class="layer-toggle__text">BOS / CHOCH</span>
-                    </label>
-                    <label class="layer-toggle">
-                        <input type="checkbox" id="layer-toggle-pools" checked />
-                        <span class="layer-toggle__dot layer-toggle__dot--pools" aria-hidden="true"></span>
-                        <span class="layer-toggle__text">Pools</span>
-                    </label>
-                    <label class="layer-toggle">
-                        <input type="checkbox" id="layer-toggle-ote" checked />
-                        <span class="layer-toggle__dot layer-toggle__dot--ote" aria-hidden="true"></span>
-                        <span class="layer-toggle__text">OTE</span>
-                    </label>
-                    <label class="layer-toggle">
-                        <input type="checkbox" id="layer-toggle-zones" checked />
-                        <span class="layer-toggle__dot layer-toggle__dot--zones" aria-hidden="true"></span>
-                        <span class="layer-toggle__text">Zones</span>
-                    </label>
-                </div>
-                <div class="chart-layout-controls" role="group" aria-label="Керування розміром чарта">
-                    <label class="chart-height-control" for="chart-height-range">
-                        <span class="chart-control-label">Висота</span>
-                        <input type="range" id="chart-height-range" min="600" max="900" step="20" value="600" />
-                        <span id="chart-height-value" class="chart-height-value">600 px</span>
-                    </label>
-                    <button id="chart-fullscreen-btn" type="button" class="chart-fullscreen-btn">На весь екран</button>
-                </div>
-            </div>
-            <div id="chart-container" class="chart-demo-container"></div>
+        <section id="view-overview" class="ui-view" aria-label="Огляд">
+            <section class="card card-overview-events" aria-label="Останні події">
+                <h2 class="card-title">Останні події</h2>
+                <div id="overview-events-list" class="overview-events-list"></div>
+            </section>
+
+            <div id="overview-chart-slot" class="chart-slot" aria-label="Міні-графік"></div>
         </section>
 
-        <section class="card card-ohlcv" aria-labelledby="ohlcv-title">
-            <h2 id="ohlcv-title" class="card-title">OHLCV Debug</h2>
-            <div class="summary-grid summary-grid-ohlcv">
-                <div class="summary-item">
-                    <span class="summary-label">Timeframe</span>
-                    <span id="ohlcv-tf" class="summary-value">-</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Bars</span>
-                    <span id="ohlcv-count" class="summary-value">-</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Last time</span>
-                    <span id="ohlcv-last-time" class="summary-value">-</span>
-                </div>
-                <div class="summary-item">
-                    <span class="summary-label">Last close</span>
-                    <span id="ohlcv-last-close" class="summary-value">-</span>
-                </div>
-            </div>
-        </section>
+        <section id="view-chart" class="ui-view" aria-label="Графік">
+            <div id="chart-slot" class="chart-slot" aria-label="Графік"></div>
 
-        <section class="panel" aria-labelledby="events-title">
-            <div class="panel-header">
-                <h3 id="events-title">Structure Events (BOS / CHOCH)</h3>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Type</th>
-                        <th>Direction</th>
-                        <th>Price</th>
-                    </tr>
-                </thead>
-                <tbody id="events-body"></tbody>
-            </table>
-        </section>
+            <section class="card card-chart" aria-label="Графік">
+                <div class="chart-overlay-shell" aria-label="Графік">
+                    <div id="chart-container" class="chart-demo-container"></div>
+                    <div class="chart-height-control chart-height-control--overlay" aria-label="Висота чарта">
+                        <input type="range" id="chart-height-range" min="600" max="900" step="20" value="600"
+                            aria-label="Висота" />
+                    </div>
+                    <div class="chart-overlay-actions" role="group" aria-label="Керування графіком">
+                        <button id="chart-layer-menu-btn" type="button" class="chart-layer-menu-btn" aria-label="Шари"
+                            aria-haspopup="true" aria-expanded="false">▾</button>
+                        <button id="chart-fullscreen-btn" type="button" class="chart-fullscreen-btn"
+                            aria-label="На весь екран" title="На весь екран" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                <path fill="currentColor"
+                                    d="M7 14H5v5h5v-2H7v-3zm0-4h3V7h3V5H5v5h2V7h3v3zm10 7h-3v2h5v-5h-2v3zm0-10V5h-5v2h3v3h2z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="chart-layer-menu" class="chart-layer-menu" hidden>
+                        <div class="chart-layer-controls" role="group" aria-label="Керування шарами">
+                            <label class="layer-toggle">
+                                <input type="checkbox" id="layer-toggle-events" checked />
+                                <span class="layer-toggle__dot layer-toggle__dot--events" aria-hidden="true"></span>
+                                <span class="layer-toggle__text">BOS / CHOCH</span>
+                            </label>
+                            <label class="layer-toggle">
+                                <input type="checkbox" id="layer-toggle-pools" checked />
+                                <span class="layer-toggle__dot layer-toggle__dot--pools" aria-hidden="true"></span>
+                                <span class="layer-toggle__text">Pools</span>
+                            </label>
+                            <label class="layer-toggle">
+                                <input type="checkbox" id="layer-toggle-ote" checked />
+                                <span class="layer-toggle__dot layer-toggle__dot--ote" aria-hidden="true"></span>
+                                <span class="layer-toggle__text">OTE</span>
+                            </label>
+                            <label class="layer-toggle">
+                                <input type="checkbox" id="layer-toggle-zones" checked />
+                                <span class="layer-toggle__dot layer-toggle__dot--zones" aria-hidden="true"></span>
+                                <span class="layer-toggle__text">Zones</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <section class="panel" aria-labelledby="ote-title">
-            <div class="panel-header">
-                <h3 id="ote-title">OTE Zones</h3>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Direction</th>
-                        <th>Role</th>
-                        <th>OTE min</th>
-                        <th>OTE max</th>
-                    </tr>
-                </thead>
-                <tbody id="ote-body"></tbody>
-            </table>
-        </section>
+            <section class="card card-ohlcv" aria-labelledby="ohlcv-title" hidden>
+                <h2 id="ohlcv-title" class="card-title">OHLCV Debug</h2>
+                <div class="summary-grid summary-grid-ohlcv">
+                    <div class="summary-item">
+                        <span class="summary-label">ТФ</span>
+                        <span id="ohlcv-tf" class="summary-value">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Барів</span>
+                        <span id="ohlcv-count" class="summary-value">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Останній час</span>
+                        <span id="ohlcv-last-time" class="summary-value">-</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Останнє закриття</span>
+                        <span id="ohlcv-last-close" class="summary-value">-</span>
+                    </div>
+                </div>
+            </section>
 
-        <section class="panel" aria-labelledby="pools-title">
-            <div class="panel-header">
-                <h3 id="pools-title">Liquidity Pools</h3>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Type</th>
-                        <th>Role</th>
-                        <th>Price</th>
-                        <th>Strength / Touches</th>
-                    </tr>
-                </thead>
-                <tbody id="pools-body"></tbody>
-            </table>
-        </section>
+            <section class="panel" aria-labelledby="events-title">
+                <div class="panel-header">
+                    <h3 id="events-title">Structure Events (BOS / CHOCH)</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Direction</th>
+                            <th>Price</th>
+                        </tr>
+                    </thead>
+                    <tbody id="events-body"></tbody>
+                </table>
+            </section>
 
-        <section class="panel" aria-labelledby="zones-title">
-            <div class="panel-header">
-                <h3 id="zones-title">Zones</h3>
-            </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Type</th>
-                        <th>Role</th>
-                        <th>Price min</th>
-                        <th>Price max</th>
-                    </tr>
-                </thead>
-                <tbody id="zones-body"></tbody>
-            </table>
+            <section class="panel" aria-labelledby="ote-title">
+                <div class="panel-header">
+                    <h3 id="ote-title">OTE Zones</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Direction</th>
+                            <th>Role</th>
+                            <th>OTE min</th>
+                            <th>OTE max</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ote-body"></tbody>
+                </table>
+            </section>
+
+            <section class="panel" aria-labelledby="pools-title">
+                <div class="panel-header">
+                    <h3 id="pools-title">Liquidity Pools</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Role</th>
+                            <th>Price</th>
+                            <th>Strength / Touches</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pools-body"></tbody>
+                </table>
+            </section>
+
+            <section class="panel" aria-labelledby="zones-title">
+                <div class="panel-header">
+                    <h3 id="zones-title">Zones</h3>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Role</th>
+                            <th>Price min</th>
+                            <th>Price max</th>
+                        </tr>
+                    </thead>
+                    <tbody id="zones-body"></tbody>
+                </table>
+            </section>
         </section>
     </main>
+
+    <nav id="bottom-nav" class="bottom-nav" aria-label="Нижня навігація">
+        <button type="button" class="bottom-nav__btn" data-view="overview">Огляд</button>
+        <button type="button" class="bottom-nav__btn" data-view="chart">Графік</button>
+        <button type="button" class="bottom-nav__btn" data-action="filters">Фільтри</button>
+        <button type="button" class="bottom-nav__btn" data-view="debug" disabled hidden>Debug</button>
+    </nav>
+
+    <aside id="filters-drawer" class="filters-drawer" aria-label="Фільтри">
+        <div class="filters-drawer__header">
+            <div class="filters-drawer__title">Фільтри</div>
+            <button id="drawer-close" type="button" class="mobile-icon-btn" aria-label="Закрити">✕</button>
+        </div>
+        <div class="filters-drawer__body">
+            <div class="filters-group" aria-label="Шари">
+                <label class="drawer-toggle">
+                    <input type="checkbox" id="drawer-layer-events" checked />
+                    <span>BOS / CHOCH</span>
+                </label>
+                <label class="drawer-toggle">
+                    <input type="checkbox" id="drawer-layer-pools" checked />
+                    <span>Pools</span>
+                </label>
+                <label class="drawer-toggle">
+                    <input type="checkbox" id="drawer-layer-ote" checked />
+                    <span>OTE</span>
+                </label>
+                <label class="drawer-toggle">
+                    <input type="checkbox" id="drawer-layer-zones" checked />
+                    <span>Zones</span>
+                </label>
+            </div>
+
+            <div class="filters-group" aria-label="Таймфрейм">
+                <label for="timeframe-select-mobile" class="filters-label">Таймфрейм</label>
+                <select id="timeframe-select-mobile">
+                    <option value="1m">1m</option>
+                    <option value="5m">5m</option>
+                </select>
+            </div>
+        </div>
+    </aside>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
     <script src="chart_adapter.js"></script>
     <script src="app.js"></script>

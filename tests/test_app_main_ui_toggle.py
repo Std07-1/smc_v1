@@ -15,7 +15,7 @@ def test_ui_v2_disabled_runs_legacy_viewer(monkeypatch):
 
     monkeypatch.setattr(main_module, "launch_experimental_viewer", fake_launch)
 
-    tasks = main_module._launch_ui_v2_tasks()
+    tasks = main_module._launch_ui_v2_tasks()  # type: ignore
 
     assert tasks == []
     assert calls["legacy"] == 1

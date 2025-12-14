@@ -1,8 +1,8 @@
 (function () {
     const CANDLE_COLORS = {
-        up: "#1ed760",
-        down: "#ef476f",
-        live: "#facc15",
+        up: "#26a69a",
+        down: "#ef5350",
+        live: "#f6c343",
     };
 
     const VOLUME_WINDOW_SIZE = 200;
@@ -11,15 +11,27 @@
 
     const DEFAULT_CHART_OPTIONS = {
         layout: {
-            background: { color: "#0e111d" },
+            background: { color: "#131722" },
             textColor: "#d1d4dc",
         },
         grid: {
-            vertLines: { color: "rgba(197, 203, 206, 0.15)" },
-            horzLines: { color: "rgba(197, 203, 206, 0.15)" },
+            vertLines: { color: "rgba(42, 46, 57, 0.7)" },
+            horzLines: { color: "rgba(42, 46, 57, 0.7)" },
         },
         crosshair: {
             mode: LightweightCharts.CrosshairMode.Normal,
+            vertLine: {
+                color: "rgba(209, 212, 220, 0.35)",
+                width: 1,
+                style: LightweightCharts.LineStyle.Dashed,
+                labelBackgroundColor: "#2a2e39",
+            },
+            horzLine: {
+                color: "rgba(209, 212, 220, 0.35)",
+                width: 1,
+                style: LightweightCharts.LineStyle.Dashed,
+                labelBackgroundColor: "#2a2e39",
+            },
         },
         handleScroll: {
             mouseWheel: true,
@@ -37,7 +49,9 @@
             pinch: true,
         },
         rightPriceScale: {
-            borderColor: "rgba(255, 255, 255, 0.08)",
+            borderColor: "rgba(54, 58, 69, 0.9)",
+            borderVisible: true,
+            ticksVisible: true,
             autoScale: true,
             scaleMargins: {
                 top: 0.12,
@@ -45,8 +59,10 @@
             },
         },
         timeScale: {
-            borderColor: "rgba(255, 255, 255, 0.08)",
-            rightOffset: 2,
+            borderColor: "rgba(54, 58, 69, 0.9)",
+            borderVisible: true,
+            rightOffset: 6,
+            barSpacing: 8,
             timeVisible: true,
             secondsVisible: false,
             fixLeftEdge: false,
@@ -170,15 +186,19 @@
             downColor: CANDLE_COLORS.down,
             wickDownColor: CANDLE_COLORS.down,
             borderVisible: false,
+            priceLineVisible: true,
+            lastValueVisible: true,
         });
         const liveCandles = chart.addCandlestickSeries({
-            upColor: "rgba(250, 204, 21, 0.18)",
+            upColor: "rgba(246, 195, 67, 0.18)",
             wickUpColor: CANDLE_COLORS.live,
-            downColor: "rgba(250, 204, 21, 0.18)",
+            downColor: "rgba(246, 195, 67, 0.18)",
             wickDownColor: CANDLE_COLORS.live,
             borderVisible: true,
             borderUpColor: CANDLE_COLORS.live,
             borderDownColor: CANDLE_COLORS.live,
+            priceLineVisible: false,
+            lastValueVisible: false,
         });
 
         const volume = chart.addHistogramSeries({
@@ -201,6 +221,7 @@
                 bottom: 0.0,
             },
             borderVisible: false,
+            ticksVisible: false,
         });
 
         let lastBar = null;

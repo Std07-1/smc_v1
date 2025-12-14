@@ -103,8 +103,8 @@ def test_validate_fxcm_status_message_allows_partial() -> None:
     msg = {"ts": 1, "market": "open"}
     out = validate_fxcm_status_message(msg)
     assert out is not None
-    assert out["ts"] == 1.0
-    assert out["market"] == "open"
+    assert out["ts"] == 1.0  # type: ignore
+    assert out["market"] == "open"  # type: ignore
 
 
 @pytest.mark.asyncio
