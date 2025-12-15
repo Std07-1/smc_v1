@@ -251,11 +251,15 @@ def build_status_snapshot(
     # Явний стан SMC: чи рахуємо важкий цикл, чи «чекаємо».
     smc_state = "WAIT"
     mode_upper = str(mode or "?").upper()
-    if mode_upper == "IDLE" or cycle_reason == "smc_idle_fxcm_status":
+    if mode_upper in {"COLD", "WARMUP"}:
+        # UX: режим прогріву не повинен виглядати як IDLE,
+        # навіть якщо цикл зараз «загейтений» станом FXCM.
+        smc_state = "WARMUP"
+    elif mode_upper == "IDLE" or cycle_reason == "smc_idle_fxcm_status":
         smc_state = "IDLE"
     elif cycle_reason == "smc_screening":
         smc_state = "RUN"
-    elif cycle_reason == "smc_insufficient_data" or mode_upper in {"COLD", "WARMUP"}:
+    elif cycle_reason == "smc_insufficient_data":
         smc_state = "WARMUP"
 
     smc_reason = fxcm_idle_reason or cycle_reason
@@ -294,6 +298,16 @@ def build_status_snapshot(
             connector_state = "lag"
         else:
             connector_state = "down"
+
+    # Узгодження: якщо ticks_alive=true, а market_state=closed (але конектор не down),
+    # то для UI/консолі вважаємо market=open, щоб не вводити в оману.
+    if (
+        market_state == "closed"
+        and price_state == "ok"
+        and connector_state in {"ok", "lag"}
+    ):
+        market_state = "open"
+        market_open = True
 
     # Додаткові FXCM деталі.
     process_state = (

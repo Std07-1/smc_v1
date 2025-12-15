@@ -109,6 +109,20 @@ _NON_CONTRACT_LOG_LIMIT = 5
 _LAST_GATE_ALLOWED: bool | None = None
 _LAST_GATE_REASON: str | None = None
 
+# Якщо FXCM-конектор публікує лише live-бар (complete=false) і не надсилає
+# окремий complete=true на закритті, ми фіналізуємо попередній бар при появі
+# нового open_time. Це дозволяє мати історію в UDS навіть за деградованого
+# `fxcm:status.ohlcv=down`.
+_LAST_LIVE_BAR_BY_PAIR: dict[tuple[str, str], dict[str, Any]] = {}
+_LAST_LIVE_SYNTHETIC_BY_PAIR: dict[tuple[str, str], bool] = {}
+_LAST_FINALIZED_OPEN_TIME_BY_PAIR: dict[tuple[str, str], int] = {}
+
+
+def _reset_live_cache_for_tests() -> None:  # pragma: no cover
+    _LAST_LIVE_BAR_BY_PAIR.clear()
+    _LAST_LIVE_SYNTHETIC_BY_PAIR.clear()
+    _LAST_FINALIZED_OPEN_TIME_BY_PAIR.clear()
+
 
 def _is_ingest_allowed_by_status() -> tuple[bool, str]:
     """Визначає, чи дозволений інжест на основі ``fxcm:status``.
@@ -116,10 +130,13 @@ def _is_ingest_allowed_by_status() -> tuple[bool, str]:
     ВАЖЛИВО: цей "gate" не впливає на запуск процесу — лише на рішення
     "писати бари в UDS чи пропустити пакет".
 
-    Поточна policy:
-    - market=closed -> UDS не поповнюємо (очікуємо відкриття ринку);
-    - market=open, але price!=ok або ohlcv!=ok -> також не пишемо;
-    - status=unknown -> не блокуємо (щоб не ламати cold-start).
+        Поточна policy:
+        - market=closed -> UDS не поповнюємо (очікуємо відкриття ринку);
+        - market=open, але price!=ok -> не пишемо (дані можуть бути сміттям);
+        - ohlcv_state використовується як діагностика й НЕ блокує інжест,
+            бо може бути суперечливим (наприклад, `ohlcv=down`, але повідомлення
+            `fxcm:ohlcv` продовжують приходити).
+        - status=unknown -> не блокуємо (щоб не ламати cold-start).
     """
 
     state = get_fxcm_feed_state()
@@ -133,7 +150,7 @@ def _is_ingest_allowed_by_status() -> tuple[bool, str]:
         if price and price != "ok":
             return False, f"price={price}"
         if ohlcv and ohlcv != "ok":
-            return False, f"ohlcv={ohlcv}"
+            return True, f"ok (ohlcv={ohlcv} ignored)"
         return True, "ok"
 
     # Статус ще не прогрітий або має невідоме значення.
@@ -180,6 +197,16 @@ def _sanitize_bar(bar: Mapping[str, Any]) -> dict[str, Any] | None:
         "close": c,
         "volume": v,
     }
+
+
+def _safe_int(value: Any) -> int | None:
+    """Повертає int або None, якщо привести неможливо."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _bars_payload_to_df(bars: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
@@ -406,14 +433,40 @@ async def _process_payload(
         complete = bar.get("complete", True) is not False
         synthetic = bar.get("synthetic") is True
 
-        if not complete:
-            incomplete_skipped += 1
-            PROM_FXCM_OHLCV_INCOMPLETE_SKIPPED_TOTAL.labels(tf=interval_norm).inc()
-            continue  # live-бар у datastore не пишемо
-
         sanitized = _sanitize_bar(bar)
         if sanitized is None:
             invalid_skipped += 1
+            continue
+
+        if not complete:
+            # Live-бар у datastore напряму не пишемо, але можемо фіналізувати
+            # попередній live-бар, якщо перейшли в новий open_time.
+            pair = (symbol_norm, interval_norm)
+            prev_live = _LAST_LIVE_BAR_BY_PAIR.get(pair)
+            if prev_live is not None:
+                prev_open = _safe_int(prev_live.get("open_time"))
+                cur_open = _safe_int(sanitized.get("open_time"))
+
+                if (
+                    prev_open is not None
+                    and cur_open is not None
+                    and prev_open > 0
+                    and cur_open > 0
+                    and cur_open != prev_open
+                ):
+                    last_final = _LAST_FINALIZED_OPEN_TIME_BY_PAIR.get(pair)
+                    if last_final != prev_open:
+                        normalized_bars.append(prev_live)
+                        synthetic_flags.append(
+                            bool(_LAST_LIVE_SYNTHETIC_BY_PAIR.get(pair, False))
+                        )
+                        _LAST_FINALIZED_OPEN_TIME_BY_PAIR[pair] = prev_open
+
+            _LAST_LIVE_BAR_BY_PAIR[pair] = sanitized
+            _LAST_LIVE_SYNTHETIC_BY_PAIR[pair] = bool(synthetic)
+
+            incomplete_skipped += 1
+            PROM_FXCM_OHLCV_INCOMPLETE_SKIPPED_TOTAL.labels(tf=interval_norm).inc()
             continue
 
         if synthetic:

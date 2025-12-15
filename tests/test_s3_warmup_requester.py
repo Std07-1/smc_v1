@@ -83,7 +83,8 @@ async def test_requester_publishes_warmup_once_then_rate_limits(
     assert payload["type"] == "fxcm_warmup"
     assert payload["symbol"] == "XAUUSD"
     assert payload["tf"] == "1m"
-    assert payload["min_history_bars"] == 2000
+    assert payload["min_history_bars"] == 300
+    assert payload["lookback_bars"] == 300
     assert isinstance(payload["lookback_minutes"], int)
     assert payload["lookback_minutes"] >= 1
     assert payload["reason"] == "insufficient_history"
@@ -108,7 +109,7 @@ async def test_requester_publishes_backfill_when_tail_stale(
 ) -> None:
     fake_redis = _FakeRedis()
 
-    # 2000 барів є, але хвіст старий
+    # Багато барів є, але хвіст старий
     now_ms = 1_700_000_000_000
     last_open_ms = now_ms - (10 * 60_000)
     df = pd.DataFrame(
@@ -123,7 +124,7 @@ async def test_requester_publishes_backfill_when_tail_stale(
                 "volume": 1,
             }
         ]
-        * 2000
+        * 300
     )
     fake_store = _FakeStore(df=df)
 
@@ -145,7 +146,9 @@ async def test_requester_publishes_backfill_when_tail_stale(
     assert len(fake_redis.published) == 1
     assert fake_redis.published[0][0] == "fxcm:commands"
     payload = json.loads(fake_redis.published[0][1])
-    assert payload["type"] == "fxcm_backfill"
+    # Для TF=1m використовуємо fallback на warmup, бо backfill може бути
+    # не підтриманий у конекторі (tick TF).
+    assert payload["type"] == "fxcm_warmup"
     assert payload["reason"] == "stale_tail"
     assert payload["s2"]["history_state"] == "stale_tail"
     assert payload["s2"]["last_open_time_ms"] == last_open_ms
@@ -173,7 +176,7 @@ async def test_requester_resets_active_issue_when_state_becomes_ok(
                 "volume": 1,
             }
         ]
-        * 2000
+        * 300
     )
 
     fake_store = _SequencedStore([None, df_ok, None])

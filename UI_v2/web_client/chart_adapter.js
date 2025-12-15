@@ -61,7 +61,7 @@
         timeScale: {
             borderColor: "rgba(54, 58, 69, 0.9)",
             borderVisible: true,
-            rightOffset: 6,
+            rightOffset: 0,
             barSpacing: 8,
             timeVisible: true,
             secondsVisible: false,
@@ -180,6 +180,13 @@
         }
 
         const chart = LightweightCharts.createChart(container, DEFAULT_CHART_OPTIONS);
+        const tooltipEl =
+            typeof document !== "undefined"
+                ? container
+                    ?.closest(".chart-overlay-shell")
+                    ?.querySelector("#chart-hover-tooltip")
+                : null;
+
         const candles = chart.addCandlestickSeries({
             upColor: CANDLE_COLORS.up,
             wickUpColor: CANDLE_COLORS.up,
@@ -208,12 +215,20 @@
             },
             base: 0,
         });
+        volume.applyOptions({
+            lastValueVisible: false,
+            priceLineVisible: false,
+        });
         const liveVolume = chart.addHistogramSeries({
             priceScaleId: "volume",
             priceFormat: {
                 type: "volume",
             },
             base: 0,
+        });
+        liveVolume.applyOptions({
+            lastValueVisible: false,
+            priceLineVisible: false,
         });
         chart.priceScale("volume").applyOptions({
             scaleMargins: {
@@ -238,6 +253,8 @@
         let oteOverlays = [];
         let barTimeSpanSeconds = 60;
         let chartTimeRange = { min: null, max: null };
+        let lastBarsSignature = null;
+        let autoFitDone = false;
         const priceScaleState = {
             manualRange: null,
             lastAutoRange: null,
@@ -282,6 +299,112 @@
 
         setupPriceScaleInteractions();
         setupResizeHandling();
+        setupHoverTooltip();
+
+        function setupHoverTooltip() {
+            if (!tooltipEl || typeof chart.subscribeCrosshairMove !== "function") {
+                return;
+            }
+
+            let hoverTimer = null;
+            let lastPayload = null;
+
+            const clearHoverTimer = () => {
+                if (hoverTimer) {
+                    clearTimeout(hoverTimer);
+                    hoverTimer = null;
+                }
+            };
+
+            const hideTooltip = () => {
+                clearHoverTimer();
+                tooltipEl.hidden = true;
+                tooltipEl.textContent = "";
+            };
+
+            const formatCompact = (value) => {
+                const num = Number(value);
+                if (!Number.isFinite(num)) return "-";
+                if (Math.abs(num) >= 1000) return String(Math.round(num));
+                if (Math.abs(num) >= 1) return num.toFixed(2);
+                return num.toPrecision(4);
+            };
+
+            const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+            chart.subscribeCrosshairMove((param) => {
+                if (!param || !param.time || !param.point) {
+                    hideTooltip();
+                    return;
+                }
+
+                const seriesData = param.seriesData;
+                const candle = seriesData?.get?.(candles) || seriesData?.get?.(liveCandles) || null;
+                const volRow =
+                    seriesData?.get?.(liveVolume) ||
+                    seriesData?.get?.(volume) ||
+                    null;
+
+                if (!candle) {
+                    hideTooltip();
+                    return;
+                }
+
+                lastPayload = {
+                    point: param.point,
+                    candle,
+                    volume: volRow?.value ?? null,
+                };
+
+                clearHoverTimer();
+                tooltipEl.hidden = true;
+
+                hoverTimer = setTimeout(() => {
+                    const payload = lastPayload;
+                    if (!payload) {
+                        hideTooltip();
+                        return;
+                    }
+
+                    const price = payload.candle?.close;
+                    const vol = payload.volume;
+                    tooltipEl.textContent = `Ціна: ${formatCompact(price)}\nОбсяг: ${formatCompact(vol)}`;
+
+                    // Перетворимо \n на реальні рядки без innerHTML.
+                    tooltipEl.style.whiteSpace = "pre";
+                    tooltipEl.hidden = false;
+
+                    const shell = tooltipEl.offsetParent || tooltipEl.parentElement;
+                    if (!shell || typeof shell.getBoundingClientRect !== "function") {
+                        return;
+                    }
+                    const shellRect = shell.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+
+                    // Координати param.point — відносно області графіка (container).
+                    const baseLeft = (containerRect.left - shellRect.left) + payload.point.x + 12;
+                    const baseTop = (containerRect.top - shellRect.top) + payload.point.y + 12;
+
+                    const tipRect = tooltipEl.getBoundingClientRect();
+                    const maxLeft = shellRect.width - tipRect.width - 8;
+                    const maxTop = shellRect.height - tipRect.height - 8;
+                    const left = clamp(baseLeft, 8, Math.max(8, maxLeft));
+                    const top = clamp(baseTop, 8, Math.max(8, maxTop));
+
+                    tooltipEl.style.left = `${left}px`;
+                    tooltipEl.style.top = `${top}px`;
+                }, 1000);
+            });
+
+            container.addEventListener("mouseleave", hideTooltip);
+            interactionCleanup.push(() => container.removeEventListener("mouseleave", hideTooltip));
+            interactionCleanup.push(() => {
+                clearHoverTimer();
+                if (tooltipEl) {
+                    tooltipEl.hidden = true;
+                }
+            });
+        }
 
         function setBars(bars) {
             resetManualPriceScale({ silent: true });
@@ -296,6 +419,8 @@
                 recentVolumeMax = 0;
                 recentVolumes = [];
                 chartTimeRange = { min: null, max: null };
+                lastBarsSignature = null;
+                autoFitDone = false;
                 return;
             }
 
@@ -315,6 +440,21 @@
 
             const candleData = normalized.map((row) => row.candle);
             const volumeValues = normalized.map((row) => row.volume);
+
+            const signature = {
+                firstTime: candleData[0]?.time ?? null,
+                lastTime: candleData[candleData.length - 1]?.time ?? null,
+                length: candleData.length,
+            };
+            const looksLikeNewDataset =
+                !lastBarsSignature ||
+                signature.firstTime !== lastBarsSignature.firstTime ||
+                signature.length < lastBarsSignature.length ||
+                signature.lastTime < lastBarsSignature.lastTime;
+            if (looksLikeNewDataset) {
+                autoFitDone = false;
+            }
+
             recentVolumes = volumeValues.slice(Math.max(0, volumeValues.length - VOLUME_WINDOW_SIZE));
             recentVolumeMax = computeRecentMaxVolume(volumeValues);
 
@@ -360,7 +500,12 @@
             }
             updateBarTimeSpanFromBars(candleData);
             updateTimeRangeFromBars(candleData);
-            chart.timeScale().fitContent();
+
+            if (!autoFitDone) {
+                chart.timeScale().fitContent();
+                autoFitDone = true;
+            }
+            lastBarsSignature = signature;
         }
 
         function setLiveBar(bar) {
@@ -698,6 +843,8 @@
             lastLiveVolume = 0;
             recentVolumeMax = 0;
             recentVolumes = [];
+            lastBarsSignature = null;
+            autoFitDone = false;
             clearEvents();
             clearPools();
             clearRanges();

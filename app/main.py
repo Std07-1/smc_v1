@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 import os
 import subprocess
@@ -63,6 +64,19 @@ if not logger.handlers:
 load_dotenv()
 
 _FALSE_ENV_VALUES = {"0", "false", "no", "off"}
+
+
+def _is_address_in_use_error(exc: BaseException) -> bool:
+    """Повертає True, якщо виняток означає "порт зайнятий"."""
+
+    err = getattr(exc, "errno", None)
+    if err in {errno.EADDRINUSE, 10048}:
+        return True
+    text = str(exc).lower()
+    return (
+        "address already in use" in text
+        or "only one usage of each socket address" in text
+    )
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -364,11 +378,30 @@ async def _run_ui_v2_http_server(
         host=host,
         port=port,
     )
+
+    retry_delay_sec = 5.0
     try:
-        await server.run()
-    except asyncio.CancelledError:
-        logger.info("[UI_v2] HTTP server task cancelled")
-        raise
+        while True:
+            try:
+                await server.run()
+                return
+            except asyncio.CancelledError:
+                logger.info("[UI_v2] HTTP server task cancelled")
+                raise
+            except OSError as exc:
+                if _is_address_in_use_error(exc):
+                    logger.error(
+                        "[UI_v2] HTTP server не зміг забіндитись на %s:%d (порт зайнятий). "
+                        "Повторю спробу через %.0fс. "
+                        "(Підказка: змініть ENV SMC_VIEWER_HTTP_PORT або зупиніть процес, що слухає цей порт.)",
+                        host,
+                        port,
+                        retry_delay_sec,
+                    )
+                    await asyncio.sleep(retry_delay_sec)
+                    retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
+                    continue
+                raise
     finally:
         await redis.close()
 
@@ -391,11 +424,30 @@ async def _run_ui_v2_ws_server(
         host=host,
         port=port,
     )
+
+    retry_delay_sec = 5.0
     try:
-        await server.run()
-    except asyncio.CancelledError:
-        logger.info("[UI_v2] WS server task cancelled")
-        raise
+        while True:
+            try:
+                await server.run()
+                return
+            except asyncio.CancelledError:
+                logger.info("[UI_v2] WS server task cancelled")
+                raise
+            except OSError as exc:
+                if _is_address_in_use_error(exc):
+                    logger.error(
+                        "[UI_v2] WS server не зміг забіндитись на %s:%d (порт зайнятий). "
+                        "Повторю спробу через %.0fс. "
+                        "(Підказка: змініть ENV SMC_VIEWER_WS_PORT або зупиніть процес, що слухає цей порт.)",
+                        host,
+                        port,
+                        retry_delay_sec,
+                    )
+                    await asyncio.sleep(retry_delay_sec)
+                    retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
+                    continue
+                raise
     finally:
         await redis.close()
 
@@ -414,11 +466,30 @@ async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
         host=host,
         port=port,
     )
+
+    retry_delay_sec = 5.0
     try:
-        await server.run()
-    except asyncio.CancelledError:
-        logger.info("[UI_v2] FXCM OHLCV WS server task cancelled")
-        raise
+        while True:
+            try:
+                await server.run()
+                return
+            except asyncio.CancelledError:
+                logger.info("[UI_v2] FXCM OHLCV WS server task cancelled")
+                raise
+            except OSError as exc:
+                if _is_address_in_use_error(exc):
+                    logger.error(
+                        "[UI_v2] FXCM OHLCV WS server не зміг забіндитись на %s:%d (порт зайнятий). "
+                        "Повторю спробу через %.0fс. "
+                        "(Підказка: змініть ENV FXCM_OHLCV_WS_PORT або зупиніть процес, що слухає цей порт.)",
+                        host,
+                        port,
+                        retry_delay_sec,
+                    )
+                    await asyncio.sleep(retry_delay_sec)
+                    retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
+                    continue
+                raise
     finally:
         await redis.close()
 

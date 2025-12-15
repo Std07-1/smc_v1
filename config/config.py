@@ -207,8 +207,8 @@ PRICE_TICK_DROP_SECONDS = 120
 # S2 поріг stale_tail: age_ms > stale_k * tf_ms
 SMC_S2_STALE_K: float = 3.0
 
-# S3 requester (warmup/backfill) — вимкнено за замовчуванням.
-SMC_S3_REQUESTER_ENABLED: bool = False
+# S3 requester (warmup/backfill) — увімкнено для авто-прогріву/бекфілу.
+SMC_S3_REQUESTER_ENABLED: bool = True
 SMC_S3_POLL_SEC: int = 60
 SMC_S3_COOLDOWN_SEC: int = 900
 SMC_S3_COMMANDS_CHANNEL: str = FXCM_COMMANDS_CHANNEL

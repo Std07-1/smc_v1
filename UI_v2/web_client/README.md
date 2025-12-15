@@ -155,6 +155,15 @@ FXCM (dev-міст, namespace тут не використовується):
 
 - docs/ui_v2_fullscreen_chart_layout.md
 
+## Mobile chart: «пливе вниз»
+
+Якщо на мобільному в режимі **«Графік»** чарт «дрейфує вниз», це майже завжди пов’язано з нестабільною висотою viewport
+(address bar/toolbar) та/або некоректним flex-контуром слота, куди переноситься `.card-chart`.
+
+Канонічний фікс описано тут:
+
+- docs/ui_v2_mobile_chart_drift_fix.md
+
 - У каталозі лежить [dev_chart_playground.html](dev_chart_playground.html) — це ізольований стенд для швидких експериментів із `chart_adapter.js`.
 - Playground не використовується у продакшн-шляху (`index.html` його не імпортує); запуск той самий, але відкриваємо `http://127.0.0.1:9000/dev_chart_playground.html?symbol=xauusd`.
 - Playground бере історію через `GET /smc-viewer/ohlcv` та може слухати live через FXCM WS міст (локальний dev-інтерфейс на порту 8082; у публічному режимі не доступний і не прокситься).

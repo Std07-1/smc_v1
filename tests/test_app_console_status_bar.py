@@ -43,6 +43,31 @@ def test_build_snapshot_prefers_smc_meta_pipeline_state() -> None:
     assert snap["smc_reason"] == "fxcm_market_closed"
 
 
+def test_build_snapshot_does_not_show_idle_when_mode_cold() -> None:
+    smc_payload = {
+        "meta": {
+            "pipeline_state": "COLD",
+            "cycle_reason": "smc_idle_fxcm_status",
+            "fxcm_idle_reason": "fxcm_price_stale",
+        },
+        "fxcm": {
+            "market_state": "open",
+            "price_state": "stale",
+            "ohlcv_state": "ok",
+            "lag_seconds": 0.0,
+        },
+    }
+    snap = build_status_snapshot(
+        smc_payload=smc_payload,
+        fxcm_state=None,
+        redis_connected=True,
+        sleep_for=0.5,
+    )
+    assert snap["mode"] == "COLD"
+    assert snap["smc_state"] == "WARMUP"
+    assert snap["smc_reason"] == "fxcm_price_stale"
+
+
 def test_build_snapshot_falls_back_to_fxcm_feed_state() -> None:
     fxcm_state = FxcmFeedState(
         market_state="open",

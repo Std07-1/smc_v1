@@ -78,21 +78,105 @@
 - Зафіксовано правило HMAC: `sig` рахується/перевіряється лише по `{"symbol","tf","bars"}` (root-поля на кшталт `source` не входять у підпис).
 - Додано/уточнено огляд каналів `fxcm:status`, `fxcm:price_tik` та `fxcm:commands` (включно з `fxcm_set_universe` як частиною контракту конектора).
 - Прибрано двозначність щодо cadence `fxcm:price_tik`: це cadence конектора, а не «таймер оновлення UI».
-- Оновлено `.github/copilot-memory.md`: live-канали зафіксовано як `fxcm:ohlcv`/`fxcm:price_tik`/`fxcm:status`, а `fxcm:heartbeat`/`fxcm:market_status` — як опційна телеметрія.
+
+---
+
+## 2025-12-14 — UI_v2 (Web): десктоп-полірування статусів/графіка
+
+**Що змінено**
+
+- Розділено «транспортний» статус (WS) та стан ринку FX (`market_state`) у два окремі pill-и, щоб уникнути суперечливих повідомлень.
+- Прибрано подвійні рамки в зоні графіка: контейнер графіка більше не малює внутрішній бордер.
+- Прибрано зайві відступи у non-fullscreen: `card-chart` без padding, щоб графік займав максимум площі в межах єдиної рамки.
+- Прибрано «0» бейдж на шкалі обʼєму: `lastValueVisible/priceLineVisible` вимкнені для histogram series.
+- Зменшено правий «порожній» відступ у time scale: `rightOffset=0`; `fitContent()` виконується лише один раз на новий датасет.
+- Виправлено ситуацію, коли поточна ціна показувалась як `-`: додано fallback на close останньої complete-свічки.
+- Додано hover-підказку по свічці (ціна close + обсяг) з затримкою ~1с, щоб дивитись обсяги без шуму на осях.
+- Повернуто очікувану поведінку для поля «Ціна»: якщо ціни в payload немає, показуємо порожньо (а не `-`).
+
+---
+
+## 2025-12-15 — SMC pipeline: узгодження FX market_state з ticks_alive
+
+**Що змінено**
+
+- Якщо `fxcm:status` дає суперечливу комбінацію `market=closed` + `price_state=ok` (ticks alive), SMC більше не переходить у `IDLE fxcm_market_closed` при свіжому статусі.
+- У console status bar у такій ситуації показуємо `market=open`, щоб не вводити в оману (за умови, що конектор не `down`).
 
 **Де**
 
-- docs/fxcm_integration.md
-- docs/fxcm_contract_audit.md
-- docs/uds_smc_update_2025-12-13.md
-- docs/stage1_pipeline.md
-- docs/fxcm_status_of_conector.md
-- README.md
-- .github/copilot-memory.md
+- app/smc_producer.py
+- app/console_status_bar.py
+- tests/test_app_smc_producer_fxcm_idle.py
 
 **Тести/перевірка**
 
-- Не запускалось (зміни лише в документації).
+- Запущено таргетно: `pytest tests/test_app_smc_producer_fxcm_idle.py`.
+
+---
+
+## 2025-12-15 — SMC: толерантність `stale_tail` у вихідні + requester/порти UI_v2
+
+**Що змінено**
+
+- Додано helper `_history_ok_for_compute(..., allow_stale_tail)` і дозволено `stale_tail` як OK лише коли фід деградований: `market!=open` або `ohlcv_state in {delayed, down}`; додано прапорець `meta.s2_stale_tail_expected`.
+- У S3 requester: для `stale_tail` на `1m` відправляємо `fxcm_warmup` (а не `fxcm_backfill`), щоб не слати команду, яку конектор може не підтримувати.
+- У `app.main`: якщо порти UI_v2 (HTTP/WS/FXCM WS) зайняті, пайплайн більше не завершується — логуються попередження і процес продовжує працювати.
+- Додано утиліту діагностики `tools.debug_fxcm_channels` (NUMSUB + лічильники повідомлень за заданий інтервал).
+- UI_v2: виправлено побудову WS base URL для dev-режиму (HTTP на :8080 → WS на :8081), додано fallback для `file://`, та підтримку відкриття UI через приватну LAN IP (RFC1918) без вимкнення FXCM dev WS.
+- FXCM інжестор: `fxcm:status.ohlcv=down` більше не блокує запис; якщо конектор надсилає лише `complete=false`, інжестор фіналізує попередній live-бар при появі нового `open_time` і пише його в UDS (щоб UI мав історію свічок).
+
+**Де**
+
+- app/smc_producer.py
+- app/fxcm_warmup_requester.py
+- app/main.py
+- config/config.py
+- tools/debug_fxcm_channels.py
+- data/fxcm_ingestor.py
+- UI_v2/web_client/app.js
+- tests/test_app_smc_producer_history_gate.py
+- tests/test_s3_warmup_requester.py
+- tests/test_fxcm_schema_and_ingestor_contract.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_smc_producer_history_gate.py tests/test_s3_warmup_requester.py tests/test_app_console_status_bar.py tests/test_app_smc_producer_fxcm_idle.py` → `17 passed`.
+- Запущено таргетно: `pytest tests/test_fxcm_schema_and_ingestor_contract.py tests/test_ingestor.py tests/test_fxcm_ingestor_universe_filter.py` → `21 passed`.
+
+---
+
+## 2025-12-15 — SMC: прибрано S2-блокування (always-on) + S3 requester просить останні 300 барів
+
+**Що змінено**
+
+- Прибрано жорсткий S2-gate в `smc_producer`: цикл більше не робить early-continue з `cycle_reason=smc_insufficient_data` через `insufficient/stale_tail`.
+- `process_smc_batch` переведено в деградований режим: якщо OHLCV немає/замало,
+  все одно публікуємо `current_price` з тика (`price_stream`) і прозорий `signal`
+  (`SMC_NO_OHLCV` / `SMC_WARMUP`), щоб UI не був порожнім.
+- Вирівняно логіку lookback: `smc_producer` тримає `min_bars/target_bars` у межах
+  `SMC_RUNTIME_PARAMS.limit` (типово 300) і не «висить» на великих `contract_min_bars`.
+- S3 requester більше не намагається витягувати великі обʼєми історії по контракту:
+  тепер для команд warmup/backfill просить «останні N барів» (N береться з
+  `SMC_RUNTIME_PARAMS.limit`, дефолт 300) і додає поле `lookback_bars`
+  (залишено `lookback_minutes` для сумісності).
+- Оновлено тести S3 requester під нову семантику (300 барів).
+
+**Де**
+
+- app/smc_producer.py
+- app/fxcm_warmup_requester.py
+- tests/test_s3_warmup_requester.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_s3_warmup_requester.py tests/test_s2_history_state.py` → `8 passed`.
+
+**Примітки/ризики**
+
+- Це змінює поведінку “готовності”: тепер SMC працює always-on і може публікувати
+  деградовані стани без OHLCV. Для повних SMC hints все одно потрібна історія
+  (її має забезпечити конектор/UDS).
 
 ---
 
@@ -192,6 +276,16 @@
 - UI_v2 (chart): додано невеликий нижній padding контейнера графіка, щоб не обрізалась нижня time scale.
 - UI_v2 (fullscreen): виправлено «пливе графік» через лейаут — у fullscreen повністю приховано контроль висоти
   і дозволено контейнеру чарта рости в flex (через flex-обгортку), щоб не було обрізання/дрейфу.
+- UI_v2 (fullscreen/desktop): режим `.card-chart--fullscreen` зроблено edge-to-edge: `inset:0`, без рамок/паддінгів/box-shadow,
+  прибрано подвійну рамку (border/radius) у внутрішньому контейнері графіка.
+- UI_v2 (mobile): переведено макет на flex-колонку (шапка → чарт (flex:1) → bottom-nav), щоб чарт реально займав екран
+  і не було великої «порожнечі» під ним; зменшено висоту mobile header та bottom-nav.
+- UI_v2 (mobile): висоту для евристики `--mobile-chart-height` беремо з `visualViewport.height` (fallback `innerHeight`),
+  щоб на Android адресний рядок менше ламав розрахунки.
+- UI_v2 (mobile/chart): прибрано «пливе вниз» — `#chart-slot` зроблено flex:1, бо `.card-chart` переноситься всередину слота;
+  також прибрано `transition: height` у chart-контейнері на мобілці.
+- UI_v2 (mobile/chart): зафіксовано канонічний фікс «пливе вниз» через `visualViewport` → `--app-vh` та px-висоту
+  `--mobile-chart-height` (підписки на `visualViewport.resize/scroll`), щоб прибрати дрейф при зміні адресного рядка/toolbar.
 - Підкручено тему графіка (фон/сітка/шкали/кросхейр/кольори свічок і volume) у бік «TV-like», без буквального 1:1 копіювання.
 
 **Де**

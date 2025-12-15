@@ -38,7 +38,7 @@ from data.fxcm_status_listener import get_fxcm_feed_state
 from data.unified_store import UnifiedDataStore
 from UI.publish_smc_state import publish_smc_state
 from utils.rich_console import get_rich_console
-from utils.utils import create_error_signal, create_no_data_signal
+from utils.utils import create_error_signal
 
 if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгів
     from smc_core.engine import SmcCoreEngine
@@ -53,6 +53,23 @@ if not logger.handlers:
 
 _SMC_ENGINE: SmcCoreEngine | None = None
 _SMC_PLAIN_SERIALIZER: Callable[[Any], dict[str, Any] | None] | None = None
+
+
+def _history_ok_for_compute(*, history_state: str, allow_stale_tail: bool) -> bool:
+    """Повертає True, якщо історія достатня для обчислень SMC.
+
+    UX/операційна вимога: у неробочі години/вихідні tail може бути "stale" за
+    простим wall-clock критерієм, але ми все одно хочемо показати UI останній
+    відомий стан (не порожній екран). Тому stale_tail дозволяємо лише коли
+    ринок не постачає OHLCV (market!=open або ohlcv delayed/down).
+    """
+
+    state = str(history_state or "unknown").strip().lower()
+    if state == "ok":
+        return True
+    if allow_stale_tail and state == "stale_tail":
+        return True
+    return False
 
 
 async def _get_smc_engine() -> SmcCoreEngine | None:
@@ -267,7 +284,21 @@ def _should_run_smc_cycle_by_fxcm_status() -> tuple[bool, str]:
     price = (state.price_state or "").strip().lower() or ""
     ohlcv = (state.ohlcv_state or "").strip().lower() or ""
 
+    status_ts = None
+    try:
+        if state.status_ts is not None:
+            status_ts = float(state.status_ts)
+    except (TypeError, ValueError):
+        status_ts = None
+    status_age_sec = None
+    if status_ts is not None:
+        status_age_sec = max(0.0, time.time() - status_ts)
+
     if market == "closed":
+        # Інколи конектор може віддати суперечливий статус: market=closed, але ticks_alive.
+        # У такому разі не блокуємо SMC, якщо статус свіжий і price_state=ok.
+        if price == "ok" and (status_age_sec is None or status_age_sec <= 60.0):
+            return True, "fxcm_market_closed_but_ticks_ok"
         return False, "fxcm_market_closed"
     if market == "open":
         if price and price != "ok":
@@ -344,29 +375,9 @@ async def process_smc_batch(
     for symbol in symbols:
         sym = str(symbol).lower()
         try:
-            df = await store.get_df(sym, timeframe, limit=lookback)
-            if df is None or df.empty or len(df) < max(5, lookback // 2):
-                state_manager.update_asset(sym, create_no_data_signal(sym))
-                continue
-
             stats: dict[str, Any] = {}
-            try:
-                stats["current_price"] = float(df["close"].iloc[-1])
-            except Exception:
-                stats["current_price"] = None
-            stats["smc_df_rows"] = int(len(df))
-            stats["smc_timeframe"] = timeframe
-            if "volume" in df.columns:
-                try:
-                    stats["volume"] = float(df["volume"].iloc[-1])
-                except Exception:
-                    pass
-            if "timestamp" in df.columns:
-                try:
-                    stats["timestamp"] = df["timestamp"].iloc[-1]
-                except Exception:
-                    pass
 
+            # Навіть якщо OHLCV історії замало — хочемо показати останню ціну з тика.
             price_tick = store.get_price_tick(sym)
             if isinstance(price_tick, dict):
                 stats.update(
@@ -383,6 +394,51 @@ async def process_smc_batch(
                 if price_tick.get("mid") is not None:
                     stats["current_price"] = float(price_tick["mid"])
                     stats["price_source"] = "price_stream"
+
+            df = await store.get_df(sym, timeframe, limit=lookback)
+            if df is None or df.empty:
+                state_manager.update_asset(
+                    sym,
+                    {
+                        "signal": "SMC_NO_OHLCV",
+                        "state": ASSET_STATE["NORMAL"],
+                        K_STATS: stats,
+                        "hints": ["SMC: немає OHLCV — показуємо лише тики"],
+                    },
+                )
+                continue
+
+            try:
+                stats["current_price"] = float(df["close"].iloc[-1])
+            except Exception:
+                stats.setdefault("current_price", None)
+            stats["smc_df_rows"] = int(len(df))
+            stats["smc_timeframe"] = timeframe
+            if "volume" in df.columns:
+                try:
+                    stats["volume"] = float(df["volume"].iloc[-1])
+                except Exception:
+                    pass
+            if "timestamp" in df.columns:
+                try:
+                    stats["timestamp"] = df["timestamp"].iloc[-1]
+                except Exception:
+                    pass
+
+            # Якщо історії замало — не намагаємось рахувати SMC hint, але публікуємо stats.
+            if len(df) < max(5, lookback // 2):
+                state_manager.update_asset(
+                    sym,
+                    {
+                        "signal": "SMC_WARMUP",
+                        "state": ASSET_STATE["NORMAL"],
+                        K_STATS: stats,
+                        "hints": [
+                            "SMC: недостатньо історії для підказок — очікуємо warmup"
+                        ],
+                    },
+                )
+                continue
 
             t0 = time.perf_counter()
             smc_hint = await _build_smc_hint(symbol=sym, store=store)
@@ -444,6 +500,14 @@ async def smc_producer(
 
     contract_min_bars = contract_min_bars or {}
 
+    # UX: тримаємо lookback у межах SMC runtime limit (типово 300),
+    # щоб не блокуватися на великих contract min_history_bars.
+    try:
+        desired_limit = int(SMC_RUNTIME_PARAMS.get("limit", lookback) or lookback)
+    except Exception:
+        desired_limit = int(lookback)
+    desired_limit = max(1, int(desired_limit))
+
     min_ready_assets = (
         max(1, int(len(assets_current) * min_ready_pct)) if assets_current else 1
     )
@@ -457,9 +521,12 @@ async def smc_producer(
         mins: list[int] = []
         targets: list[int] = []
         for sym in assets_current:
-            min_bars = int(contract_min_bars.get(sym, 0) or 0)
-            min_bars = max(1, min_bars) if min_bars > 0 else max(1, int(lookback))
-            target_bars = max(int(lookback), min_bars)
+            contract_bars = int(contract_min_bars.get(sym, 0) or 0)
+            if contract_bars > 0:
+                min_bars = max(1, min(int(contract_bars), desired_limit))
+            else:
+                min_bars = desired_limit
+            target_bars = desired_limit
             min_ready_bars_by_symbol[sym] = min_bars
             target_bars_by_symbol[sym] = target_bars
             mins.append(min_bars)
@@ -549,12 +616,22 @@ async def smc_producer(
 
         stale_k = float(SMC_S2_STALE_K)
 
+        feed = get_fxcm_feed_state()
+        market_state = str(
+            getattr(feed, "market_state", "unknown") or "unknown"
+        ).lower()
+        ohlcv_state = str(getattr(feed, "ohlcv_state", "unknown") or "unknown").lower()
+        allow_stale_tail = market_state != "open" or ohlcv_state in {"delayed", "down"}
+
         for symbol in assets_current:
             try:
                 sym_norm = str(symbol).lower()
-                min_bars = int(contract_min_bars.get(sym_norm, 0) or 0)
-                min_bars = max(1, min_bars) if min_bars > 0 else max(1, int(lookback))
-                target_bars = max(int(lookback), min_bars)
+                contract_bars = int(contract_min_bars.get(sym_norm, 0) or 0)
+                if contract_bars > 0:
+                    min_bars = max(1, min(int(contract_bars), desired_limit))
+                else:
+                    min_bars = desired_limit
+                target_bars = desired_limit
 
                 min_ready_bars_by_symbol[sym_norm] = min_bars
                 target_bars_by_symbol[sym_norm] = target_bars
@@ -604,14 +681,20 @@ async def smc_producer(
                     "age_ms": s2.age_ms,
                 }
 
-                if bars_count >= min_bars and s2.state == "ok":
+                if bars_count >= min_bars and _history_ok_for_compute(
+                    history_state=s2.state,
+                    allow_stale_tail=allow_stale_tail,
+                ):
                     ready_assets_min_count += 1
                     ready_symbols_min.append(sym_norm)
                 if (
                     df_tmp is not None
                     and not df_tmp.empty
                     and bars_count >= target_bars
-                    and s2.state == "ok"
+                    and _history_ok_for_compute(
+                        history_state=s2.state,
+                        allow_stale_tail=allow_stale_tail,
+                    )
                 ):
                     ready_assets.append(symbol)
             except Exception:
@@ -628,6 +711,10 @@ async def smc_producer(
         active_age_ms: int | None = None
         for sym, hist in sorted(history_by_symbol.items()):
             state = str((hist or {}).get("history_state") or "unknown")
+            if state == "stale_tail" and allow_stale_tail:
+                # У вихідні/поза сесією stale_tail очікуваний за wall-clock критерієм.
+                s2_ok_assets += 1
+                continue
             if state == "ok":
                 s2_ok_assets += 1
                 continue
@@ -653,7 +740,7 @@ async def smc_producer(
         if history_by_symbol:
             for sym, hist in sorted(history_by_symbol.items()):
                 state = str((hist or {}).get("history_state") or "unknown")
-                if state == "stale_tail":
+                if state == "stale_tail" and not allow_stale_tail:
                     active_symbol = sym
                     active_state = state
                     age_raw = hist.get("age_ms") if isinstance(hist, dict) else None
@@ -690,6 +777,7 @@ async def smc_producer(
             "s2_active_state": active_state,
             "s2_active_age_ms": active_age_ms,
             "s2_stale_k": stale_k,
+            "s2_stale_tail_expected": bool(allow_stale_tail),
         }
         s2_meta_last = dict(s2_meta)
 
@@ -699,63 +787,10 @@ async def smc_producer(
         pipeline_min_ready_bars = min(mins) if mins else None
         pipeline_target_bars = max(targets) if targets else None
 
-        # Gate: не стартуємо обчислення, поки недостатньо активів досягли min_ready_bars.
-        if ready_assets_min_count < min_ready_assets:
-            for symbol in assets_current:
-                sym_norm = str(symbol).lower()
-                bars_count = int(bars_by_symbol.get(sym_norm, 0))
-                min_bars = int(min_ready_bars_by_symbol.get(sym_norm, 0) or 0)
-                hist = history_by_symbol.get(sym_norm) or {}
-                hist_state = str(hist.get("history_state") or "unknown")
-                if bars_count < max(1, min_bars) or hist_state != "ok":
-                    payload = create_no_data_signal(sym_norm)
-                    stats = payload.get(K_STATS)
-                    if not isinstance(stats, dict):
-                        stats = {}
-                        payload[K_STATS] = stats
-                    stats.update(hist)
-                    # Додатковий хінт для прозорості.
-                    hints = payload.get("hints")
-                    if isinstance(hints, list) and hist_state == "stale_tail":
-                        hints.append("SMC: хвіст OHLCV протух (потрібен backfill)")
-                    state_manager.update_asset(sym_norm, payload)
-
-            _apply_local_pipeline_stats(
-                state_manager=state_manager,
-                bars_by_symbol=bars_by_symbol,
-                min_ready_bars_by_symbol=min_ready_bars_by_symbol,
-                target_bars_by_symbol=target_bars_by_symbol,
-            )
-            pipeline_meta = _build_pipeline_meta(
-                assets_total=len(assets_current),
-                ready_assets=len(ready_assets),
-                min_ready=min_ready_assets,
-                ready_assets_min=ready_assets_min_count,
-                pipeline_min_ready_bars=pipeline_min_ready_bars,
-                pipeline_target_bars=pipeline_target_bars,
-            )
-            capacity_meta = _build_capacity_meta(
-                ready_assets=ready_assets_min_count,
-                processed_assets=0,
-            )
-            await publish_smc_state(
-                state_manager,
-                store,
-                redis_conn,
-                meta_extra={
-                    "cycle_seq": cycle_seq,
-                    "cycle_started_ts": datetime.utcnow().isoformat() + "Z",
-                    "cycle_reason": "smc_insufficient_data",
-                    **pipeline_meta,
-                    **capacity_meta,
-                    **s2_meta,
-                },
-            )
-            await asyncio.sleep(interval_sec)
-            continue
-
+        # Вимога UX: не блокуємо SMC на S2 "insufficient/stale_tail".
+        # Навіть коли OHLCV недостатньо, ми все одно публікуємо стан (зокрема last price з тика).
         selected_symbols, skipped_symbols = _select_symbols_for_cycle(
-            ready_symbols=ready_symbols_min,
+            ready_symbols=[str(s).lower() for s in assets_current],
             max_per_cycle=SMC_MAX_ASSETS_PER_CYCLE,
         )
 

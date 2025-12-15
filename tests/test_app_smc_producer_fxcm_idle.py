@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import time
+
 from app.smc_producer import _should_run_smc_cycle_by_fxcm_status
 from data import fxcm_status_listener as status_listener
 from data.fxcm_models import parse_fxcm_aggregated_status
@@ -14,13 +16,13 @@ from data.fxcm_models import parse_fxcm_aggregated_status
 def test_smc_cycle_idle_when_market_closed() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
     status = parse_fxcm_aggregated_status(
-        {"ts": 1, "market": "closed", "price": "ok", "ohlcv": "ok"}
+        {"ts": time.time(), "market": "closed", "price": "ok", "ohlcv": "ok"}
     )
     status_listener._apply_status_snapshot(status)
 
     should_run, reason = _should_run_smc_cycle_by_fxcm_status()
-    assert should_run is False
-    assert reason == "fxcm_market_closed"
+    assert should_run is True
+    assert reason == "fxcm_market_closed_but_ticks_ok"
 
 
 def test_smc_cycle_runs_when_market_open_ok() -> None:

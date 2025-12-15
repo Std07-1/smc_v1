@@ -27,6 +27,7 @@ except Exception:  # pragma: no cover
 from app.fxcm_history_state import compute_history_status, timeframe_to_ms
 from config.config import (
     FXCM_COMMANDS_CHANNEL,
+    SMC_RUNTIME_PARAMS,
     SMC_S2_STALE_K,
     SMC_S3_COMMANDS_CHANNEL,
     SMC_S3_COOLDOWN_SEC,
@@ -68,6 +69,20 @@ def _compute_lookback_minutes(*, tf_ms: int, min_history_bars: int) -> int:
     bars = max(1, int(min_history_bars))
     minutes = math.ceil((bars * tf_ms) / 60_000.0)
     return max(1, int(minutes))
+
+
+def _desired_lookback_bars() -> int:
+    """Повертає бажаний lookback у барах для warmup/backfill.
+
+    Вимога UX: requester має просити «останні відомі N свічок» (типово 300),
+    щоб не блокувати систему на великих contract-порогах.
+    """
+
+    try:
+        limit = int((SMC_RUNTIME_PARAMS or {}).get("limit", 300) or 300)
+    except Exception:
+        limit = 300
+    return max(1, int(limit))
 
 
 @dataclass(slots=True)
@@ -129,8 +144,7 @@ class FxcmWarmupRequester:
             if not sym or not tf_norm:
                 continue
 
-            min_bars = int(self.min_history_bars_by_symbol.get(sym, 0) or 0)
-            min_bars = max(1, min_bars)
+            min_bars = _desired_lookback_bars()
 
             status = await compute_history_status(
                 store=self.store,
@@ -151,7 +165,13 @@ class FxcmWarmupRequester:
                 cmd_type = "fxcm_warmup"
                 reason = "insufficient_history"
             elif status.needs_backfill:
-                cmd_type = "fxcm_backfill"
+                # Практика інтеграції: у FXCM конекторі backfill для 1m може бути не
+                # реалізований (позначається як tick TF). Щоб не «стріляти в нікуди»,
+                # для 1m просимо warmup з lookback_minutes.
+                if tf_norm == "1m":
+                    cmd_type = "fxcm_warmup"
+                else:
+                    cmd_type = "fxcm_backfill"
                 reason = "stale_tail"
 
             if not cmd_type:
@@ -172,6 +192,7 @@ class FxcmWarmupRequester:
                 "symbol": sym.upper(),
                 "tf": tf_norm,
                 "min_history_bars": min_bars,
+                "lookback_bars": min_bars,
                 "lookback_minutes": lookback_minutes,
                 "reason": reason,
                 "s2": {

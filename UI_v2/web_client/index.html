@@ -21,6 +21,7 @@
         </div>
         <div class="header-right">
             <span id="ws-status" class="status-pill status-disconnected">Відключено</span>
+            <span id="market-status" class="status-pill status-stale">FX: -</span>
             <div class="status-meta">
                 <span class="status-meta__item" id="payload-ts">Payload ts: -</span>
                 <span class="status-meta__item" id="payload-lag">Lag (s): -</span>
@@ -112,6 +113,7 @@
             <section class="card card-chart" aria-label="Графік">
                 <div class="chart-overlay-shell" aria-label="Графік">
                     <div id="chart-container" class="chart-demo-container"></div>
+                    <div id="chart-hover-tooltip" class="chart-hover-tooltip" hidden></div>
                     <div class="chart-height-control chart-height-control--overlay" aria-label="Висота чарта">
                         <input type="range" id="chart-height-range" min="600" max="900" step="20" value="600"
                             aria-label="Висота" />

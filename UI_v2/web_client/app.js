@@ -2,6 +2,17 @@
 // Публічний режим: працюємо в same-origin (через reverse-proxy), без жорстких 127.0.0.1:8080/8081.
 function buildHttpBaseUrl() {
     try {
+        // Якщо відкрили фронтенд як file://, origin буде "null" — підставляємо локальний бекенд.
+        if (window.location.protocol === "file:") {
+            return "http://127.0.0.1:8080";
+        }
+
+        // Дозволяємо явний override для dev/діагностики.
+        const params = new URLSearchParams(window.location.search || "");
+        const override = (params.get("http_base") || "").trim();
+        if (override) {
+            return override;
+        }
         return window.location.origin;
     } catch (_e) {
         // Fallback для нестандартних середовищ; у браузері сюди не маємо потрапляти.
@@ -11,7 +22,27 @@ function buildHttpBaseUrl() {
 
 function buildWsBaseUrl() {
     try {
+        if (window.location.protocol === "file:") {
+            return "ws://127.0.0.1:8081";
+        }
+
+        // Дозволяємо явний override для dev/діагностики.
+        const params = new URLSearchParams(window.location.search || "");
+        const override = (params.get("ws_base") || "").trim();
+        if (override) {
+            return override;
+        }
+
         const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+        // Локальний dev-стек: HTTP статика на :8080, WS стрім на :8081.
+        const hostname = window.location.hostname;
+        const port = String(window.location.port || "").trim();
+        if ((isLocalHostname(hostname) || isPrivateLanIp(hostname)) && (port === "" || port === "8080")) {
+            return `${proto}//${hostname}:8081`;
+        }
+
+        // Публічний режим: same-origin (reverse-proxy на один домен/порт).
         return `${proto}//${window.location.host}`;
     } catch (_e) {
         return "ws://127.0.0.1:8081";
@@ -22,6 +53,22 @@ function isLocalHostname(hostname) {
     return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
+function isPrivateLanIp(hostname) {
+    // Дозволяємо локальний доступ з телефону/іншого ПК у LAN.
+    // RFC1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    const h = String(hostname || "").trim();
+    if (!h) return false;
+    const parts = h.split(".");
+    if (parts.length !== 4) return false;
+    const nums = parts.map((p) => Number(p));
+    if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+
+    if (nums[0] === 10) return true;
+    if (nums[0] === 192 && nums[1] === 168) return true;
+    if (nums[0] === 172 && nums[1] >= 16 && nums[1] <= 31) return true;
+    return false;
+}
+
 function isFxcmWsEnabled() {
     // FXCM WS міст (8082) — dev інтерфейс; у публічному режимі вимкнений, щоб не було reconnect-циклів.
     try {
@@ -30,7 +77,8 @@ function isFxcmWsEnabled() {
         if (flag === "1" || flag === "true") {
             return true;
         }
-        return isLocalHostname(window.location.hostname);
+        const host = window.location.hostname;
+        return isLocalHostname(host) || isPrivateLanIp(host);
     } catch (_e) {
         return false;
     }
@@ -308,6 +356,7 @@ function cacheElements() {
     elements.refreshBtn = document.getElementById("refresh-btn");
     elements.reconnectBtn = document.getElementById("reconnect-btn");
     elements.wsStatus = document.getElementById("ws-status");
+    elements.marketStatus = document.getElementById("market-status");
     elements.payloadTs = document.getElementById("payload-ts");
     elements.payloadLag = document.getElementById("payload-lag");
     elements.timeframeSelect = document.getElementById("timeframe-select");
@@ -395,6 +444,10 @@ function initUiViews() {
     scheduleMobileChartHeight();
     window.addEventListener("resize", scheduleMobileChartHeight);
     window.addEventListener("orientationchange", scheduleMobileChartHeight);
+    if (window.visualViewport && typeof window.visualViewport.addEventListener === "function") {
+        window.visualViewport.addEventListener("resize", scheduleMobileChartHeight);
+        window.visualViewport.addEventListener("scroll", scheduleMobileChartHeight);
+    }
 }
 
 function getViewFromUrl() {
@@ -569,10 +622,14 @@ function scheduleMobileChartHeight() {
 }
 
 function updateMobileChartHeightVar() {
-    const vh = Number(window.innerHeight || 0);
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const vh = Number(viewportHeight || 0);
     if (!Number.isFinite(vh) || vh <= 0) {
         return;
     }
+
+    // Стабілізуємо CSS-висоту екрана під мобільні браузери (Android address bar / iOS toolbar).
+    document.documentElement.style.setProperty("--app-vh", `${Math.round(vh)}px`);
 
     const headerEl =
         appState.ui.view === "chart"
@@ -581,15 +638,20 @@ function updateMobileChartHeightVar() {
     const headerH = headerEl?.offsetHeight || 0;
     const bottomH = elements.bottomNav?.offsetHeight || 0;
 
-    // Простий евристичний розрахунок. Мета: не "вилазити" за екран,
-    // без прив'язки до точних висот блоків (вони залежать від контенту).
-    const reserve = appState.ui.view === "chart" ? 160 : 420;
-    const target = Math.max(220, Math.min(720, vh - headerH - bottomH - reserve));
+    // Мобільний Chart: чарт має займати максимум доступного простору.
+    // Мобільний Overview: лишаємо запас під summary/події.
+    const reserve = appState.ui.view === "chart" ? 0 : 420;
+    const raw = vh - headerH - bottomH - reserve;
+    const target = Math.max(220, Math.min(1200, raw));
 
     document.documentElement.style.setProperty(
         "--mobile-chart-height",
         `${Math.round(target)}px`,
     );
+
+    if (appState.ui.view === "chart") {
+        scheduleChartResize();
+    }
 }
 
 function initChartController() {
@@ -1031,19 +1093,19 @@ function setStatus(state, detail = "") {
 function buildStatusLabel(state, detail) {
     switch (state) {
         case "connected":
-            return detail ? `Підключено (${detail})` : "Підключено";
+            return "WS: Підключено";
         case "connecting":
-            return detail ? `Підключення (${detail})` : "Підключення";
+            return detail ? `WS: Підключення (${detail})` : "WS: Підключення";
         case "reconnecting":
-            return detail ? `Перепідключення (${detail})` : "Перепідключення";
+            return detail ? `WS: Перепідключення (${detail})` : "WS: Перепідключення";
         case "stale":
-            return detail ? `Без стріму (${detail})` : "Без стріму";
+            return detail ? `WS: Без стріму (${detail})` : "WS: Без стріму";
         case "error":
-            return detail ? `Помилка (${detail})` : "Помилка";
+            return detail ? `WS: Помилка (${detail})` : "WS: Помилка";
         case "loading":
-            return detail || "Завантаження...";
+            return detail ? `WS: ${detail}` : "WS: Завантаження...";
         default:
-            return detail ? `Відключено (${detail})` : "Відключено";
+            return detail ? `WS: Відключено (${detail})` : "WS: Відключено";
     }
 }
 
@@ -1067,6 +1129,35 @@ function applyStatusToPill(pill, state, text) {
         pill.classList.add("status-disconnected");
     }
     pill.textContent = text;
+}
+
+function applyMarketStatus(fxcm) {
+    const pill = elements.marketStatus;
+    if (!pill) {
+        return;
+    }
+
+    pill.classList.remove(
+        "status-connected",
+        "status-disconnected",
+        "status-reconnecting",
+        "status-stale",
+    );
+
+    const raw = String(fxcm?.market_state || "-");
+    const normalized = raw.trim().toUpperCase();
+    if (normalized.includes("OPEN")) {
+        pill.classList.add("status-connected");
+        pill.textContent = "FX: OPEN";
+        return;
+    }
+    if (normalized.includes("CLOSED")) {
+        pill.classList.add("status-stale");
+        pill.textContent = "FX: CLOSED";
+        return;
+    }
+    pill.classList.add("status-stale");
+    pill.textContent = normalized && normalized !== "-" ? `FX: ${raw}` : "FX: -";
 }
 
 function isFxcmLiveOn() {
@@ -1146,7 +1237,7 @@ function updatePayloadMeta(state) {
 function renderEmptyState(message = "Немає даних") {
     updatePayloadMeta({ payload_ts: null, meta: { fxcm: { lag_seconds: null } } });
     setText(elements.summary.symbol, "-");
-    setText(elements.summary.price, "-");
+    setText(elements.summary.price, "");
     setText(elements.summary.session, "-");
     setBadgeText("summary-trend", null);
     setBadgeText("summary-bias", null);
@@ -1156,11 +1247,13 @@ function renderEmptyState(message = "Немає даних") {
     setText(elements.summary.process, "-");
     setText(elements.summary.lag, "-");
 
+    applyMarketStatus(null);
+
     setText(elements.mobile?.overviewSymbol, "-");
-    setText(elements.mobile?.overviewPrice, "-");
+    setText(elements.mobile?.overviewPrice, "");
     setText(elements.mobile?.overviewDelta, "-");
     setText(elements.mobile?.chartSymbol, "-");
-    setText(elements.mobile?.chartPrice, "-");
+    setText(elements.mobile?.chartPrice, "");
 
     if (elements.overviewEventsList) {
         elements.overviewEventsList.innerHTML = `<div class="overview-event"><div class="overview-event__time">-</div><div class="overview-event__title">${message}</div><div class="overview-event__price">-</div></div>`;
@@ -1671,8 +1764,12 @@ function updateChartFromViewerState(state, options = {}) {
 function renderSummary(state) {
     const struct = state.structure || {};
     const fxcm = state.meta?.fxcm || state.fxcm || {};
+
+    const rawPrice = Number(state.price);
+    const priceText = Number.isFinite(rawPrice) ? formatNumber(rawPrice) : "";
+
     setText(elements.summary.symbol, state.symbol || "-");
-    setText(elements.summary.price, formatNumber(state.price));
+    setText(elements.summary.price, priceText);
     setText(elements.summary.session, state.session || "-");
     setBadgeText("summary-trend", struct.trend || "UNKNOWN");
     setBadgeText("summary-bias", struct.bias || "UNKNOWN");
@@ -1682,8 +1779,9 @@ function renderSummary(state) {
     setText(elements.summary.process, fxcm.process_state || fxcm.price_state || "-");
     setText(elements.summary.lag, formatNumber(fxcm.lag_seconds, 2));
 
+    applyMarketStatus(fxcm);
+
     const symbolText = state.symbol || appState.currentSymbol || "-";
-    const priceText = formatNumber(state.price);
     setText(elements.mobile?.overviewSymbol, symbolText);
     setText(elements.mobile?.chartSymbol, symbolText);
     setText(elements.mobile?.overviewPrice, priceText);
