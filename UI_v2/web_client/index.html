@@ -20,6 +20,8 @@
             </select>
         </div>
         <div class="header-right">
+            <button id="summary-toggle-btn" type="button" class="chart-fullscreen-btn" aria-label="Згорнути підсумок"
+                title="Згорнути підсумок" aria-pressed="false">Σ</button>
             <span id="ws-status" class="status-pill status-disconnected">Відключено</span>
             <span id="market-status" class="status-pill status-stale">FX: -</span>
             <div class="status-meta">
@@ -37,6 +39,8 @@
         </div>
         <div class="mobile-header__right">
             <div class="mobile-header__delta" id="m-overview-delta">-</div>
+            <button id="m-overview-summary-toggle" type="button" class="mobile-icon-btn" aria-label="Підсумок"
+                title="Підсумок" aria-pressed="false">Σ</button>
             <span id="m-overview-ws" class="status-pill status-disconnected">Відключено</span>
         </div>
     </header>
@@ -48,6 +52,8 @@
             <div class="mobile-header__price" id="m-chart-price">-</div>
         </div>
         <div class="mobile-header__right">
+            <button id="m-chart-summary-toggle" type="button" class="mobile-icon-btn" aria-label="Підсумок"
+                title="Підсумок" aria-pressed="false">Σ</button>
             <button id="m-chart-menu" type="button" class="mobile-icon-btn" aria-label="Фільтри">⋮</button>
         </div>
     </header>
@@ -95,6 +101,10 @@
                     <span class="label">Лаг (с)</span>
                     <span id="summary-lag" class="value">-</span>
                 </div>
+                <div>
+                    <span class="label">VOL src</span>
+                    <span id="summary-vol-src" class="value">-</span>
+                </div>
             </div>
         </section>
 
@@ -114,13 +124,11 @@
                 <div class="chart-overlay-shell" aria-label="Графік">
                     <div id="chart-container" class="chart-demo-container"></div>
                     <div id="chart-hover-tooltip" class="chart-hover-tooltip" hidden></div>
-                    <div class="chart-height-control chart-height-control--overlay" aria-label="Висота чарта">
-                        <input type="range" id="chart-height-range" min="600" max="900" step="20" value="600"
-                            aria-label="Висота" />
-                    </div>
                     <div class="chart-overlay-actions" role="group" aria-label="Керування графіком">
                         <button id="chart-layer-menu-btn" type="button" class="chart-layer-menu-btn" aria-label="Шари"
                             aria-haspopup="true" aria-expanded="false">▾</button>
+                        <button id="chart-size-toggle-btn" type="button" class="chart-fullscreen-btn"
+                            aria-label="Збільшити графік" title="Збільшити до 900" aria-pressed="false">x2</button>
                         <button id="chart-fullscreen-btn" type="button" class="chart-fullscreen-btn"
                             aria-label="На весь екран" title="На весь екран" aria-pressed="false">
                             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
@@ -150,6 +158,11 @@
                                 <input type="checkbox" id="layer-toggle-zones" checked />
                                 <span class="layer-toggle__dot layer-toggle__dot--zones" aria-hidden="true"></span>
                                 <span class="layer-toggle__text">Zones</span>
+                            </label>
+                            <label class="layer-toggle">
+                                <input type="checkbox" id="layer-toggle-sessions" checked />
+                                <span class="layer-toggle__dot layer-toggle__dot--sessions" aria-hidden="true"></span>
+                                <span class="layer-toggle__text">Сесії (UTC)</span>
                             </label>
                         </div>
                     </div>
@@ -277,6 +290,10 @@
                 <label class="drawer-toggle">
                     <input type="checkbox" id="drawer-layer-zones" checked />
                     <span>Zones</span>
+                </label>
+                <label class="drawer-toggle">
+                    <input type="checkbox" id="drawer-layer-sessions" checked />
+                    <span>Сесії (UTC)</span>
                 </label>
             </div>
 

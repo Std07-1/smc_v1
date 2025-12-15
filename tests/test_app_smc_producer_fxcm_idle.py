@@ -49,7 +49,7 @@ def test_smc_cycle_idle_when_price_not_ok() -> None:
     assert reason == "fxcm_price_stale"
 
 
-def test_smc_cycle_idle_when_ohlcv_not_ok() -> None:
+def test_smc_cycle_runs_when_ohlcv_not_ok_but_price_ok() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
     status = parse_fxcm_aggregated_status(
         {"ts": 1, "market": "open", "price": "ok", "ohlcv": "lag"}
@@ -57,5 +57,5 @@ def test_smc_cycle_idle_when_ohlcv_not_ok() -> None:
     status_listener._apply_status_snapshot(status)
 
     should_run, reason = _should_run_smc_cycle_by_fxcm_status()
-    assert should_run is False
-    assert reason == "fxcm_ohlcv_lag"
+    assert should_run is True
+    assert reason == "fxcm_ohlcv_lag_ignored"

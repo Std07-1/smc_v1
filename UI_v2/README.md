@@ -4,7 +4,7 @@
 
 - Stage1/SMC core (`publish_smc_state.py` -> `REDIS_CHANNEL_SMC_STATE`, `REDIS_SNAPSHOT_KEY_SMC`);
 - службою трансляції viewer-стану (broadcaster, окремий процес);
-- тонкими клієнтами (Rich viewer, веб-фронтенд тощо).
+- тонкими клієнтами (веб-фронтенд або інші клієнти).
 
 ### Шари UI_v2
 
@@ -15,7 +15,7 @@
 - `UiSmcStatePayload` / `UiSmcAssetPayload` - те, що публікує `publish_smc_state.py`;
 - `SmcViewerState` - агрегований стан для рендера (консоль, браузер, інші клієнти).
 
-2. **viewer_state_builder**
+1. **viewer_state_builder**
    Чиста функція `build_viewer_state(...)`:
 
    - вхід: один `UiSmcAssetPayload`, мета `UiSmcMeta`, опційний `fxcm_block`;
@@ -27,11 +27,6 @@
      - `fxcm` + `meta.fxcm` (як є).
    - `schema` завжди дорівнює `smc_viewer_v1` (`VIEWER_STATE_SCHEMA_VERSION`), а `meta.schema_version`
      зберігає версію вихідного `UiSmcStatePayload` (наприклад, `smc_state_v1`).
-
-3. **rich_viewer / rich_viewer_extended**
-  Готові рендери, що приймають лише `SmcViewerState` і будують Rich-панелі. Вони не знають
-  про Redis, не читають snapshot-файли й не змінюють схему state, тому можуть працювати як
-  консольні та dev-viewer клієнти поверх HTTP або Redis.
 
 ### Джерела даних
 
@@ -129,7 +124,7 @@ curl "http://127.0.0.1:8080/smc-viewer/snapshot?symbol=XAUUSD"
 
 Для фронтенду доступний окремий endpoint:
 
-```
+```text
 GET /smc-viewer/ohlcv?symbol=xauusd&tf=1m&limit=500
 ```
 
@@ -165,7 +160,7 @@ curl "http://127.0.0.1:8080/smc-viewer/ohlcv?symbol=xauusd&tf=1m&limit=200"
 
 ### Інтеграція в `app/main.py`
 
-- Під час запуску Stage1 (`app/main.py`) автоматично створюються три таски:
+- Якщо `UI_V2_ENABLED` увімкнено, під час запуску Stage1 (`app/main.py`) створюються три таски:
   broadcaster (`SmcViewerBroadcaster.run_forever`), HTTP-сервер (`ViewerStateHttpServer`) та
   WebSocket-сервер (`ViewerStateWsServer`).
 - Увімкнення/вимкнення стеку контролюється ENV `UI_V2_ENABLED` (0/false — вимкнути).

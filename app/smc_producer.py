@@ -301,8 +301,10 @@ def _should_run_smc_cycle_by_fxcm_status() -> tuple[bool, str]:
     if market == "open":
         if price and price != "ok":
             return False, f"fxcm_price_{price}"
+        # UX/контракт: `ohlcv` у fxcm:status — діагностичний.
+        # Не блокуємо SMC цикл лише через delayed/lag/down, щоб UI бачив live ціну.
         if ohlcv and ohlcv != "ok":
-            return False, f"fxcm_ohlcv_{ohlcv}"
+            return True, f"fxcm_ohlcv_{ohlcv}_ignored"
         return True, "fxcm_ok"
 
     return True, "fxcm_status_unknown"

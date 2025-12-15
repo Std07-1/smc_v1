@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - сумісність зі старим
 
     logger.debug("Using websockets.legacy.server for WebSocketServerProtocol")
 
-from UI_v2.schemas import SmcViewerState
-from UI_v2.viewer_state_store import ViewerStateStore
 from prometheus_client import Counter, Gauge
 
+from UI_v2.schemas import SmcViewerState
+from UI_v2.viewer_state_store import ViewerStateStore
 
 SMC_VIEWER_WS_CONNECTIONS = Gauge(
     "ai_one_smc_viewer_ws_connections",
@@ -126,10 +126,22 @@ class ViewerStateWsServer:
             while True:
                 if websocket.closed:
                     break
-                message = await pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=1.0,
-                )
+                try:
+                    message = await pubsub.get_message(
+                        ignore_subscribe_messages=True,
+                        timeout=1.0,
+                    )
+                except ConnectionClosed:
+                    raise
+                except Exception:
+                    logger.warning(
+                        "[SMC viewer WS] Redis pubsub error (symbol=%s)",
+                        symbol,
+                        exc_info=True,
+                    )
+                    SMC_VIEWER_WS_ERRORS_TOTAL.labels(stage="redis_poll").inc()
+                    await asyncio.sleep(1.0)
+                    continue
                 if message is None:
                     continue
                 parsed = self._parse_channel_message(message.get("data"))
@@ -140,7 +152,19 @@ class ViewerStateWsServer:
                 if msg_symbol != symbol:
                     continue
                 payload = self._build_payload("update", msg_symbol, viewer_state)
-                await websocket.send(payload)
+                try:
+                    await websocket.send(payload)
+                except ConnectionClosed:
+                    raise
+                except Exception:
+                    logger.warning(
+                        "[SMC viewer WS] Failed to send update (symbol=%s)",
+                        symbol,
+                        exc_info=True,
+                    )
+                    SMC_VIEWER_WS_ERRORS_TOTAL.labels(stage="send").inc()
+                    await asyncio.sleep(0.2)
+                    continue
                 SMC_VIEWER_WS_MESSAGES_TOTAL.labels(type="update").inc()
         finally:
             try:

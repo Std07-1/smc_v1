@@ -113,7 +113,7 @@ def test_validate_fxcm_status_message_allows_partial() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_payload_skips_incomplete_bars() -> None:
+async def test_ingestor_drops_live_bars_complete_false() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
 
     store = _FakeStore()
@@ -240,8 +240,45 @@ async def test_process_payload_not_blocked_when_ohlcv_down() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_payload_finalizes_prev_live_bar_on_new_open_time() -> None:
+async def test_ingestor_finalizes_prev_live_bar_on_new_open_time() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_ingestor_keeps_synthetic_complete_true() -> None:
+    status_listener._reset_fxcm_feed_state_for_tests()
+
+    store = _FakeStore()
+    payload = {
+        "symbol": "XAUUSD",
+        "tf": "1m",
+        "bars": [
+            {
+                "open_time": 1,
+                "close_time": 2,
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.5,
+                "close": 10.5,
+                "volume": 100.0,
+                "complete": True,
+                "synthetic": True,
+            }
+        ],
+    }
+
+    rows, sym, tf = await _process_payload(
+        store,  # type: ignore[arg-type]
+        payload,
+        hmac_secret=None,
+        hmac_algo="sha256",
+        hmac_required=False,
+        allowed_pairs=None,
+    )
+
+    assert rows == 1
+    assert (sym, tf) == ("xauusd", "1m")
+    assert store.calls == [("xauusd", "1m", 1)]
     status = parse_fxcm_aggregated_status(
         {"ts": 1, "market": "open", "price": "ok", "ohlcv": "down"}
     )

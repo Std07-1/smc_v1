@@ -200,3 +200,27 @@ def test_signed_payload_accepted_when_secret_missing() -> None:
     assert rows == 1
     assert len(store.calls) == 1
     assert fxcm._UNEXPECTED_SIG_LOGGED is True
+
+
+def test_hmac_still_valid_with_extra_fields_in_bars_when_required() -> None:
+    secret = "test_secret"
+    payload = _base_payload()
+
+    # Додаємо forward-compatible поля всередину bar (microstructure/meta).
+    payload["bars"][0]["complete"] = True
+    payload["bars"][0]["synthetic"] = False
+    payload["bars"][0]["source"] = "fxcm"
+    payload["bars"][0]["spread"] = 0.12
+    payload["bars"][0]["tick_count"] = 42
+    payload["bars"][0]["unknown_nested"] = {"a": 1, "b": [1, 2, 3]}
+
+    base_for_sig = {
+        "symbol": payload["symbol"],
+        "tf": payload["tf"],
+        "bars": payload["bars"],
+    }
+    payload["sig"] = _make_signature(base_for_sig, secret)
+
+    store, rows = _run_process(payload, secret=secret, required=True)
+    assert rows == 1
+    assert len(store.calls) == 1

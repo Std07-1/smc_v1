@@ -56,6 +56,12 @@ UI_v2 піднімається в рамках основного процесу
 - Мінімальний шлях без змін UDS/SMC: **reverse-proxy WebSocket `/fxcm/ohlcv` і `/fxcm/ticks` у same-origin** (nginx/Cloudflare tunnel) → тоді клієнт може підключатися до FXCM WS через основний домен.
 - Для цього на фронті достатньо відкрити сторінку з параметрами: `?fxcm_ws=1&fxcm_ws_same_origin=1` (вмикає FXCM WS та примушує same-origin замість порту `8082`).
 
+Додаткові параметри фронтенду (поведінка live-свічок):
+
+- `fxcm_apply_complete=1|0` — керує тим, чи треба **одразу** прибирати live overlay свічки при приході `complete=true`.
+  - `1` (дефолт): при `complete=true` live overlay зникає одразу, лишається фінальна свічка.
+  - `0`: live overlay зникне "природно" при переході на наступний `open_time` (менше "підстрибує" графік).
+
 Окремий runbook (публічний домен через Cloudflared → nginx Docker):
 
 - docs/runbook_tradingview_like_live_public_domain.md

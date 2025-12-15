@@ -8,6 +8,8 @@
     const VOLUME_WINDOW_SIZE = 200;
     const OPACITY_MIN = 0.25;
     const OPACITY_MAX = 1.0;
+    const VOLUME_BAR_ALPHA = 0.55;
+    const VOLUME_SCALE_QUANTILE = 0.98;
 
     const DEFAULT_CHART_OPTIONS = {
         layout: {
@@ -88,14 +90,14 @@
 
     const OTE_STYLES = {
         LONG: {
-            border: "rgba(34, 197, 94, 0.85)",
-            arrow: "#22c55e",
-            axisLabel: "#22c55e",
+            border: "rgba(34, 197, 94, 0.45)",
+            arrow: "rgba(34, 197, 94, 0.65)",
+            axisLabel: "rgba(34, 197, 94, 0.65)",
         },
         SHORT: {
-            border: "rgba(248, 113, 113, 0.85)",
-            arrow: "#f87171",
-            axisLabel: "#f87171",
+            border: "rgba(248, 113, 113, 0.45)",
+            arrow: "rgba(248, 113, 113, 0.65)",
+            axisLabel: "rgba(248, 113, 113, 0.65)",
         },
     };
 
@@ -163,6 +165,30 @@
         return maxValue;
     }
 
+    function computeVolumeScaleMax(volumes, quantile = VOLUME_SCALE_QUANTILE) {
+        if (!Array.isArray(volumes) || volumes.length === 0) {
+            return 1;
+        }
+        const cleaned = volumes
+            .map((v) => Number(v))
+            .filter((v) => Number.isFinite(v) && v > 0)
+            .sort((a, b) => a - b);
+        if (!cleaned.length) {
+            return 1;
+        }
+
+        // Кеп по квантилю, щоб один спайк не "вбивав" масштаб для всіх інших брусків.
+        const q = clamp(Number(quantile), 0.5, 1.0);
+        const idx = Math.min(cleaned.length - 1, Math.floor((cleaned.length - 1) * q));
+        const qValue = cleaned[idx] ?? 1;
+        const maxAll = cleaned[cleaned.length - 1] ?? qValue;
+
+        // Якщо даних мало — краще показати повний max, ніж різко обрізати.
+        const useMaxAll = cleaned.length < 40;
+        const chosen = useMaxAll ? maxAll : qValue;
+        return Math.max(1, chosen);
+    }
+
     function volumeToOpacity(volume, recentMax) {
         if (!Number.isFinite(recentMax) || recentMax <= 0) {
             return OPACITY_MAX;
@@ -187,14 +213,51 @@
                     ?.querySelector("#chart-hover-tooltip")
                 : null;
 
+        const sessionsScaleId = "sessions";
+        const sessionSeries = {
+            enabled: true,
+            asia: chart.addHistogramSeries({
+                priceScaleId: sessionsScaleId,
+                base: 0,
+            }),
+            london: chart.addHistogramSeries({
+                priceScaleId: sessionsScaleId,
+                base: 0,
+            }),
+            newYork: chart.addHistogramSeries({
+                priceScaleId: sessionsScaleId,
+                base: 0,
+            }),
+        };
+
+        Object.values(sessionSeries).forEach((series) => {
+            if (!series || typeof series.applyOptions !== "function") {
+                return;
+            }
+            series.applyOptions({
+                lastValueVisible: false,
+                priceLineVisible: false,
+            });
+        });
+        chart.priceScale(sessionsScaleId).applyOptions({
+            scaleMargins: {
+                top: 0.0,
+                bottom: 0.0,
+            },
+            borderVisible: false,
+            ticksVisible: false,
+        });
+
         const candles = chart.addCandlestickSeries({
             upColor: CANDLE_COLORS.up,
             wickUpColor: CANDLE_COLORS.up,
             downColor: CANDLE_COLORS.down,
             wickDownColor: CANDLE_COLORS.down,
             borderVisible: false,
-            priceLineVisible: true,
-            lastValueVisible: true,
+            // Вимикаємо дефолтний «лейбл поточної ціни» серії,
+            // щоб керувати ним вручну (менший текст + динамічний колір up/down).
+            priceLineVisible: false,
+            lastValueVisible: false,
         });
         const liveCandles = chart.addCandlestickSeries({
             upColor: "rgba(246, 195, 67, 0.18)",
@@ -204,6 +267,8 @@
             borderVisible: true,
             borderUpColor: CANDLE_COLORS.live,
             borderDownColor: CANDLE_COLORS.live,
+            // Важливо для UX: «жива» ціна має оновлюватися разом зі свічкою,
+            // а не лише по закритій свічці (історичний candles-series).
             priceLineVisible: false,
             lastValueVisible: false,
         });
@@ -232,7 +297,7 @@
         });
         chart.priceScale("volume").applyOptions({
             scaleMargins: {
-                top: 0.82,
+                top: 0.76,
                 bottom: 0.0,
             },
             borderVisible: false,
@@ -242,6 +307,13 @@
         let lastBar = null;
         let lastLiveBar = null;
         let lastLiveVolume = 0;
+        let lastCandleDataset = [];
+        let currentPriceLine = null;
+        let currentPriceLineOwner = null;
+        let currentPriceLineState = { price: null, color: null, owner: null };
+        // Глобальний max обсягу для фіксованого autoscale.
+        // Якщо автоскейл рахувати лише по видимому діапазону, при скролі/зумі volume «стрибає».
+        let volumeScaleMax = 1;
         let recentVolumeMax = 0;
         let recentVolumes = [];
         let eventMarkers = [];
@@ -413,14 +485,17 @@
                 liveCandles.setData([]);
                 volume.setData([]);
                 liveVolume.setData([]);
+                setSessionsData([]);
                 lastBar = null;
                 lastLiveBar = null;
                 lastLiveVolume = 0;
+                clearCurrentPriceLine();
                 recentVolumeMax = 0;
                 recentVolumes = [];
                 chartTimeRange = { min: null, max: null };
                 lastBarsSignature = null;
                 autoFitDone = false;
+                lastCandleDataset = [];
                 return;
             }
 
@@ -440,6 +515,11 @@
 
             const candleData = normalized.map((row) => row.candle);
             const volumeValues = normalized.map((row) => row.volume);
+            lastCandleDataset = candleData;
+
+            // Фіксуємо шкалу volume по всьому датасету (а не по видимому фрагменту).
+            // Це прибирає "провалювання" обсягів при горизонтальному скролі.
+            volumeScaleMax = computeVolumeScaleMax(volumeValues);
 
             const signature = {
                 firstTime: candleData[0]?.time ?? null,
@@ -476,11 +556,15 @@
             });
 
             candles.setData(styledCandles);
+            setSessionsData(candleData);
             if (recentVolumeMax > 0) {
                 const volumeData = candleData.map((bar, index) => {
                     const vol = volumeValues[index] ?? 0;
                     const isUp = Number(bar.close) >= Number(bar.open);
-                    const alpha = clamp(volumeToOpacity(vol, recentVolumeMax) * 0.6, 0.12, 0.85);
+                    // Важливо для UX: при великих піках volume відносна прозорість робить
+                    // більшість брусків майже невидимими (особливо при зумі/скролі).
+                    // Тому для гістограми тримаємо сталу альфу.
+                    const alpha = clamp(VOLUME_BAR_ALPHA, 0.18, 0.85);
                     const base = isUp ? CANDLE_COLORS.up : CANDLE_COLORS.down;
                     return {
                         time: bar.time,
@@ -498,6 +582,7 @@
             if (lastLiveBar && lastBar && lastLiveBar.time < lastBar.time) {
                 clearLiveBar();
             }
+            updateCurrentPriceLine();
             updateBarTimeSpanFromBars(candleData);
             updateTimeRangeFromBars(candleData);
 
@@ -508,13 +593,85 @@
             lastBarsSignature = signature;
         }
 
+        function minuteOfDayUtc(timeSec) {
+            const d = new Date(Number(timeSec) * 1000);
+            return d.getUTCHours() * 60 + d.getUTCMinutes();
+        }
+
+        function isInSessionUtc(timeSec, startMinute, endMinute) {
+            const m = minuteOfDayUtc(timeSec);
+            if (startMinute <= endMinute) {
+                return m >= startMinute && m < endMinute;
+            }
+            // На випадок сесій через 00:00.
+            return m >= startMinute || m < endMinute;
+        }
+
+        function setSessionsData(candleData) {
+            if (!sessionSeries.asia || !sessionSeries.london || !sessionSeries.newYork) {
+                return;
+            }
+            if (!sessionSeries.enabled) {
+                sessionSeries.asia.setData([]);
+                sessionSeries.london.setData([]);
+                sessionSeries.newYork.setData([]);
+                return;
+            }
+
+            const ASIA = { start: 0 * 60, end: 9 * 60, color: "rgba(38, 166, 154, 0.05)" };
+            const LONDON = { start: 8 * 60, end: 17 * 60, color: "rgba(246, 195, 67, 0.045)" };
+            const NEW_YORK = { start: 13 * 60, end: 22 * 60, color: "rgba(239, 83, 80, 0.045)" };
+
+            const asiaData = [];
+            const londonData = [];
+            const nyData = [];
+
+            (Array.isArray(candleData) ? candleData : []).forEach((bar) => {
+                if (!bar || !Number.isFinite(Number(bar.time))) {
+                    return;
+                }
+                const t = Number(bar.time);
+                if (isInSessionUtc(t, ASIA.start, ASIA.end)) {
+                    asiaData.push({ time: t, value: 1, color: ASIA.color });
+                }
+                if (isInSessionUtc(t, LONDON.start, LONDON.end)) {
+                    londonData.push({ time: t, value: 1, color: LONDON.color });
+                }
+                if (isInSessionUtc(t, NEW_YORK.start, NEW_YORK.end)) {
+                    nyData.push({ time: t, value: 1, color: NEW_YORK.color });
+                }
+            });
+
+            sessionSeries.asia.setData(asiaData);
+            sessionSeries.london.setData(londonData);
+            sessionSeries.newYork.setData(nyData);
+        }
+
+        function setSessionsEnabled(enabled) {
+            const next = Boolean(enabled);
+            if (sessionSeries.enabled === next) {
+                return;
+            }
+            sessionSeries.enabled = next;
+            setSessionsData(lastCandleDataset);
+        }
+
         function setLiveBar(bar) {
             const normalized = normalizeBar(bar);
             if (!normalized) {
                 return;
             }
-            const vol = normalizeVolume(bar);
-            lastLiveVolume = vol;
+            let vol = normalizeVolume(bar);
+            // Якщо live volume вже накопичене у межах свічки — не даємо йому миготіти в 0.
+            if (vol <= 0 && lastLiveBar && normalized.time === lastLiveBar.time && lastLiveVolume > 0) {
+                vol = lastLiveVolume;
+            } else {
+                lastLiveVolume = vol;
+            }
+
+            if (vol > volumeScaleMax) {
+                volumeScaleMax = vol;
+            }
             // Тримаємо рівно одну "живу" свічку.
             if (!lastLiveBar || normalized.time !== lastLiveBar.time) {
                 liveCandles.setData([normalized]);
@@ -534,6 +691,8 @@
             } else {
                 liveVolume.setData([]);
             }
+
+            updateCurrentPriceLine();
         }
 
         function clearLiveBar() {
@@ -541,6 +700,7 @@
             liveVolume.setData([]);
             lastLiveBar = null;
             lastLiveVolume = 0;
+            updateCurrentPriceLine();
         }
 
         function updateLastBar(bar) {
@@ -549,6 +709,9 @@
                 return;
             }
             const vol = normalizeVolume(bar);
+            if (vol > volumeScaleMax) {
+                volumeScaleMax = vol;
+            }
             if (!lastBar || normalized.time >= lastBar.time) {
                 if (lastBar && normalized.time > lastBar.time) {
                     const diff = normalized.time - lastBar.time;
@@ -587,7 +750,7 @@
 
                 if (recentVolumeMax > 0) {
                     const isUp = Number(normalized.close) >= Number(normalized.open);
-                    const alpha = clamp(volumeToOpacity(vol, recentVolumeMax) * 0.6, 0.12, 0.85);
+                    const alpha = clamp(VOLUME_BAR_ALPHA, 0.18, 0.85);
                     const base = isUp ? CANDLE_COLORS.up : CANDLE_COLORS.down;
                     volume.update({
                         time: normalized.time,
@@ -600,7 +763,87 @@
                     chartTimeRange.min = normalized.time;
                 }
                 chartTimeRange.max = Math.max(chartTimeRange.max ?? normalized.time, normalized.time);
+                updateCurrentPriceLine();
             }
+        }
+
+        function clearCurrentPriceLine() {
+            if (!currentPriceLine) {
+                return;
+            }
+            try {
+                if (currentPriceLineOwner === "live") {
+                    liveCandles.removePriceLine(currentPriceLine);
+                } else {
+                    candles.removePriceLine(currentPriceLine);
+                }
+            } catch (err) {
+                console.warn("chart_adapter: не вдалося прибрати current price line", err);
+            }
+            currentPriceLine = null;
+                setSessionsEnabled,
+            currentPriceLineOwner = null;
+            currentPriceLineState = { price: null, color: null, owner: null };
+        }
+
+        function updateCurrentPriceLine() {
+            const source = lastLiveBar || lastBar;
+            if (!source) {
+                clearCurrentPriceLine();
+                return;
+            }
+
+            const owner = lastLiveBar ? "live" : "candles";
+            const price = Number(source.close);
+            if (!Number.isFinite(price)) {
+                clearCurrentPriceLine();
+                return;
+            }
+
+            // Колір бейджа: якщо є попередня закрита свічка — порівнюємо з нею;
+            // інакше — по open/close поточного бару.
+            let ref = null;
+            if (lastBar && lastLiveBar) {
+                const refPrice = Number(lastBar.close);
+                if (Number.isFinite(refPrice)) {
+                    ref = refPrice;
+                }
+            }
+            if (ref == null) {
+                const open = Number(source.open);
+                if (Number.isFinite(open)) {
+                    ref = open;
+                }
+            }
+            const isUp = ref == null ? true : price >= ref;
+            // Менш яскравий бейдж на шкалі (приглушуємо колір).
+            const colorBase = isUp ? CANDLE_COLORS.up : CANDLE_COLORS.down;
+            const color = hexToRgba(colorBase, 0.6);
+
+            const stateUnchanged =
+                currentPriceLineState.price === price &&
+                currentPriceLineState.color === color &&
+                currentPriceLineState.owner === owner;
+            if (stateUnchanged) {
+                return;
+            }
+
+            // Якщо власник змінився або змінився price/color — пересоздаємо.
+            clearCurrentPriceLine();
+            const series = owner === "live" ? liveCandles : candles;
+            currentPriceLine = series.createPriceLine({
+                price,
+                color,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                axisLabelVisible: true,
+                // Щоб не перевантажувати графік: лишаємо компактний маркер на шкалі,
+                // без додаткової горизонтальної лінії на полі.
+                lineVisible: false,
+                // Без title -> компактніший бейдж на шкалі.
+            });
+            currentPriceLineOwner = owner;
+            currentPriceLineState = { price, color, owner };
         }
 
         function clearEvents() {
@@ -726,7 +969,7 @@
                 const type = (pool.type || pool.kind || "").toUpperCase();
                 const line = candles.createPriceLine({
                     price,
-                    color: role === "PRIMARY" ? "#f9c74f" : "#577590",
+                    color: role === "PRIMARY" ? "rgba(249, 199, 79, 0.65)" : "#577590",
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
                     axisLabelVisible: false,
@@ -983,12 +1226,26 @@
             const palette = direction === "SHORT" ? OTE_STYLES.SHORT : OTE_STYLES.LONG;
             const safeLeft = Math.floor(left);
             const safeRight = Math.max(safeLeft + 1, Math.floor(right));
-            const topSeries = createOverlaySeries(palette.border, 1);
+
+            // Для OTE робимо лінії «тоншими» візуально: dotted стиль + приглушений колір.
+            const createOteBorderSeries = () =>
+                chart.addLineSeries({
+                    color: palette.border,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dotted,
+                    priceScaleId: "right",
+                    lastValueVisible: false,
+                    priceLineVisible: false,
+                    crosshairMarkerVisible: false,
+                    autoscaleInfoProvider: () => null,
+                });
+
+            const topSeries = createOteBorderSeries();
             topSeries.setData([
                 { time: safeLeft, value: maxPrice },
                 { time: safeRight, value: maxPrice },
             ]);
-            const bottomSeries = createOverlaySeries(palette.border, 1);
+            const bottomSeries = createOteBorderSeries();
             bottomSeries.setData([
                 { time: safeLeft, value: minPrice },
                 { time: safeRight, value: minPrice },
@@ -1001,7 +1258,8 @@
                 lineStyle: LightweightCharts.LineStyle.Dotted,
                 axisLabelVisible: true,
                 lineVisible: false,
-                title: `${direction || (direction === "SHORT" ? "SHORT" : "LONG")} OTE`,
+                // Короткий title: менше «шуму» на шкалі.
+                title: direction === "SHORT" ? "↓" : "↑",
             });
             oteOverlays.push({
                 series: overlaySeries,
@@ -1262,6 +1520,20 @@
                 }
             }
         }
+
+        // Фіксований autoscale для volume-шкали.
+        // LightweightCharts інакше масштабує по видимому діапазону, через що volume «падає/росте» при скролі.
+        const volumeAutoscaleInfoProvider = () => {
+            const maxValue = Number.isFinite(volumeScaleMax) && volumeScaleMax > 0 ? volumeScaleMax : 1;
+            return {
+                priceRange: {
+                    minValue: 0,
+                    maxValue,
+                },
+            };
+        };
+        volume.applyOptions({ autoscaleInfoProvider: volumeAutoscaleInfoProvider });
+        liveVolume.applyOptions({ autoscaleInfoProvider: volumeAutoscaleInfoProvider });
 
         function setupResizeHandling() {
             if (!container || typeof window === "undefined") {

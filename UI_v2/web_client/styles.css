@@ -3,7 +3,7 @@
 }
 
 :root {
-    --chart-height: 600px;
+    --chart-height: 700px;
 }
 
 body {
@@ -301,6 +301,10 @@ header button:hover {
     padding: 0.25rem;
 }
 
+body.summary-collapsed .summary {
+    display: none !important;
+}
+
 
 .summary-grid {
     display: grid;
@@ -323,11 +327,11 @@ header button:hover {
 
 .summary-badge {
     display: inline-block;
-    padding: 0.08rem 0.4rem;
+    padding: 0.06rem 0.32rem;
     border-radius: 999px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
     background-color: #1f2933;
     color: #e5e7eb;
@@ -784,6 +788,10 @@ tbody tr.empty-row td {
     background: #ef476f;
 }
 
+.layer-toggle__dot--sessions {
+    background: linear-gradient(135deg, #26a69a, #f6c343, #ef5350);
+}
+
 .layer-toggle input:not(:checked)~.layer-toggle__dot,
 .layer-toggle input:not(:checked)~.layer-toggle__text {
     opacity: 0.45;
@@ -893,7 +901,7 @@ tbody tr.empty-row td {
 }
 
 .chart-demo-container {
-    height: var(--chart-height, 600px);
+    height: var(--chart-height, 700px);
     width: 100%;
     border: none;
     border-radius: 0;

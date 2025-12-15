@@ -16,6 +16,7 @@ from rich.live import Live
 from app.settings import settings
 from config.config import (
     FXCM_FAST_SYMBOLS,
+    FXCM_PRICE_TICK_CHANNEL,
     REDIS_CHANNEL_SMC_STATE,
     REDIS_SNAPSHOT_KEY_SMC,
     UI_VIEWER_ALT_SCREEN_ENABLED,
@@ -67,13 +68,23 @@ class ExperimentalViewerConsumer:
         snapshot_dir: str,
         channel: str = SMC_FEED_CHANNEL,
         snapshot_key: str = SMC_SNAPSHOT_KEY,
+        price_tick_channel: str = FXCM_PRICE_TICK_CHANNEL,
         viewer_cls: type[SmcExperimentalViewer] = VIEWER_CLASS,
     ) -> None:
         self.symbol = (symbol or _default_symbol()).lower()
         self.channel = channel
+        self.price_tick_channel = (
+            price_tick_channel or FXCM_PRICE_TICK_CHANNEL
+        ).strip()
         self.snapshot_key = snapshot_key
         self.console = Console(stderr=False, force_terminal=True)
         self.viewer = viewer_cls(symbol=self.symbol, snapshot_dir=snapshot_dir)
+
+        # Кеш останнього SMC payload (щоб оновлювати лише ціну по тиках).
+        self._last_asset: dict[str, Any] | None = None
+        self._last_meta: dict[str, Any] | None = None
+        self._last_fxcm: Any | None = None
+        self._last_tick_mid: float | None = None
 
     async def run(
         self,
@@ -90,10 +101,13 @@ class ExperimentalViewerConsumer:
         pubsub = redis_client.pubsub()
         placeholder = self.viewer.render_placeholder()
         await self._hydrate_from_snapshot(redis_client)
-        await pubsub.subscribe(self.channel)
+        channels: list[str] = [self.channel]
+        if self.price_tick_channel:
+            channels.append(self.price_tick_channel)
+        await pubsub.subscribe(*channels)
         CLI_LOGGER.info(
-            "🔗 Підписка viewer на канал %s (Redis %s)",
-            self.channel,
+            "Підписка viewer на канали %s (Redis %s)",
+            ", ".join(channels),
             redis_url,
         )
         await asyncio.sleep(loading_delay)
@@ -112,17 +126,45 @@ class ExperimentalViewerConsumer:
                     if not message:
                         await asyncio.sleep(smooth_delay)
                         continue
-                    data = self._safe_json(message.get("data"))
-                    if data is None:
+
+                    channel = self._coerce_channel_name(message.get("channel"))
+                    payload = self._safe_json(message.get("data"))
+                    if payload is None:
                         continue
-                    asset = self._extract_asset(data)
+
+                    if channel == self.price_tick_channel:
+                        tick_mid = self._extract_tick_mid(payload, symbol=self.symbol)
+                        if tick_mid is None:
+                            continue
+                        self._last_tick_mid = float(tick_mid)
+                        # Якщо SMC snapshot ще не прийшов — просто чекаємо.
+                        if not (self._last_asset and self._last_meta is not None):
+                            continue
+                        viewer_state = self.viewer.build_state(
+                            self._last_asset,
+                            self._last_meta,
+                            self._last_fxcm,
+                        )
+                        viewer_state["price"] = self._last_tick_mid
+                        live.update(
+                            self.viewer.render_panel(viewer_state), refresh=True
+                        )
+                        self.viewer.dump_snapshot(viewer_state)
+                        continue
+
+                    # Основний сценарій: оновлення з SMC payload.
+                    asset = self._extract_asset(payload)
                     if asset is None:
                         continue
-                    viewer_state = self.viewer.build_state(
-                        asset,
-                        data.get("meta") or {},
-                        data.get("fxcm"),
-                    )
+                    meta = payload.get("meta") or {}
+                    fxcm = payload.get("fxcm")
+                    self._last_asset = asset
+                    self._last_meta = meta if isinstance(meta, dict) else {}
+                    self._last_fxcm = fxcm
+
+                    viewer_state = self.viewer.build_state(asset, self._last_meta, fxcm)
+                    if self._last_tick_mid is not None:
+                        viewer_state["price"] = self._last_tick_mid
                     live.update(self.viewer.render_panel(viewer_state), refresh=True)
                     self.viewer.dump_snapshot(viewer_state)
         finally:
@@ -131,6 +173,8 @@ class ExperimentalViewerConsumer:
     async def _cleanup(self, pubsub: PubSub, client: Redis) -> None:
         try:
             await pubsub.unsubscribe(self.channel)
+            if self.price_tick_channel:
+                await pubsub.unsubscribe(self.price_tick_channel)
         except Exception:
             CLI_LOGGER.debug("Не вдалося відписатися від %s", self.channel)
         try:
@@ -158,6 +202,12 @@ class ExperimentalViewerConsumer:
                 data.get("meta") or {},
                 data.get("fxcm"),
             )
+
+            self._last_asset = asset
+            meta = data.get("meta") or {}
+            self._last_meta = meta if isinstance(meta, dict) else {}
+            self._last_fxcm = data.get("fxcm")
+
             self.console.print(self.viewer.render_panel(viewer_state))
             self.viewer.dump_snapshot(viewer_state)
         except Exception:
@@ -183,6 +233,17 @@ class ExperimentalViewerConsumer:
     def _safe_json(data: Any) -> dict[str, Any] | None:
         if isinstance(data, dict):
             return data
+        if isinstance(data, (bytes, bytearray)):
+            try:
+                text = data.decode("utf-8", errors="replace")
+            except Exception:
+                return None
+            try:
+                payload = json.loads(text)
+                return payload if isinstance(payload, dict) else None
+            except Exception:
+                CLI_LOGGER.debug("Не вдалося розпарсити payload viewer", exc_info=True)
+                return None
         if isinstance(data, str):
             try:
                 payload = json.loads(data)
@@ -191,6 +252,27 @@ class ExperimentalViewerConsumer:
                 CLI_LOGGER.debug("Не вдалося розпарсити payload viewer", exc_info=True)
                 return None
         return None
+
+    @staticmethod
+    def _coerce_channel_name(value: Any) -> str:
+        if isinstance(value, (bytes, bytearray)):
+            return value.decode("utf-8", errors="ignore")
+        return str(value or "").strip()
+
+    @staticmethod
+    def _extract_tick_mid(payload: Any, *, symbol: str) -> float | None:
+        """Витягує mid з `fxcm:price_tik` для заданого symbol (case-insensitive)."""
+
+        if not isinstance(payload, dict):
+            return None
+        sym = str(payload.get("symbol") or "").strip().lower()
+        if not sym or sym != str(symbol or "").strip().lower():
+            return None
+        mid = payload.get("mid")
+        try:
+            return float(mid)
+        except Exception:
+            return None
 
 
 def _parse_args() -> argparse.Namespace:

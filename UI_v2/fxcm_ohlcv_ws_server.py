@@ -113,7 +113,9 @@ class FxcmOhlcvWsServer:
                     continue
 
                 msg_symbol = str(payload.get("symbol") or "").upper()
-                msg_tf = str(payload.get("tf") or "").lower()
+                msg_tf = str(
+                    payload.get("tf") or payload.get("timeframe") or ""
+                ).lower()
                 if msg_symbol != symbol or msg_tf != tf:
                     continue
 

@@ -175,6 +175,16 @@ class ViewerStateHttpServer:
         query_params = parse_qs(parsed.query)
         flat_query = {k: v[0] for k, v in query_params.items() if v}
 
+        # 0) Favicon: браузери часто запитують його автоматично.
+        # Щоб не засмічувати консоль/мережевий лог 404-ками в публічному режимі,
+        # відповідаємо 204 без тіла.
+        if path == "/favicon.ico":
+            return (
+                self._build_response(status_code=204, reason="No Content", body=None),
+                204,
+                path_for_metrics,
+            )
+
         # 0) Статичний UI (щоб не піднімати окремий python -m http.server).
         if not path.startswith("/smc-viewer/"):
             static_response = self._try_handle_static(path)

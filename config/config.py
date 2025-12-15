@@ -51,8 +51,6 @@ __all__ = [
     "UI_SMC_SNAPSHOT_TTL_SEC",
     "UI_VIEWER_ALT_SCREEN_ENABLED",
     "UI_VIEWER_SNAPSHOT_DIR",
-    "UI_V2_DEBUG_VIEWER_ENABLED",
-    "UI_V2_DEBUG_VIEWER_SYMBOLS",
     "SMC_PIPELINE_ENABLED",
     "SMC_REFRESH_INTERVAL",
     "SMC_BATCH_SIZE",
@@ -156,8 +154,6 @@ UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
 UI_SMC_PAYLOAD_SCHEMA_VERSION: str = "1.2"
 UI_VIEWER_ALT_SCREEN_ENABLED: bool = True
 UI_VIEWER_SNAPSHOT_DIR: str = "tmp"
-# UI_v2 debug viewer: увімкнено за замовчуванням і дивиться на FXCM символи
-UI_V2_DEBUG_VIEWER_ENABLED: bool = True
 
 # ── Підготовчі прапорці для WS gap‑бекфілу (за замовчуванням вимкнено) ──
 WS_GAP_BACKFILL: dict[str, int | bool] = {
@@ -186,9 +182,6 @@ FXCM_FAST_SYMBOLS = [
     # "usdcad",
     # "audusd",
 ]
-
-# Перелік символів для UI_v2 debug viewer базується на FXCM_FAST_SYMBOLS
-UI_V2_DEBUG_VIEWER_SYMBOLS: list[str] = [sym.upper() for sym in FXCM_FAST_SYMBOLS]
 
 #: Канал живих bid/ask/mid тиков від FXCM конектора
 FXCM_PRICE_TICK_CHANNEL = "fxcm:price_tik"

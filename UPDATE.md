@@ -115,6 +115,180 @@
 
 ---
 
+## 2025-12-15 — SMC: `ohlcv!=ok` не блокує цикл (live price працює при delayed/lag)
+
+**Що змінено**
+
+- SMC idle-gate більше не блокує цикл при `market=open` + `price=ok`, навіть якщо `ohlcv=delayed/lag/down`.
+- `ohlcv` у `fxcm:status` трактуємо як діагностику: фіксуємо причину як `fxcm_ohlcv_<state>_ignored`, але продовжуємо цикл, щоб оновлювати `current_price` з `fxcm:price_tik`.
+
+**Де**
+
+- app/smc_producer.py
+- tests/test_app_smc_producer_fxcm_idle.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_smc_producer_fxcm_idle.py` → `4 passed`.
+
+---
+
+## 2025-12-15 — Legacy viewer (UI_V2_ENABLED=0): live price з `fxcm:price_tik`
+
+**Що змінено**
+
+- Experimental viewer (SMC Viewer · Extended) тепер додатково підписується на `fxcm:price_tik` і оновлює `Price` між SMC снапшотами.
+- Для тикових апдейтів використовуємо останній збережений SMC asset/meta і лише підміняємо поле `viewer_state.price` на `mid` з тика.
+
+**Де**
+
+- UI/ui_consumer_experimental_entry.py
+- tests/test_ui_consumer_entry.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_consumer_entry.py` → `4 passed`.
+
+---
+
+## 2025-12-15 — UI_v2: web-only стек + окремий перемикач debug viewer
+
+**Що змінено**
+
+- `UI_V2_ENABLED` тепер керує лише UI_v2 web-стеком (HTTP/WS) і не використовується як «перемикач типів viewer».
+- Прибрано автозапуск `UI_v2.debug_viewer_v2` з пайплайна (UI_v2 стає чисто веб-шаром).
+- Додано окремий ENV-прапорець `DEBUG_VIEWER_ENABLED=1|0` для запуску console viewer `SMC Viewer · Extended` незалежно від `UI_V2_ENABLED`.
+
+**Де**
+
+- app/main.py
+- tests/test_app_main_ui_toggle.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_main_ui_toggle.py` → `2 passed`.
+
+---
+
+## 2025-12-15 — UI_v2: прибирання debug/rich артефактів (prod cleanup)
+
+**Що змінено**
+
+- Прибрано з `UI_v2` консольні/дев-модулі: `debug_viewer_v2.py`, `rich_viewer.py`, `rich_viewer_extended.py`.
+- Видалено застарілі конфіг-поля `UI_V2_DEBUG_VIEWER_ENABLED` та `UI_V2_DEBUG_VIEWER_SYMBOLS`.
+- Видалено тести, що були привʼязані до rich/debug viewer.
+- Оновлено документацію `UI_v2` під web-only роль.
+
+**Де**
+
+- UI_v2/**init**.py
+- UI_v2/README.md
+- config/config.py
+- tests/test_ui_v2_debug_viewer_v2.py (видалено)
+- tests/test_ui_v2_rich_viewer_extended.py (видалено)
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_main_ui_toggle.py tests/test_ui_v2_viewer_state_builder.py tests/test_ui_v2_viewer_state_server.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_smc_viewer_broadcaster.py tests/test_ui_v2_smc_viewer_broadcaster_metrics.py tests/test_ui_v2_static_http.py tests/test_ui_v2_fxcm_ws_server.py tests/test_ui_v2_ohlcv_provider.py` → `22 passed`.
+
+---
+
+## 2025-12-15 — UI_v2 (Web): realtime `complete=false` свічки + лаг по live freshness + флаг `fxcm_apply_complete`
+
+**Що змінено**
+
+- У web UI “Лаг (с)” тепер показує **свіжість live-стріму** (ticks/OHLCV), якщо FXCM WS увімкнено й live події приходять; інакше — fallback на `meta.fxcm.lag_seconds`.
+- Додано флаг `fxcm_apply_complete=1|0` (query param) для керування тим, чи треба **одразу** прибирати live overlay при приході `complete=true`.
+- Тиковий WS також вважаємо “live” (впливає на live-індикатор і лаг), щоб не зависати у `LIVE: OFF`, якщо OHLCV live тимчасово тихий.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/README.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py`.
+
+---
+
+## 2025-12-15 — UI_v2 (Web): FXCM OHLCV WS сумісність `timeframe` + volume від `tick_count`
+
+**Що змінено**
+
+- FXCM WS міст для `/fxcm/ohlcv` тепер приймає `timeframe` як синонім `tf`, щоб не “губити” повідомлення з Redis `fxcm:ohlcv`, якщо конектор шле іншу назву поля.
+- У web UI для live OHLCV обсяг/інтенсивність беремо з `volume`, а якщо його немає — з `tick_count` (fallback), щоб гістограма обсягів реально малювалась.
+
+**Де**
+
+- UI_v2/fxcm_ohlcv_ws_server.py
+- UI_v2/web_client/app.js
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py`.
+
+---
+
+## 2025-12-15 — UI_v2 (Web): діагностика WS close (code/reason) + стійкість до Redis hiccups
+
+**Що змінено**
+
+- У браузері (app.js) лог для `WS onclose` тепер показує `code/wasClean/reason`, щоб швидко відрізняти 1011 (internal) від handshake/мережевих розривів.
+- WS сервер `ViewerStateWsServer` став більш стійким до тимчасових винятків Redis/pubsub: не валимо весь handler 1011 при разовому `get_message()`/send фейлі.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/viewer_state_ws_server.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py`.
+
+---
+
+## 2025-12-15 — UI_v2 (Web): /favicon.ico без 404 (No Content)
+
+**Що змінено**
+
+- HTTP сервер UI_v2 тепер відповідає `204 No Content` на `GET /favicon.ico`, щоб браузер не засмічував консоль 404-ками в публічному режимі.
+
+**Де**
+
+- UI_v2/viewer_state_server.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py`.
+
+---
+
+## 2025-12-15 — UI_v2 (Web): live price від ticks + volume fallback при `volume=0`
+
+**Що змінено**
+
+- Виявлено реальний кейс FXCM: у `fxcm:ohlcv` live-бар може мати `volume=0.0` і водночас `tick_count>0`.
+  У UI тепер беремо **перше додатне** значення серед `volume/tick_count/...`, щоб гістограма обсягів не була завжди нульова.
+- Додано додатковий fallback: якщо FXCM live-бар не містить volume/tick_count, UI накопичує локальний `tick_count` з тикового WS і підставляє його як інтенсивність (щоб не було миготіння і щоб volume було на 5m).
+- Стабілізовано видимість volume-гістограми при масштабуванні: для histogram більше не використовується volume-залежна прозорість (бруски не «провалюються» в майже невидимі).
+- Стабілізовано volume при горизонтальному скролі: autoscale volume-шкали тепер фіксується по глобальному max обсягу (не по видимому фрагменту).
+- Уточнено autoscale volume: max для шкали береться по всьому датасету з robust-кепом по квантилю (p98), щоб одиночні спайки не сплющували решту обсягів.
+- Ціна у summary/мобільному UI тепер оновлюється від тикового WS (`/fxcm/ticks`) і вважається “свіжою” до `FXCM_LIVE_STALE_MS`.
+- Live overlay (candles) тепер показує live price на шкалі/лейблі синхронно зі свічкою (а не лише по закритій свічці).
+- Тимчасово додано поле у шапку summary: `VOL src` (показує `tick_count` або `volume`) для швидкої діагностики.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py`.
+
+---
+
 ## 2025-12-15 — SMC: толерантність `stale_tail` у вихідні + requester/порти UI_v2
 
 **Що змінено**
@@ -143,6 +317,28 @@
 
 - Запущено таргетно: `pytest tests/test_app_smc_producer_history_gate.py tests/test_s3_warmup_requester.py tests/test_app_console_status_bar.py tests/test_app_smc_producer_fxcm_idle.py` → `17 passed`.
 - Запущено таргетно: `pytest tests/test_fxcm_schema_and_ingestor_contract.py tests/test_ingestor.py tests/test_fxcm_ingestor_universe_filter.py` → `21 passed`.
+
+---
+
+## 2025-12-15 — FXCM контракт: тести complete/synthetic + HMAC extra fields + gap-check (--hours)
+
+**Що змінено**
+
+- Уточнено/розширено контрактні тести FXCM інжестора: live-бар (`complete=false`) не пишеться в UDS; synthetic з `complete=true` пишеться.
+- Додано тест на forward-compatibility підпису: HMAC лишається валідним при появі додаткових/невідомих полів усередині `bars[*]`.
+- QA gap-check: після звірки репозиторію виявлено, що вже існує універсальна утиліта `tools/uds_ohlcv_gap_check.py` (UDS + режим `--snapshot-file`).
+  Щоб не дублювати функціонал, додано зручний режим `--hours` (останні N годин від кінця історії) саме в існуючу утиліту.
+  Дублюючий `tools/qa_check_1m_gaps.py` прибрано.
+
+**Де**
+
+- tests/test_fxcm_schema_and_ingestor_contract.py
+- tests/test_ingestor.py
+- tools/uds_ohlcv_gap_check.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_fxcm_schema_and_ingestor_contract.py tests/test_ingestor.py` → `21 passed`.
 
 ---
 

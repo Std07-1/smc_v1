@@ -46,15 +46,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--symbol", required=True, help="Символ, напр. XAUUSD")
     parser.add_argument("--tf", required=True, help="Таймфрейм, напр. 1m або 5m")
     parser.add_argument(
+        "--hours",
+        type=int,
+        default=None,
+        help=(
+            "Альтернатива --from/--to: аналізує останні N годин від кінця історії "
+            "(end береться з max(open_time) у джерелі даних)"
+        ),
+    )
+    parser.add_argument(
         "--from",
         dest="from_dt",
-        required=True,
+        required=False,
         help="Початок діапазону (YYYY-MM-DD або ISO datetime)",
     )
     parser.add_argument(
         "--to",
         dest="to_dt",
-        required=True,
+        required=False,
         help="Кінець діапазону (YYYY-MM-DD або ISO datetime). Для дати — інтерпретується як кінець дня (exclusive: +1d).",
     )
     parser.add_argument(
@@ -174,19 +183,41 @@ async def main(argv: list[str] | None = None) -> None:
     tf = str(args.tf).strip().lower()
     tf_ms = _parse_tf_ms(tf)
 
-    dt_from = _parse_utc_dt(args.from_dt)
-    dt_to = _parse_utc_dt(args.to_dt)
-    # Якщо to задано як дата (YYYY-MM-DD), трактуємо як кінець дня: +1d (exclusive)
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.to_dt.strip()):
-        dt_to = dt_to + timedelta(days=1)
+    hours = int(args.hours) if args.hours is not None else None
+    if hours is not None and hours <= 0:
+        raise SystemExit("Некоректний параметр: --hours має бути > 0")
 
-    start_ms = int(dt_from.timestamp() * 1000)
-    end_ms = int(dt_to.timestamp() * 1000)
-    if end_ms <= start_ms:
-        raise SystemExit("Некоректний діапазон: --to має бути пізніше за --from")
+    if hours is None:
+        if not args.from_dt or not args.to_dt:
+            raise SystemExit("Потрібно задати або --hours, або обидва --from та --to")
 
-    # Оцінка потрібної кількості барів + запас
-    estimated_bars = int((end_ms - start_ms) // tf_ms) + 5
+    dt_from: datetime | None = None
+    dt_to: datetime | None = None
+    start_ms: int | None = None
+    end_ms: int | None = None
+
+    if hours is None:
+        assert args.from_dt is not None
+        assert args.to_dt is not None
+        dt_from = _parse_utc_dt(args.from_dt)
+        dt_to = _parse_utc_dt(args.to_dt)
+        # Якщо to задано як дата (YYYY-MM-DD), трактуємо як кінець дня: +1d (exclusive)
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.to_dt.strip()):
+            dt_to = dt_to + timedelta(days=1)
+
+        start_ms = int(dt_from.timestamp() * 1000)
+        end_ms = int(dt_to.timestamp() * 1000)
+        if end_ms <= start_ms:
+            raise SystemExit("Некоректний діапазон: --to має бути пізніше за --from")
+
+    # Оцінка потрібної кількості барів + запас.
+    # У режимі --hours будемо читати приблизно hours/tf барів з запасом.
+    if hours is not None:
+        estimated_bars = int((hours * 3600_000) // tf_ms) + 50
+    else:
+        assert start_ms is not None and end_ms is not None
+        estimated_bars = int((end_ms - start_ms) // tf_ms) + 5
+
     limit = (
         int(args.limit)
         if args.limit is not None
@@ -220,6 +251,17 @@ async def main(argv: list[str] | None = None) -> None:
             work["open_time_ms"] = work["open_time_ms"].astype("int64")
             work = work.sort_values("open_time_ms").reset_index(drop=True)
             open_times = work["open_time_ms"].tolist()
+
+        if hours is not None:
+            end_anchor_ms = max(open_times)
+            # Робимо end exclusive, щоб не відрізати останній бар.
+            end_ms = end_anchor_ms + tf_ms
+            start_ms = end_ms - hours * 3600_000
+            dt_from = datetime.fromtimestamp(start_ms / 1000, tz=UTC)
+            dt_to = datetime.fromtimestamp(end_ms / 1000, tz=UTC)
+
+        assert start_ms is not None and end_ms is not None
+        assert dt_from is not None and dt_to is not None
 
         # Фільтрація по діапазону (для обох режимів)
         open_times = [ms for ms in open_times if start_ms <= ms < end_ms]

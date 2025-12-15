@@ -3,5 +3,5 @@
 Містить:
 - типізовані схеми (`schemas`);
 - побудову агрегованого стану (`viewer_state_builder`);
-- майбутні рендерери (`rich_viewer`, `rich_viewer_extended`).
+- web-шар (HTTP/WS) для доставки state у браузер.
 """

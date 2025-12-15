@@ -6,7 +6,6 @@ import asyncio
 import errno
 import logging
 import os
-import subprocess
 import sys
 from typing import Any
 
@@ -36,8 +35,6 @@ from config.config import (
     REDIS_SNAPSHOT_KEY_SMC_VIEWER,
     SCREENING_LOOKBACK,
     SMC_REFRESH_INTERVAL,
-    UI_V2_DEBUG_VIEWER_ENABLED,
-    UI_V2_DEBUG_VIEWER_SYMBOLS,
 )
 from data.unified_store import UnifiedDataStore
 from UI_v2.fxcm_ohlcv_ws_server import FxcmOhlcvWsServer
@@ -165,6 +162,8 @@ async def run_pipeline() -> None:
         if not symbols:
             return
 
+        _maybe_launch_debug_viewer()
+
         viewer_tasks = _launch_ui_v2_tasks(datastore)
         tasks.extend(viewer_tasks)
 
@@ -234,10 +233,7 @@ def _launch_ui_v2_tasks(datastore: UnifiedDataStore | None) -> list[asyncio.Task
     """Створює таски для UI_v2 broadcaster + HTTP/WS серверів."""
 
     if not _env_flag("UI_V2_ENABLED", False):
-        logger.info(
-            "[UI_v2] Viewer стек вимкнено через UI_V2_ENABLED=0 — запускаю legacy viewer"
-        )
-        launch_experimental_viewer()
+        logger.info("[UI_v2] Web сервіс вимкнено через UI_V2_ENABLED=0")
         return []
 
     ohlcv_provider = None
@@ -319,8 +315,23 @@ def _launch_ui_v2_tasks(datastore: UnifiedDataStore | None) -> list[asyncio.Task
             fxcm_ohlcv_ws_host,
             fxcm_ohlcv_ws_port,
         )
-    _launch_ui_v2_debug_viewer()
     return tasks
+
+
+def _maybe_launch_debug_viewer() -> None:
+    """Опційно запускає console debug viewer (SMC Viewer · Extended).
+
+    Важливо: UI_V2_ENABLED керує лише web-стеком (HTTP/WS). Запуск debug viewer
+    виносимо в окремий ENV-прапорець.
+    """
+
+    if not _env_flag("DEBUG_VIEWER_ENABLED", False):
+        return
+    try:
+        launch_experimental_viewer()
+        logger.info("[UI] Запущено debug viewer (ENV DEBUG_VIEWER_ENABLED=1)")
+    except Exception as exc:  # pragma: no cover - best effort
+        logger.warning("[UI] Не вдалося запустити debug viewer: %s", exc)
 
 
 async def _run_ui_v2_broadcaster(cfg: SmcViewerBroadcasterConfig) -> None:
@@ -476,47 +487,6 @@ async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
                 raise
     finally:
         await redis.close()
-
-
-def _build_debug_viewer_popen_kwargs(
-    *, platform: str | None = None, creation_flag: int | None = None
-) -> dict[str, Any]:
-    """Формує параметри Popen для запуску debug viewer в окремій консолі."""
-
-    params: dict[str, Any] = {"stdout": None, "stderr": None, "stdin": None}
-    platform_norm = (platform or os.name).lower()
-    new_console_flag = (
-        creation_flag
-        if creation_flag is not None
-        else int(getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
-    )
-    if platform_norm == "nt":
-        if new_console_flag:
-            params["creationflags"] = new_console_flag
-    else:
-        params["start_new_session"] = True
-    return params
-
-
-def _launch_ui_v2_debug_viewer() -> None:
-    """Запускає debug viewer v2 як окремий процес (за потреби)."""
-
-    if not UI_V2_DEBUG_VIEWER_ENABLED:
-        logger.info("[UI_v2] Debug viewer v2 вимкнено конфігом")
-        return
-
-    try:
-        popen_kwargs = _build_debug_viewer_popen_kwargs()
-        subprocess.Popen(
-            [sys.executable, "-m", "UI_v2.debug_viewer_v2"],
-            **popen_kwargs,
-        )
-        logger.info(
-            "[UI_v2] Debug viewer v2 запущено для %s",
-            ", ".join(UI_V2_DEBUG_VIEWER_SYMBOLS) or "(немає символів)",
-        )
-    except Exception:
-        logger.exception("[UI_v2] Не вдалося запустити debug viewer v2")
 
 
 if __name__ == "__main__":
