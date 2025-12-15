@@ -12,9 +12,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from redis.asyncio import Redis
-from rich.logging import RichHandler
 
-from app.console_status_bar import run_console_status_bar
 from app.fxcm_warmup_requester import build_requester_from_config
 from app.runtime import (
     _build_allowed_pairs,
@@ -51,12 +49,11 @@ from UI_v2.smc_viewer_broadcaster import (
 from UI_v2.viewer_state_server import ViewerStateHttpServer
 from UI_v2.viewer_state_store import ViewerStateStore
 from UI_v2.viewer_state_ws_server import ViewerStateWsServer
-from utils.rich_console import get_rich_console
 
 logger = logging.getLogger("app.main")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
+    logger.addHandler(logging.StreamHandler())
     # Під pytest caplog навішує handler на root logger; щоб він бачив записи,
     # вмикаємо propagate лише у тестовому середовищі.
     logger.propagate = "pytest" in sys.modules
@@ -163,19 +160,6 @@ async def run_pipeline() -> None:
         datastore, cfg = await bootstrap()
         redis_conn, source = create_redis_client(decode_responses=True)
         logger.info("[SMC] Redis async клієнт створено (%s)", source)
-
-        # Живий статус у консолі (Rich Live) — не блокує пайплайн.
-        # Вимикається через SMC_CONSOLE_STATUS_BAR=0.
-        tasks.append(
-            asyncio.create_task(
-                run_console_status_bar(
-                    redis_conn=redis_conn,
-                    snapshot_key=REDIS_SNAPSHOT_KEY_SMC,
-                    console=get_rich_console(),
-                ),
-                name="console_status_bar",
-            )
-        )
 
         symbols = await _init_fast_symbols(datastore, fast_symbols=FXCM_FAST_SYMBOLS)
         if not symbols:

@@ -13,19 +13,17 @@ from pathlib import Path
 from typing import Any
 
 from redis.asyncio import Redis
-from rich.logging import RichHandler
 
 from app.settings import load_datastore_cfg, settings
 from data.fxcm_ingestor import run_fxcm_ingestor
 from data.fxcm_price_stream import run_fxcm_price_stream_listener
 from data.fxcm_status_listener import run_fxcm_status_listener
 from data.unified_store import StoreConfig, StoreProfile, UnifiedDataStore
-from utils.rich_console import get_rich_console
 
 logger = logging.getLogger("app.runtime")
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 BASE_DIR = Path(__file__).resolve().parent.parent

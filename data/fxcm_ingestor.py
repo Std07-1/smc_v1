@@ -42,12 +42,10 @@ from typing import Any
 
 import pandas as pd
 from redis.asyncio import Redis
-from rich.logging import RichHandler
 
 from app.settings import settings
 from data.fxcm_status_listener import get_fxcm_feed_state, note_fxcm_bar_close
 from data.unified_store import UnifiedDataStore
-from utils.rich_console import get_rich_console
 
 try:  # pragma: no cover - опціональна залежність
     from prometheus_client import Counter as PromCounter  # type: ignore[import]
@@ -57,7 +55,7 @@ except Exception:  # pragma: no cover - у тестах/CI клієнта мож
 logger = logging.getLogger("fxcm_ingestor")
 if not logger.handlers:  # guard від подвійного підключення
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 FXCM_OHLCV_CHANNEL = "fxcm:ohlcv"

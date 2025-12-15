@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from redis.asyncio import Redis
-from rich.logging import RichHandler
 
 from config.config import (
     REDIS_CHANNEL_SMC_STATE,
@@ -19,7 +18,6 @@ from config.config import (
     UI_SMC_PAYLOAD_SCHEMA_VERSION,
     UI_SMC_SNAPSHOT_TTL_SEC,
 )
-from utils.rich_console import get_rich_console
 from utils.utils import format_price as fmt_price_stage1, format_volume_usd, safe_float
 
 try:  # pragma: no cover - best-effort залежність
@@ -30,7 +28,7 @@ except Exception:  # pragma: no cover
 logger = logging.getLogger("ui.publish_smc_state")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 _SEQ = 0

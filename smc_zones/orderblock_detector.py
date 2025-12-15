@@ -6,7 +6,6 @@ import logging
 from typing import Any, Literal, cast
 
 import pandas as pd
-from rich.logging import RichHandler
 
 from smc_core.config import SmcCoreConfig
 from smc_core.smc_types import (
@@ -17,14 +16,12 @@ from smc_core.smc_types import (
     SmcZone,
     SmcZoneType,
 )
-from utils.rich_console import get_rich_console
 
 # ───────────────────────────── Логування ─────────────────────────────
 logger = logging.getLogger("smc_zones.orderblock_detector")
 if not logger.handlers:  # захист від повторної ініціалізації
     logger.setLevel(logging.INFO)
-    # show_path=True для відображення файлу/рядка у WARN/ERROR
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 

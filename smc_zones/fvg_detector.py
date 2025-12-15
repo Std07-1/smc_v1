@@ -7,17 +7,15 @@ from collections.abc import Sequence
 from typing import Any, Literal
 
 import pandas as pd
-from rich.logging import RichHandler
 
 from smc_core.config import SmcCoreConfig
 from smc_core.smc_types import SmcStructureState, SmcZone, SmcZoneType
-from utils.rich_console import get_rich_console
 from utils.utils import safe_float
 
 logger = logging.getLogger("smc_zones.fvg_detector")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 

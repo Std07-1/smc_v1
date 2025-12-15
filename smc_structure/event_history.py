@@ -9,17 +9,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 import pandas as pd
-from rich.logging import RichHandler
 
 from smc_core.smc_types import SmcStructureEvent
-from utils.rich_console import get_rich_console
 
 # ───────────────────────────── Логування ─────────────────────────────
 logger = logging.getLogger("smc_structure.event_history")
 if not logger.handlers:  # захист від повторної ініціалізації
     logger.setLevel(logging.INFO)
-    # show_path=True для відображення файлу/рядка у WARN/ERROR
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 

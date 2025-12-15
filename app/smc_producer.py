@@ -17,7 +17,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from redis.asyncio import Redis
-from rich.logging import RichHandler
 
 from app.fxcm_history_state import classify_history, timeframe_to_ms
 from app.smc_state_manager import SmcStateManager
@@ -37,7 +36,6 @@ from config.constants import ASSET_STATE, K_STATS
 from data.fxcm_status_listener import get_fxcm_feed_state
 from data.unified_store import UnifiedDataStore
 from UI.publish_smc_state import publish_smc_state
-from utils.rich_console import get_rich_console
 from utils.utils import create_error_signal
 
 if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгів
@@ -47,7 +45,7 @@ if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгів
 logger = logging.getLogger("app.smc_producer")
 if not logger.handlers:
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 

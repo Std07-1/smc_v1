@@ -1,31 +1,19 @@
-"""Консольний status bar для пайплайна через Rich Live.
+"""Консольний snapshot статусу пайплайна.
 
-Ціль: показувати "живий" короткий статус (SMC/FXCM/Redis) в одному рядку,
-щоб він не конфліктував з логами RichHandler у PowerShell/VS Code.
+Раніше тут був Rich Live status bar. Його прибрано на користь простого логування,
+але ми залишаємо `build_status_snapshot()` для тестів та потенційних інтеграцій.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
-import logging
 import sys
-import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
 from redis.asyncio import Redis
-from rich.console import Console
-from rich.live import Live
-from rich.panel import Panel
-from rich.spinner import Spinner
-from rich.table import Table
-from rich.text import Text
 
-from config.config import SMC_CONSOLE_STATUS_BAR_ENABLED
-from data.fxcm_status_listener import FxcmFeedState, get_fxcm_feed_state
-from utils.rich_console import get_rich_console
+from data.fxcm_status_listener import FxcmFeedState
 
 try:  # pragma: no cover - S3 requester може бути вимкнений/не імпортуватись у тестах
     from app.fxcm_warmup_requester import get_s3_runtime_snapshot
@@ -35,14 +23,8 @@ except Exception:  # pragma: no cover
         return {}
 
 
-logger = logging.getLogger("app.console_status_bar")
-
-
 def _stderr_is_tty() -> bool:
-    """Перевіряє TTY саме по stderr.
-
-    Це важливо, бо і RichHandler (логи), і Live (status bar) пишуть у stderr.
-    """
+    """Перевіряє TTY саме по stderr."""
 
     try:
         return bool(sys.stderr.isatty())
@@ -428,447 +410,24 @@ def build_status_snapshot(
     }
 
 
-class ConsoleStatusBar:
-    """Живий status bar у консолі через Rich Live."""
-
-    def __init__(
-        self,
-        *,
-        enabled: bool = True,
-        refresh_per_second: float = 4.0,
-        console: Console | None = None,
-    ) -> None:
-        # Вимикаємо bar, якщо stderr не TTY.
-        if console is None:
-            console = get_rich_console()
-
-        # Важливо: орієнтуємось саме на stderr.
-        self._enabled = bool(enabled) and _stderr_is_tty() and console is not None
-        self._console = console
-        self._live: Live | None = None
-        self._refresh_per_second = max(1.0, float(refresh_per_second))
-        self._spinner: Spinner | None = None
-
-    def start(self) -> None:
-        if not self._enabled or self._console is None:
-            return
-        if self._live is not None:
-            return
-        self._spinner = Spinner("dots")
-        self._live = Live(
-            self._render_panel({}),
-            console=self._console,
-            refresh_per_second=self._refresh_per_second,
-            transient=True,
-            redirect_stderr=True,
-            redirect_stdout=False,
-        )
-        self._live.__enter__()
-
-    def stop(self) -> None:
-        if self._live is None:
-            return
-        try:
-            self._live.__exit__(None, None, None)
-        finally:
-            self._live = None
-            self._spinner = None
-
-    def update(self, snapshot: Mapping[str, Any]) -> None:
-        if self._live is None:
-            return
-        self._live.update(self._render_panel(snapshot))
-
-    def _render_panel(self, snapshot: Mapping[str, Any]) -> Panel:
-        mode = str(snapshot.get("mode") or "?")
-        market_open = bool(snapshot.get("market_open"))
-        ticks_alive = bool(snapshot.get("ticks_alive"))
-        redis_ok = bool(snapshot.get("redis_connected"))
-
-        market_style = "green" if market_open else "yellow"
-        redis_style = "green" if redis_ok else "red"
-        ticks_style = "green" if ticks_alive else "red"
-
-        # Додаткове фарбування по станам FXCM.
-        price_state = str(snapshot.get("fxcm_price_state") or "unknown").lower()
-        if price_state not in {"ok", "unknown"}:
-            ticks_style = "yellow" if price_state in {"stale", "lag"} else "red"
-
-        headline = Text.assemble(
-            ("mode=", "dim"),
-            (mode, "bold"),
-            ("  |  market=", "dim"),
-            ("open" if market_open else "closed", market_style),
-            ("  |  ticks=", "dim"),
-            ("alive" if ticks_alive else "down", ticks_style),
-            ("  |  redis=", "dim"),
-            ("ok" if redis_ok else "down", redis_style),
-        )
-
-        rows: list[tuple[Text, Text]] = []
-
-        def _state_style(value: str) -> str:
-            normalized = (value or "").strip().lower()
-            if normalized in {"ok", "open", "opened", "active", "up", "ready"}:
-                return "green"
-            if normalized in {"stale", "lag", "degraded", "slow"}:
-                return "yellow"
-            if normalized in {"down", "error", "fail", "failed", "dead"}:
-                return "red"
-            if normalized in {"unknown", "?", ""}:
-                return "dim"
-            return "dim"
-
-        smc_state = str(snapshot.get("smc_state") or "?").upper()
-        smc_reason = _coerce_str(snapshot.get("smc_reason"))
-        smc_style = "dim"
-        if smc_state == "RUN":
-            smc_style = "green"
-        elif smc_state == "IDLE":
-            smc_style = "yellow"
-        elif smc_state == "WARMUP":
-            smc_style = "cyan"
-
-        smc_text = Text.assemble((smc_state, smc_style))
-        if smc_reason:
-            reason_style = "dim"
-            if smc_reason == "fxcm_market_closed":
-                reason_style = "yellow"
-            smc_text.append("  ", style="dim")
-            smc_text.append(smc_reason, style=reason_style)
-        rows.append((Text("smc", style="dim"), smc_text))
-
-        # Конект з конектором: свіжість fxcm:status.
-        conn_state = str(snapshot.get("connector_state") or "unknown").lower()
-        conn_age = _coerce_float(snapshot.get("connector_age_seconds"))
-        if conn_state != "unknown" or conn_age is not None:
-            age_label = (
-                _format_short_duration(conn_age) if conn_age is not None else None
-            )
-            conn_text = Text.assemble(
-                (conn_state, _state_style(conn_state)),
-            )
-            if age_label:
-                conn_text.append("  age=", style="dim")
-                conn_text.append(age_label, style=_state_style(conn_state))
-            rows.append((Text("conn", style="dim"), conn_text))
-
-        # S2 summary: що зараз «болить» по історії UDS.
-        s2_ins = _coerce_int(snapshot.get("s2_insufficient_assets")) or 0
-        s2_stale = _coerce_int(snapshot.get("s2_stale_tail_assets")) or 0
-        s2_unk = _coerce_int(snapshot.get("s2_unknown_assets")) or 0
-        s2_ok = _coerce_int(snapshot.get("s2_ok_assets"))
-        s2_sym = _coerce_str(snapshot.get("s2_active_symbol"))
-        s2_state = _coerce_str(snapshot.get("s2_active_state"))
-        s2_age_ms = _coerce_int(snapshot.get("s2_active_age_ms"))
-
-        s2_total_issues = int(s2_ins + s2_stale + s2_unk)
-        if s2_total_issues > 0 or s2_ok is not None:
-            style = (
-                "green"
-                if s2_total_issues == 0
-                else ("red" if s2_stale > 0 else "yellow")
-            )
-            s2_text = Text.assemble(
-                ("issues=", "dim"),
-                (str(s2_total_issues), style),
-                ("  ins=", "dim"),
-                (str(s2_ins), "yellow" if s2_ins > 0 else "dim"),
-                ("  stale=", "dim"),
-                (str(s2_stale), "red" if s2_stale > 0 else "dim"),
-                ("  unk=", "dim"),
-                (str(s2_unk), "dim"),
-            )
-            if s2_sym and s2_state:
-                s2_text.append("  act=", style="dim")
-                s2_text.append(str(s2_sym).upper(), style="cyan")
-                s2_text.append(":", style="dim")
-                s2_text.append(str(s2_state), style=_state_style(str(s2_state)))
-                if s2_age_ms is not None:
-                    s2_text.append("  age=", style="dim")
-                    s2_text.append(
-                        _format_short_duration(s2_age_ms / 1000.0) or "?", style="cyan"
-                    )
-            rows.append((Text("s2", style="dim"), s2_text))
-
-        # S3 (команди): остання команда + стан requester-а.
-        s3_enabled = bool(snapshot.get("s3_enabled"))
-        s3_channel = _coerce_str(snapshot.get("s3_channel"))
-        s3_sent_total = _coerce_int(snapshot.get("s3_sent_total"))
-        s3_active = _coerce_int(snapshot.get("s3_active_issues"))
-        s3_last_type = _coerce_str(snapshot.get("s3_last_type"))
-        s3_last_symbol = _coerce_str(snapshot.get("s3_last_symbol"))
-        s3_last_tf = _coerce_str(snapshot.get("s3_last_tf"))
-        s3_last_reason = _coerce_str(snapshot.get("s3_last_reason"))
-        s3_last_age = _coerce_float(snapshot.get("s3_last_age_seconds"))
-
-        if s3_enabled or s3_sent_total is not None or s3_last_type:
-            base = Text.assemble(
-                ("on" if s3_enabled else "off", "green" if s3_enabled else "dim"),
-            )
-            if s3_channel:
-                base.append("  ch=", style="dim")
-                base.append(s3_channel, style="cyan")
-            if s3_sent_total is not None or s3_active is not None:
-                base.append("  sent=", style="dim")
-                base.append(
-                    str(s3_sent_total if s3_sent_total is not None else "?"),
-                    style="cyan",
-                )
-                base.append("  act=", style="dim")
-                base.append(
-                    str(s3_active if s3_active is not None else "?"), style="cyan"
-                )
-            if s3_last_type and s3_last_symbol and s3_last_tf:
-                base.append("  last=", style="dim")
-                base.append(s3_last_type, style="cyan")
-                base.append(" ", style="dim")
-                base.append(s3_last_symbol, style="cyan")
-                base.append(" ", style="dim")
-                base.append(s3_last_tf, style="cyan")
-                if s3_last_reason:
-                    base.append("  reason=", style="dim")
-                    base.append(s3_last_reason, style="dim")
-                if s3_last_age is not None:
-                    base.append("  age=", style="dim")
-                    base.append(
-                        _format_short_duration(s3_last_age) or f"{s3_last_age:.0f}s",
-                        style="cyan",
-                    )
-            rows.append((Text("s3", style="dim"), base))
-
-        age_seconds = _coerce_float(snapshot.get("snapshot_age_seconds"))
-        if age_seconds is not None and age_seconds >= 0:
-            age_label = _format_short_duration(age_seconds) or f"{age_seconds:.1f}s"
-            rows.append((Text("age", style="dim"), Text(age_label, style="cyan")))
-
-        ready_assets = _coerce_int(snapshot.get("pipeline_ready_assets"))
-        assets_total = _coerce_int(snapshot.get("pipeline_assets_total"))
-        ready_pct = _coerce_float(snapshot.get("pipeline_ready_pct"))
-        if ready_assets is not None or assets_total is not None:
-            left = str(ready_assets) if ready_assets is not None else "?"
-            right = str(assets_total) if assets_total is not None else "?"
-            pct_label = (
-                f" ({int(round(max(0.0, min(1.0, ready_pct)) * 100.0))}%)"
-                if ready_pct is not None
-                else ""
-            )
-            rows.append(
-                (
-                    Text("pipe", style="dim"),
-                    Text(f"{left}/{right}{pct_label}", style="cyan"),
-                )
-            )
-
-        processed = _coerce_int(snapshot.get("pipeline_processed_assets"))
-        skipped = _coerce_int(snapshot.get("pipeline_skipped_assets"))
-        if processed is not None or skipped is not None:
-            proc_label = str(processed) if processed is not None else "?"
-            skip_label = str(skipped) if skipped is not None else "?"
-            rows.append(
-                (
-                    Text("cap", style="dim"),
-                    Text(f"proc={proc_label} skip={skip_label}", style="dim"),
-                )
-            )
-
-        cycle_ms = _coerce_float(snapshot.get("cycle_duration_ms"))
-        cycle_seq = _coerce_int(snapshot.get("cycle_seq"))
-        if cycle_ms is not None or cycle_seq is not None:
-            parts: list[str] = []
-            if cycle_seq is not None:
-                parts.append(f"#{cycle_seq}")
-            if cycle_ms is not None:
-                parts.append(f"{cycle_ms:.0f}ms")
-            cycle_text = Text(" ".join(parts), style="dim")
-            uptime_label = _format_uptime(_coerce_float(snapshot.get("uptime_seconds")))
-            if uptime_label:
-                cycle_text.append("   ", style="dim")
-                cycle_text.append("up=", style="dim")
-                cycle_text.append(uptime_label, style="cyan")
-
-            rows.append((Text("cycle", style="dim"), cycle_text))
-
-        fxcm_proc = str(snapshot.get("fxcm_process_state") or "unknown").lower()
-        fxcm_price = str(snapshot.get("fxcm_price_state") or "unknown").lower()
-        fxcm_ohlcv = str(snapshot.get("fxcm_ohlcv_state") or "unknown").lower()
-        if fxcm_proc != "unknown" or fxcm_price != "unknown" or fxcm_ohlcv != "unknown":
-            fxcm_text = Text.assemble(
-                ("proc=", "dim"),
-                (fxcm_proc, _state_style(fxcm_proc)),
-                ("  price=", "dim"),
-                (fxcm_price, _state_style(fxcm_price)),
-                ("  ohlcv=", "dim"),
-                (fxcm_ohlcv, _state_style(fxcm_ohlcv)),
-            )
-            rows.append(
-                (
-                    Text("fxcm", style="dim"),
-                    fxcm_text,
-                )
-            )
-
-        session_name = _coerce_str(snapshot.get("session_name"))
-        session_state = _coerce_str(snapshot.get("session_state"))
-        to_close = _format_short_duration(
-            _coerce_float(snapshot.get("session_seconds_to_close"))
-        )
-        to_open = _format_short_duration(
-            _coerce_float(snapshot.get("session_seconds_to_next_open"))
-        )
-        if session_name or session_state or to_close or to_open:
-            left = session_name or "?"
-            right = (session_state or "?").lower()
-
-            state_style = "dim"
-            if right in {"open", "opened", "ok", "active"}:
-                state_style = "green"
-            elif right in {"closed", "closing", "holiday"}:
-                state_style = "yellow"
-            elif right in {"error", "down", "fail"}:
-                state_style = "red"
-
-            sess_text = Text.assemble(
-                (left, "cyan"), (":", "dim"), (right, state_style)
-            )
-            if to_close:
-                sess_text.append("  to_close=", style="dim")
-                sess_text.append(to_close, style="cyan")
-            if to_open:
-                sess_text.append("  to_open=", style="dim")
-                sess_text.append(to_open, style="cyan")
-
-            rows.append((Text("sess", style="dim"), sess_text))
-
-        lag = _coerce_float(snapshot.get("lag_seconds"))
-        if lag is not None and lag > 0:
-            lag_label = _format_short_duration(lag) or f"{lag:.1f}s"
-            rows.append((Text("lag", style="dim"), Text(lag_label, style="cyan")))
-
-        next_open = _format_next_open(snapshot.get("next_open"))
-        if next_open:
-            rows.append(
-                (Text("next_open", style="dim"), Text(f"≥ {next_open}", style="cyan"))
-            )
-
-        poll_for = _coerce_float(snapshot.get("sleep_for"))
-        poll_label = _format_poll_interval(poll_for)
-        if poll_label:
-            rows.append((Text("poll", style="dim"), Text(poll_label, style="dim")))
-
-        if not rows:
-            rows.append(
-                (
-                    Text("status", style="dim"),
-                    Text("очікуємо оновлення стану…", style="dim"),
-                )
-            )
-
-        table = Table.grid(expand=True)
-        table.add_column(width=2)
-        table.add_column(width=22)
-        table.add_column(ratio=1)
-        spinner = self._spinner or Text(" ")
-        table.add_row(
-            spinner,
-            Text("SMC pipeline", style="bold cyan"),
-            Text("працюємо", style="bold"),
-        )
-        table.add_row(Text(""), Text(""), headline)
-        for key, value in rows[:10]:
-            table.add_row(Text(""), key, value)
-
-        border_style = "green" if market_open else "yellow"
-        return Panel.fit(
-            table,
-            title="Стан",
-            title_align="center",
-            padding=(0, 1),
-            border_style=border_style,
-        )
-
-
 async def run_console_status_bar(
     *,
     redis_conn: Redis,
     snapshot_key: str,
     refresh_per_second: float = 4.0,
     poll_interval_seconds: float | None = None,
-    console: Console | None = None,
+    console: Any | None = None,
 ) -> None:
-    """Фоново оновлює ConsoleStatusBar, читаючи snapshot з Redis."""
+    """Сумісний no-op.
 
-    enabled = bool(SMC_CONSOLE_STATUS_BAR_ENABLED)
-    if not enabled or not _stderr_is_tty():
-        return
+    Rich status bar прибрано. Функція лишається, щоб не ламати старі імпорти/таски.
+    """
 
-    status_bar = ConsoleStatusBar(
-        enabled=enabled,
-        refresh_per_second=refresh_per_second,
-        console=console,
-    )
-    status_bar.start()
-
-    start_monotonic = time.monotonic()
-
-    poll = (
-        0.5 if poll_interval_seconds is None else max(0.2, float(poll_interval_seconds))
-    )
-    redis_ok = True
-    last_ping_monotonic = 0.0
-
-    try:
-        while True:
-            now = time.monotonic()
-            if now - last_ping_monotonic >= 2.0:
-                last_ping_monotonic = now
-                try:
-                    await redis_conn.ping()
-                    redis_ok = True
-                except Exception:
-                    redis_ok = False
-
-            smc_payload: dict[str, Any] | None = None
-            if redis_ok:
-                try:
-                    raw = await redis_conn.get(snapshot_key)
-                except Exception:
-                    raw = None
-                    redis_ok = False
-                if isinstance(raw, str) and raw:
-                    try:
-                        parsed = json.loads(raw)
-                    except Exception:
-                        parsed = None
-                    if isinstance(parsed, dict):
-                        smc_payload = parsed
-
-            fxcm_state = None
-            try:
-                fxcm_state = get_fxcm_feed_state()
-            except Exception:
-                fxcm_state = None
-
-            snapshot = build_status_snapshot(
-                smc_payload=smc_payload,
-                fxcm_state=fxcm_state,
-                redis_connected=redis_ok,
-                sleep_for=poll,
-                uptime_seconds=(now - start_monotonic),
-                now_utc=datetime.now(tz=UTC),
-            )
-            status_bar.update(snapshot)
-            await asyncio.sleep(poll)
-    except asyncio.CancelledError:
-        raise
-    except Exception as exc:  # pragma: no cover - не валимо пайплайн
-        logger.debug("[StatusBar] Помилка status bar: %s", exc, exc_info=True)
-    finally:
-        status_bar.stop()
+    _ = (redis_conn, snapshot_key, refresh_per_second, poll_interval_seconds, console)
+    return None
 
 
 __all__ = (
-    "ConsoleStatusBar",
     "build_status_snapshot",
     "run_console_status_bar",
 )

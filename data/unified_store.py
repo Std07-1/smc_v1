@@ -34,7 +34,6 @@ from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
 from redis.asyncio import Redis
-from rich.logging import RichHandler
 
 from config.config import (
     DATASTORE_BASE_DIR,
@@ -43,14 +42,12 @@ from config.config import (
     PRICE_TICK_STALE_SECONDS,
 )
 from data.fxcm_status_listener import get_fxcm_feed_state
-from utils.rich_console import get_rich_console
 
 # ── Логування ──
 logger = logging.getLogger("data.unified_store")
 if not logger.handlers:  # guard проти повторної ініціалізації
     logger.setLevel(logging.INFO)
-    # show_path=True щоб у WARNING/ERROR було видно точний файл і рядок
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=True))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 # ── Стандарти й константи ──

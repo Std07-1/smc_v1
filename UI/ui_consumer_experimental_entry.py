@@ -12,7 +12,6 @@ import redis.asyncio as redis
 from redis.asyncio.client import PubSub, Redis
 from rich.console import Console
 from rich.live import Live
-from rich.logging import RichHandler
 
 from app.settings import settings
 from config.config import (
@@ -24,7 +23,6 @@ from config.config import (
 )
 from UI.experimental_viewer import SmcExperimentalViewer
 from UI.experimental_viewer_extended import SmcExperimentalViewerExtended
-from utils.rich_console import get_rich_console
 
 SMC_FEED_CHANNEL = REDIS_CHANNEL_SMC_STATE
 SMC_SNAPSHOT_KEY = REDIS_SNAPSHOT_KEY_SMC
@@ -33,9 +31,7 @@ VIEWER_CLASS: type[SmcExperimentalViewer] = SmcExperimentalViewerExtended
 CLI_LOGGER = logging.getLogger("smc_viewer.cli")
 if not CLI_LOGGER.handlers:
     CLI_LOGGER.setLevel(logging.INFO)
-    CLI_LOGGER.addHandler(
-        RichHandler(console=get_rich_console(), show_path=False, rich_tracebacks=False)
-    )
+    CLI_LOGGER.addHandler(logging.StreamHandler())
     CLI_LOGGER.propagate = False
 
 ALT_SCREEN_ENABLED = bool(UI_VIEWER_ALT_SCREEN_ENABLED)

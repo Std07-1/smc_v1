@@ -8,17 +8,13 @@ import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from rich.logging import RichHandler
-
-from utils.rich_console import get_rich_console
-
 if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгу
     from data.unified_store import UnifiedDataStore
 
 logger = logging.getLogger("app.telemetry")
 if not logger.handlers:  # pragma: no cover - запобігання дублю логерів у тестах
     logger.setLevel(logging.INFO)
-    logger.addHandler(RichHandler(console=get_rich_console(), show_path=False))
+    logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
 

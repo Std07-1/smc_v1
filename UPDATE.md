@@ -180,6 +180,35 @@
 
 ---
 
+## 2025-12-15 — Логи/консоль: прибрано RichHandler + вимкнено status bar
+
+**Що змінено**
+
+- Прибрано Rich-based логування (`RichHandler`) у ключових модулях (Data/UI/SMC core helpers) — залишились прості стандартні логи через `logging.StreamHandler()`.
+- Rich Live console status bar прибрано: `run_console_status_bar()` тепер no-op; при цьому `build_status_snapshot()` залишено для тестів і можливих інтеграцій.
+- `app/rich_console.py` більше не тягне `rich` і лишається lightweight shim для сумісності старих імпортів.
+
+**Де**
+
+- app/console_status_bar.py
+- app/rich_console.py
+- data/fxcm_ingestor.py
+- data/fxcm_price_stream.py
+- data/unified_store.py
+- UI/publish_smc_state.py
+- UI/ui_consumer_experimental_entry.py
+- smc_structure/event_history.py
+- smc_zones/breaker_detector.py
+- smc_zones/fvg_detector.py
+- smc_zones/orderblock_detector.py
+- utils/utils.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_app_console_status_bar.py tests/test_utils_rich_console.py tests/test_ingestor.py` → `16 passed`.
+
+---
+
 ## 2025-12-14 — Документація: UI_v2 + FXCM (live-bar, volume, джерело істини)
 
 **Що змінено**
