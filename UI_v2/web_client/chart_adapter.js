@@ -388,7 +388,10 @@
             pointerId: null,
         };
         const DRAG_ACTIVATION_PX = 6;
-        const WHEEL_OPTIONS = { passive: false };
+        // Важливо: wheel по price-axis перехоплюємо у capture-фазі.
+        // Інакше lightweight-charts може встигнути застосувати власний scale,
+        // а наш manualRange-zoom/pan додасться зверху -> «бам, розтягнуло по Y».
+        const WHEEL_OPTIONS = { passive: false, capture: true };
         const MIN_PRICE_SPAN = 1e-4;
 
         function priceScaleAutoscaleInfoProvider(baseImplementation) {
@@ -593,8 +596,8 @@
                     ? Number(prevLogicalRange.to) >= prevLen - 2
                     : true;
 
-            resetManualPriceScale({ silent: true });
             if (!Array.isArray(bars) || bars.length === 0) {
+                resetManualPriceScale({ silent: true });
                 candles.setData([]);
                 liveCandles.setData([]);
                 volume.setData([]);
@@ -649,6 +652,9 @@
                 signature.lastTime < lastBarsSignature.lastTime;
             if (looksLikeNewDataset) {
                 autoFitDone = false;
+                // Якщо датасет реально «перезапустився» (символ/TF/бекфіл/ресет) —
+                // логічно скинути ручний price range.
+                resetManualPriceScale({ silent: true });
             }
 
             recentVolumes = volumeValues.slice(Math.max(0, volumeValues.length - VOLUME_WINDOW_SIZE));
@@ -1970,6 +1976,9 @@
                     return;
                 }
                 event.preventDefault();
+                if (typeof event.stopImmediatePropagation === "function") {
+                    event.stopImmediatePropagation();
+                }
                 event.stopPropagation();
                 if (event.shiftKey) {
                     applyWheelPan(event);
@@ -2238,12 +2247,16 @@
         function isPointerInPriceAxis(event) {
             const pointer = getRelativePointer(event);
             const { paneWidth, paneHeight, priceScaleWidth } = getPaneMetrics();
-            if (!paneHeight || !priceScaleWidth) {
+            if (!paneHeight || !paneWidth || !pointer.width) {
                 return false;
             }
+
+            // Інколи `priceScale("right").width()` може тимчасово бути 0 (під час resize/перемальовки).
+            // У такому випадку не ламаємо UX: вважаємо price-axis як «усе правіше paneWidth».
+            const axisRight = priceScaleWidth > 0 ? paneWidth + priceScaleWidth : pointer.width;
             return (
                 pointer.x >= paneWidth &&
-                pointer.x <= paneWidth + priceScaleWidth &&
+                pointer.x <= axisRight &&
                 pointer.y >= 0 &&
                 pointer.y <= paneHeight
             );

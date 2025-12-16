@@ -14,6 +14,74 @@
 
 ---
 
+## 2025-12-16 — Dev process: зафіксовано правило «зміна → тест → UPDATE → відповідь»
+
+**Що змінено**
+
+- Додано надважливе правило робочого процесу в пам’ять Copilot: будь-які правки виконуються лише в порядку **зміна → тест → UPDATE → відповідь у чаті**.
+- Уточнено, що оновлюємо `UPDATE_CORE.md`, якщо файл існує, інакше — `UPDATE.md`.
+
+**Де**
+
+- .github/copilot-memory.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_smc_types.py` → `1 passed`.
+
+## 2025-12-16 — UI_v2 (Web): hotfix — виправлено падіння `chart_adapter.js` (Unexpected identifier 'window')
+
+**Що змінено**
+
+- Виправлено кінець IIFE у `chart_adapter.js`: прибрано зайву `}`, через яку браузер падав з `Uncaught SyntaxError: Unexpected identifier 'window'` і `chart_adapter` не завантажувався.
+- Додано cache-busting query параметри в `index.html` для `chart_adapter.js`/`app.js`, щоб Cloudflare/браузер не тримали застарілий бандл.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/web_client/index.html
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_fxcm_ws_server.py tests/test_ui_v2_static_http.py` → `11 passed`.
+
+**Що важливо зберегти при відкаті/повторі**
+
+- Cache-busting для фронтенд-скриптів: без `?v=...` Cloudflare/браузер може віддавати старий `chart_adapter.js`, і тоді stacktrace/номери рядків не відповідають реальній версії.
+- Інваріант `chart_adapter.js`: експорт `window.createChartController = createChartController;` має бути в кінці IIFE; зайва/зникла `}` легко дає `Unexpected identifier 'window'`.
+- Симптом `ReferenceError: setBars is not defined` майже завжди означає, що виконання/`return { setBars, ... }` відбулося поза `createChartController()` (поламана область видимості через дужки або «випавший» фрагмент коду).
+- Перед дебагом WS (Cloudflare tunnel) спочатку перевіряти, що `chart_adapter.js` реально завантажився і ініціалізував `window.createChartController`.
+
+**Чек-ліст повтору після відкату (рекомендовано)**
+
+- Виставити cache-busting (`?v=...`) або зробити hard refresh (`Ctrl+F5`) з вимкненим кешем у DevTools.
+- У консолі браузера перевірити: `typeof window.createChartController === 'function'`.
+- Якщо `chart_adapter` не завантажився — спочатку фіксити синтаксис/структуру IIFE, а не WS.
+- Лише після цього перевіряти WS: чи відкривається `/fxcm/ohlcv?...` локально (без Cloudflare), і вже потім — через tunnel.
+
+## 2025-12-16 — UI_v2 (Web): антишум оверлеїв (viewport-aware) + BOS/CHOCH стабільний рендер
+
+**Що змінено**
+
+- Events (BOS/CHOCH): стабільний рендер — marker+короткий текст + трикутник-підсвітка та axis label (без горизонтальної лінії).
+- Events (BOS/CHOCH): snap часу події до найближчої існуючої свічки (через binary search по таймам датасету), щоб markers гарантовано з’являлись.
+- Events (BOS/CHOCH): shape визначається по kind (CHOCH vs BOS), direction впливає на позицію marker (above/below).
+- Pools/Zones/OTE: додано адаптивний «антишум» без прив’язки до конкретних цін:
+  - фільтр по viewport price-range з margin;
+  - кластеризація по біну (binSize від span/refPrice);
+  - budgets по TF (через `barTimeSpanSeconds`).
+- Оверлеї підлаштовуються під zoom/scroll: кешуються останні payload-и та перерендерюються на `visibleLogicalRange` change без мережевих запитів.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_fxcm_ws_server.py tests/test_ui_v2_static_http.py` → `11 passed`.
+
+---
+
 ## 2025-12-16 — UI_v2 (Web): декластеризація рівнів + стабільні BOS/CHOCH
 
 **Що змінено**
@@ -24,7 +92,11 @@
 - BOS/CHOCH: додано snap часу події до найближчої існуючої свічки (із відсіканням, якщо занадто далеко від барів).
 - BOS/CHOCH: вимкнено рендер «трикутників» (overlay), залишено лише текстові markers над свічкою.
 - BOS: маркери уніфіковано в синій колір (щоб не виглядали як «червоні квадратики» біля тексту).
+- BOS: зафіксовано як “OK” у такому вигляді — лише напис `BOS` над свічкою + синій marker (без будь-яких трикутників/overlay).
 - Виправлено «самоплив» графіка вправо: при `setBars()` viewport зберігається, якщо користувач не знаходиться на правому краї (follow).
+- Зменшено «випадкові стрибки»/вертикальне розтягування під час перегляду: `setBars()` більше не скидає ручний price-range на кожному polling-оновленні (скидання лише при реальному reset датасету).
+- Додатково прибрано «подвійне масштабування» по wheel: wheel по price-axis тепер перехоплюється у capture-фазі та гаситься (`stopImmediatePropagation`), щоб lightweight-charts не застосовував власний scale паралельно з нашим manualRange.
+- Стабілізовано wheel-скейл по ціні: детекція price-axis має fallback, якщо `priceScale("right").width()` тимчасово повертає 0 (наприклад під час resize).
 - Додано декластеризацію liquidity pools/zones перед рендером:
   - pools: дедуп близьких рівнів, ліміт локальних ліній (≤6), 2 ключові рівні з axisLabel, «глобальні» рівні лише як axisLabel.
   - zones: фільтр по вікну фокусу, ліміт ≤3, тонкі зони рендеряться як один рівень.
