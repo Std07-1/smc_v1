@@ -14,6 +14,27 @@
 
 ---
 
+## 2025-12-16 — UI_v2 (Web): палітри для «A по даних» зон (NY/Tokyo/London)
+
+**Що змінено**
+
+- Додано палітри для data-driven high/low box («A по даних») залежно від активної сесії:
+  - New York — зелений
+  - Tokyo — синій
+  - London — оранжевий
+- Колір застосовується як **заливка** (без ліній) через BaselineSeries options.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_fxcm_ws_server.py tests/test_ui_v2_static_http.py` → `11 passed`.
+
+---
+
 ## 2025-12-16 — UI_v2 (Web): сесії (UTC) як блоки + персист шарів + Baseline для range box
 
 **Що змінено**

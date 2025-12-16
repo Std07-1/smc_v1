@@ -733,10 +733,39 @@
                 return;
             }
 
+            const pickSessionFill = (tag) => {
+                const key = String(tag || "").trim().toLowerCase();
+                // Більш видимі «зони» сесій: New York — зелений, Tokyo — синій, London — оранжевий.
+                // Лінії лишаємо вимкненими (працює лише заливка).
+                if (key === "new_york" || key === "newyork" || key === "ny") {
+                    return {
+                        a1: "rgba(34, 197, 94, 0.16)",
+                        a2: "rgba(34, 197, 94, 0.07)",
+                    };
+                }
+                if (key === "tokyo" || key === "asia") {
+                    return {
+                        a1: "rgba(59, 130, 246, 0.16)",
+                        a2: "rgba(59, 130, 246, 0.07)",
+                    };
+                }
+                if (key === "london") {
+                    return {
+                        a1: "rgba(249, 115, 22, 0.16)",
+                        a2: "rgba(249, 115, 22, 0.07)",
+                    };
+                }
+                return {
+                    a1: "rgba(209, 212, 220, 0.10)",
+                    a2: "rgba(209, 212, 220, 0.04)",
+                };
+            };
+
             const from = Number(range?.from);
             const to = Number(range?.to);
             const low = Number(range?.low);
             const high = Number(range?.high);
+            const fill = pickSessionFill(range?.session);
             if (
                 !Number.isFinite(from) ||
                 !Number.isFinite(to) ||
@@ -759,6 +788,10 @@
                 lineColor: "rgba(0, 0, 0, 0)",
                 topLineColor: "rgba(0, 0, 0, 0)",
                 bottomLineColor: "rgba(0, 0, 0, 0)",
+                topFillColor1: fill.a1,
+                topFillColor2: fill.a2,
+                bottomFillColor1: fill.a1,
+                bottomFillColor2: fill.a2,
             });
             sessionRangeBox.setData([
                 { time: Math.floor(from), value: high },

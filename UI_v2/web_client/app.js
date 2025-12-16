@@ -1205,14 +1205,16 @@ function computeActiveSessionWindowUtc(timeSec) {
     const LONDON = { startMin: 9 * 60, endMin: 17 * 60 };
     const NEW_YORK = { startMin: 17 * 60, endMin: 22 * 60 };
 
-    const pick = (window) => ({
+    const pick = (window, tag) => ({
         from: dayStart + window.startMin * 60,
         to: dayStart + window.endMin * 60,
+        session: tag,
     });
 
-    if (minOfDay >= ASIA.startMin && minOfDay < ASIA.endMin) return pick(ASIA);
-    if (minOfDay >= LONDON.startMin && minOfDay < LONDON.endMin) return pick(LONDON);
-    if (minOfDay >= NEW_YORK.startMin && minOfDay < NEW_YORK.endMin) return pick(NEW_YORK);
+    // Нотація для UI: Asia = Tokyo.
+    if (minOfDay >= ASIA.startMin && minOfDay < ASIA.endMin) return pick(ASIA, "tokyo");
+    if (minOfDay >= LONDON.startMin && minOfDay < LONDON.endMin) return pick(LONDON, "london");
+    if (minOfDay >= NEW_YORK.startMin && minOfDay < NEW_YORK.endMin) return pick(NEW_YORK, "new_york");
     return null;
 }
 
@@ -1240,6 +1242,7 @@ function applySessionRangeBoxFromFxcmStatus() {
     const window = computeActiveSessionWindowUtc(pickReferenceTimeSecForSessions());
     const from = Number(window?.from);
     const to = Number(window?.to);
+    const sessionTag = String(window?.session || "").trim().toLowerCase();
     const symbol = String(appState.currentSymbol || "").toUpperCase();
     const tf = normalizeTimeframe(appState.currentTimeframe);
 
@@ -1256,7 +1259,7 @@ function applySessionRangeBoxFromFxcmStatus() {
         return;
     }
 
-    appState.chart.setSessionRangeBox({ from, to, low, high });
+    appState.chart.setSessionRangeBox({ from, to, low, high, session: sessionTag });
 }
 
 function renderFromCache(symbol) {
