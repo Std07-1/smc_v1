@@ -352,6 +352,7 @@
         let lastLiveBar = null;
         let lastLiveVolume = 0;
         let lastCandleDataset = [];
+        let lastCandleTimes = [];
         let currentPriceLine = null;
         let currentPriceLineOwner = null;
         let currentPriceLineState = { price: null, color: null, owner: null };
@@ -416,9 +417,61 @@
             };
         }
 
+        function sessionRangeBoxAutoscaleInfoProvider(baseImplementation) {
+            // Під час manualRange — поводимось ідентично до інших серій (щоб не було «стеля/підлога»).
+            if (priceScaleState.manualRange) {
+                return priceScaleAutoscaleInfoProvider(baseImplementation);
+            }
+
+            const base = baseImplementation?.() || null;
+            const range = lastSessionRangeRequest;
+            const low = Number(range?.low);
+            const high = Number(range?.high);
+            const from = Number(range?.from);
+            const to = Number(range?.to);
+
+            if (
+                !range ||
+                !Number.isFinite(low) ||
+                !Number.isFinite(high) ||
+                !Number.isFinite(from) ||
+                !Number.isFinite(to) ||
+                !(to > from) ||
+                !(high >= low)
+            ) {
+                return base;
+            }
+
+            // Важливо: точки baseline можуть бути поза видимим time-range,
+            // але сегмент між ними все одно видно. Тому явно додаємо low/high в autoscale,
+            // якщо бокс перетинає видиму область часу.
+            const visible = chart?.timeScale?.()?.getVisibleRange?.() || null;
+            if (visible && Number.isFinite(visible.from) && Number.isFinite(visible.to)) {
+                const boxFrom = Math.floor(from);
+                const boxTo = Math.floor(to);
+                const overlaps = !(visible.to < boxFrom || visible.from > boxTo);
+                if (!overlaps) {
+                    return base;
+                }
+            }
+
+            const baseMin = Number(base?.priceRange?.minValue);
+            const baseMax = Number(base?.priceRange?.maxValue);
+            const minValue = Number.isFinite(baseMin) ? Math.min(baseMin, low) : low;
+            const maxValue = Number.isFinite(baseMax) ? Math.max(baseMax, high) : high;
+
+            return {
+                priceRange: {
+                    minValue,
+                    maxValue,
+                },
+                margins: base?.margins,
+            };
+        }
+
         candles.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
         liveCandles.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
-        sessionRangeBox.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
+        sessionRangeBox.applyOptions({ autoscaleInfoProvider: sessionRangeBoxAutoscaleInfoProvider });
 
         setupPriceScaleInteractions();
         setupResizeHandling();
@@ -530,6 +583,16 @@
         }
 
         function setBars(bars) {
+            // Якщо користувач «відмотав» графік вліво, не маємо права зсувати viewport
+            // під час періодичного оновлення датасету (polling/rehydrate шарів).
+            const prevLogicalRange = chart.timeScale().getVisibleLogicalRange();
+            const prevScrollPos = chart.timeScale().scrollPosition();
+            const prevLen = Array.isArray(lastCandleDataset) ? lastCandleDataset.length : 0;
+            const wasFollowingRightEdge =
+                prevLogicalRange && prevLen
+                    ? Number(prevLogicalRange.to) >= prevLen - 2
+                    : true;
+
             resetManualPriceScale({ silent: true });
             if (!Array.isArray(bars) || bars.length === 0) {
                 candles.setData([]);
@@ -547,6 +610,7 @@
                 lastBarsSignature = null;
                 autoFitDone = false;
                 lastCandleDataset = [];
+                lastCandleTimes = [];
                 return;
             }
 
@@ -567,6 +631,7 @@
             const candleData = normalized.map((row) => row.candle);
             const volumeValues = normalized.map((row) => row.volume);
             lastCandleDataset = candleData.slice();
+            lastCandleTimes = candleData.map((bar) => bar.time);
 
             // Фіксуємо шкалу volume по всьому датасету (а не по видимому фрагменту).
             // Це прибирає "провалювання" обсягів при горизонтальному скролі.
@@ -640,6 +705,13 @@
             if (!autoFitDone) {
                 chart.timeScale().fitContent();
                 autoFitDone = true;
+            } else if (prevLogicalRange && !wasFollowingRightEdge) {
+                chart.timeScale().setVisibleLogicalRange({
+                    from: prevLogicalRange.from,
+                    to: prevLogicalRange.to,
+                });
+            } else if (!prevLogicalRange && Number.isFinite(prevScrollPos) && !wasFollowingRightEdge) {
+                chart.timeScale().scrollToPosition(prevScrollPos, false);
             }
             lastBarsSignature = signature;
         }
@@ -908,11 +980,20 @@
                     const prevTime = Number(prev?.time);
                     if (Number.isFinite(prevTime) && normalized.time === prevTime) {
                         lastCandleDataset[lastIdx] = normalized;
+                        if (Array.isArray(lastCandleTimes) && lastCandleTimes.length) {
+                            lastCandleTimes[lastCandleTimes.length - 1] = normalized.time;
+                        }
                     } else if (!Number.isFinite(prevTime) || normalized.time > prevTime) {
                         lastCandleDataset.push(normalized);
+                        if (Array.isArray(lastCandleTimes)) {
+                            lastCandleTimes.push(normalized.time);
+                        } else {
+                            lastCandleTimes = [normalized.time];
+                        }
                     }
                 } else {
                     lastCandleDataset = [normalized];
+                    lastCandleTimes = [normalized.time];
                 }
                 if (chartTimeRange.min == null) {
                     chartTimeRange.min = normalized.time;
@@ -1070,43 +1151,367 @@
             oteOverlays = [];
         }
 
+        function clamp01(value) {
+            const num = Number(value);
+            if (!Number.isFinite(num)) return 0;
+            return Math.max(0, Math.min(1, num));
+        }
+
+        function pickRefPrice() {
+            const liveClose = Number(lastLiveBar?.close);
+            if (Number.isFinite(liveClose)) return liveClose;
+            const close = Number(lastBar?.close);
+            if (Number.isFinite(close)) return close;
+            const open = Number(lastBar?.open);
+            if (Number.isFinite(open)) return open;
+            return null;
+        }
+
+        function estimatePriceWindowAbs(refPrice) {
+            const ref = Number(refPrice);
+            const refComponent = Number.isFinite(ref) ? Math.abs(ref) * 0.0015 : 0;
+
+            const bars = Array.isArray(lastCandleDataset) ? lastCandleDataset : [];
+            const tail = bars.slice(Math.max(0, bars.length - 80));
+            let maxHigh = null;
+            let minLow = null;
+            for (const bar of tail) {
+                const h = Number(bar?.high);
+                const l = Number(bar?.low);
+                if (!Number.isFinite(h) || !Number.isFinite(l)) continue;
+                maxHigh = maxHigh == null ? h : Math.max(maxHigh, h);
+                minLow = minLow == null ? l : Math.min(minLow, l);
+            }
+            const n = Math.max(1, tail.length);
+            const span = maxHigh != null && minLow != null ? Math.max(0, maxHigh - minLow) : 0;
+            const atrLike = (span / n) * 14;
+            const volComponent = atrLike * 0.6;
+            return Math.max(refComponent, volComponent, 0.5);
+        }
+
+        function estimateMergeTolAbs(refPrice, priceWindowAbs) {
+            const ref = Number(refPrice);
+            const refComponent = Number.isFinite(ref) ? Math.abs(ref) * 0.00025 : 0;
+            const windowComponent = Number(priceWindowAbs) * 0.08;
+            return Math.max(refComponent, windowComponent, 0.2);
+        }
+
+        function roleWeight(role) {
+            const r = String(role || "").toUpperCase();
+            if (r === "PRIMARY") return 1.0;
+            if (r === "COUNTER") return 0.6;
+            return 0.5;
+        }
+
+        function poolScore(pool, refPrice, priceWindowAbs) {
+            const price = Number(pool?.price);
+            if (!Number.isFinite(price)) return -Infinity;
+            const ref = Number(refPrice);
+            if (!Number.isFinite(ref)) return -Infinity;
+
+            const strength = Number(pool?.strength);
+            const strengthNorm = Number.isFinite(strength) ? clamp01(strength / 100) : 0.3;
+            const distNormRaw = Math.abs(price - ref) / Math.max(1e-9, Number(priceWindowAbs) || 1);
+            const distNorm = Math.min(6, Math.max(0, distNormRaw));
+            return roleWeight(pool?.role) * (1 + strengthNorm) / (1 + distNorm);
+        }
+
+        function chooseBetterPool(a, b, refPrice) {
+            const ra = roleWeight(a?.role);
+            const rb = roleWeight(b?.role);
+            if (ra !== rb) return ra > rb ? a : b;
+
+            const sa = Number(a?.strength);
+            const sb = Number(b?.strength);
+            const saN = Number.isFinite(sa) ? sa : -Infinity;
+            const sbN = Number.isFinite(sb) ? sb : -Infinity;
+            if (saN !== sbN) return saN > sbN ? a : b;
+
+            const ta = Number(a?.touches);
+            const tb = Number(b?.touches);
+            const taN = Number.isFinite(ta) ? ta : -Infinity;
+            const tbN = Number.isFinite(tb) ? tb : -Infinity;
+            if (taN !== tbN) return taN > tbN ? a : b;
+
+            const ref = Number(refPrice);
+            const da = Number.isFinite(ref) ? Math.abs(Number(a?.price) - ref) : Infinity;
+            const db = Number.isFinite(ref) ? Math.abs(Number(b?.price) - ref) : Infinity;
+            return da <= db ? a : b;
+        }
+
+        function dedupPoolsByPrice(pools, mergeTolAbs, refPrice) {
+            const cleaned = (Array.isArray(pools) ? pools : [])
+                .map((p) => ({ ...p, price: Number(p?.price) }))
+                .filter((p) => Number.isFinite(p.price))
+                .sort((a, b) => a.price - b.price);
+            if (!cleaned.length) return [];
+
+            const tol = Math.max(0, Number(mergeTolAbs) || 0);
+            const out = [];
+            for (const p of cleaned) {
+                const last = out[out.length - 1];
+                if (!last) {
+                    out.push(p);
+                    continue;
+                }
+                if (Math.abs(p.price - last.price) <= tol) {
+                    out[out.length - 1] = chooseBetterPool(last, p, refPrice);
+                } else {
+                    out.push(p);
+                }
+            }
+            return out;
+        }
+
+        function shortPoolTitle(pool) {
+            const type = String(pool?.type || pool?.kind || "POOL").toUpperCase();
+            const role = String(pool?.role || "").toUpperCase();
+            const roleMark = role === "PRIMARY" ? "P" : role === "COUNTER" ? "C" : "";
+            const typeShort = type.length > 6 ? type.slice(0, 6) : type;
+            return `${typeShort}${roleMark ? " " + roleMark : ""}`.trim();
+        }
+
+        function selectPoolsForRender(pools) {
+            const refPrice = pickRefPrice();
+            if (!Number.isFinite(Number(refPrice))) {
+                return { local: [], global: [], refPrice: null, priceWindowAbs: 1, mergeTolAbs: 0.2 };
+            }
+
+            const priceWindowAbs = estimatePriceWindowAbs(refPrice);
+            const mergeTolAbs = estimateMergeTolAbs(refPrice, priceWindowAbs);
+
+            const deduped = dedupPoolsByPrice(pools, mergeTolAbs, refPrice);
+            const ref = Number(refPrice);
+
+            const above = deduped.filter((p) => Number(p.price) >= ref);
+            const below = deduped.filter((p) => Number(p.price) < ref);
+
+            const scored = (arr) =>
+                arr
+                    .map((p) => ({ pool: p, score: poolScore(p, ref, priceWindowAbs) }))
+                    .filter((row) => Number.isFinite(row.score))
+                    .sort((a, b) => b.score - a.score);
+
+            const aboveScored = scored(above);
+            const belowScored = scored(below);
+
+            const pickPrimary = (rows) => rows.find((r) => String(r.pool?.role || "").toUpperCase() === "PRIMARY")?.pool;
+
+            const localAbove = [];
+            const localBelow = [];
+            const primaryAbove = pickPrimary(aboveScored);
+            const primaryBelow = pickPrimary(belowScored);
+            if (primaryAbove) localAbove.push(primaryAbove);
+            if (primaryBelow) localBelow.push(primaryBelow);
+
+            const fillSide = (rows, target, maxCount) => {
+                for (const row of rows) {
+                    if (target.length >= maxCount) break;
+                    if (target.some((p) => p.price === row.pool.price)) continue;
+                    target.push(row.pool);
+                }
+            };
+
+            fillSide(aboveScored, localAbove, 3);
+            fillSide(belowScored, localBelow, 3);
+
+            const local = [...localAbove, ...localBelow];
+
+            const localNearest = {
+                above: localAbove
+                    .slice()
+                    .sort((a, b) => Math.abs(a.price - ref) - Math.abs(b.price - ref))[0] || null,
+                below: localBelow
+                    .slice()
+                    .sort((a, b) => Math.abs(a.price - ref) - Math.abs(b.price - ref))[0] || null,
+            };
+
+            const isLocal = (p) => local.some((x) => x.price === p.price);
+            const farEnough = (p) => Math.abs(Number(p.price) - ref) >= priceWindowAbs * 1.2;
+
+            const pickGlobal = (rows) =>
+                rows
+                    .map((r) => r.pool)
+                    .filter((p) => !isLocal(p))
+                    .filter((p) => farEnough(p))[0] || null;
+
+            const global = [];
+            const globalAbove = pickGlobal(aboveScored);
+            const globalBelow = pickGlobal(belowScored);
+            if (globalAbove) global.push(globalAbove);
+            if (globalBelow) global.push(globalBelow);
+
+            return {
+                local: local.map((p) => ({
+                    ...p,
+                    _axisLabel: p.price === localNearest.above?.price || p.price === localNearest.below?.price,
+                    _lineVisible: true,
+                })),
+                global: global.map((p) => ({
+                    ...p,
+                    _axisLabel: true,
+                    _lineVisible: false,
+                })),
+                refPrice: ref,
+                priceWindowAbs,
+                mergeTolAbs,
+            };
+        }
+
+        function selectZonesForRender(zones) {
+            const refPrice = pickRefPrice();
+            if (!Number.isFinite(Number(refPrice))) {
+                return { zones: [], mergeTolAbs: 0.2 };
+            }
+            const priceWindowAbs = estimatePriceWindowAbs(refPrice);
+            const mergeTolAbs = estimateMergeTolAbs(refPrice, priceWindowAbs);
+            const ref = Number(refPrice);
+            const focusMin = ref - priceWindowAbs * 1.2;
+            const focusMax = ref + priceWindowAbs * 1.2;
+
+            const candidates = (Array.isArray(zones) ? zones : [])
+                .map((z) => {
+                    const min = Number(z?.min ?? z?.price_min ?? z?.ote_min);
+                    const max = Number(z?.max ?? z?.price_max ?? z?.ote_max);
+                    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+                    const zMin = Math.min(min, max);
+                    const zMax = Math.max(min, max);
+                    if (zMax < focusMin || zMin > focusMax) return null;
+                    const center = (zMin + zMax) / 2;
+                    const role = String(z?.role || "").toUpperCase();
+                    const w = roleWeight(role);
+                    const distNorm = Math.abs(center - ref) / Math.max(1e-9, priceWindowAbs);
+                    const score = w / (1 + Math.min(6, distNorm));
+                    return {
+                        ...z,
+                        min: zMin,
+                        max: zMax,
+                        _center: center,
+                        _score: score,
+                    };
+                })
+                .filter(Boolean)
+                .sort((a, b) => b._score - a._score);
+
+            const picked = [];
+            for (const z of candidates) {
+                if (picked.length >= 3) break;
+                if (picked.some((p) => Math.abs(Number(p._center) - Number(z._center)) <= mergeTolAbs)) {
+                    continue;
+                }
+                picked.push(z);
+            }
+
+            const normalized = picked.map((z) => {
+                const thin = Math.abs(Number(z.max) - Number(z.min)) < mergeTolAbs;
+                if (!thin) return z;
+                const center = Number(z._center);
+                return {
+                    ...z,
+                    min: center,
+                    max: center,
+                };
+            });
+
+            return { zones: normalized, mergeTolAbs };
+        }
+
         function setEvents(events) {
             clearEvents();
             if (!Array.isArray(events) || !events.length) {
                 return;
             }
+
+            const toUnixSeconds = (value) => {
+                const num = Number(value);
+                if (!Number.isFinite(num)) return null;
+                return Math.floor(num / (num > 1e12 ? 1000 : 1));
+            };
+
+            const snapToNearestBarTime = (timeSec) => {
+                if (!Number.isFinite(timeSec)) return null;
+                const times = lastCandleTimes;
+                if (!Array.isArray(times) || times.length === 0) {
+                    return Math.floor(timeSec);
+                }
+
+                const target = Math.floor(timeSec);
+                let lo = 0;
+                let hi = times.length;
+                while (lo < hi) {
+                    const mid = (lo + hi) >> 1;
+                    const v = times[mid];
+                    if (v < target) lo = mid + 1;
+                    else hi = mid;
+                }
+
+                const rightIdx = Math.min(times.length - 1, lo);
+                const leftIdx = Math.max(0, rightIdx - 1);
+                const left = Number(times[leftIdx]);
+                const right = Number(times[rightIdx]);
+                const pick =
+                    !Number.isFinite(left) ? right :
+                        !Number.isFinite(right) ? left :
+                            Math.abs(target - left) <= Math.abs(right - target) ? left : right;
+
+                if (!Number.isFinite(pick)) {
+                    return null;
+                }
+
+                const maxDiff = Math.max(1, Number(barTimeSpanSeconds) || 60) * 1.5;
+                if (Math.abs(pick - target) > maxDiff) {
+                    return null;
+                }
+                return Math.floor(pick);
+            };
+
             withViewportPreserved(() => {
                 const structureEvents = events.filter(isStructureEvent);
                 if (!structureEvents.length) {
                     return;
                 }
                 const getEventTime = (evt) => {
-                    const value = Number(evt.time ?? evt.ts ?? evt.timestamp ?? 0);
-                    return Number.isFinite(value) ? value : 0;
+                    const raw = evt.time ?? evt.ts ?? evt.timestamp ?? 0;
+                    const sec = toUnixSeconds(raw);
+                    return sec ?? 0;
                 };
                 const sortedEvents = structureEvents
                     .slice()
                     .sort((a, b) => getEventTime(a) - getEventTime(b));
-                const recentEvents = sortedEvents.slice(-STRUCTURE_TRIANGLE.maxEvents);
                 eventMarkers = sortedEvents
                     .map((evt) => {
-                        const time = Number(evt.time);
+                        const timeRaw = evt.time ?? evt.ts ?? evt.timestamp;
+                        const time = toUnixSeconds(timeRaw);
                         if (!Number.isFinite(time)) return null;
+
+                        const snapped = snapToNearestBarTime(time);
+                        if (!Number.isFinite(snapped)) return null;
+
                         const direction = (evt.direction || evt.dir || "").toUpperCase();
-                        const color = direction === "SHORT" ? "#ef476f" : "#1ed760";
+                        const kind = (evt.type || evt.event_type || "").toUpperCase();
+                        const isChoch = kind.includes("CHOCH");
+                        const isBos = !isChoch && kind.includes("BOS");
+
+                        const isShort = direction === "SHORT";
+                        const isLong = direction === "LONG";
+                        // BOS: окремий (стабільний) стиль, щоб було читабельно.
+                        // CHOCH лишаємо залежним від direction.
+                        const color = isBos ? "#3b82f6" : isShort ? "#ef476f" : "#1ed760";
+
+                        const arrowShape = isShort ? "arrowDown" : "arrowUp";
+                        const shape = isChoch ? arrowShape : isBos ? "square" : arrowShape;
+                        const text = isChoch ? "CHOCH" : isBos ? "BOS" : kind;
                         return {
-                            time: Math.floor(time),
-                            position: direction === "SHORT" ? "aboveBar" : "belowBar",
+                            time: snapped,
+                            // На вимогу UX: лишаємо лише напис НАД свічкою.
+                            position: "aboveBar",
                             color,
-                            shape: (evt.type || "").includes("CHOCH") ? "arrowUp" : "arrowDown",
-                            text: `${evt.type || evt.event_type || ""}`.toUpperCase(),
+                            shape,
+                            text,
                         };
                     })
                     .filter(Boolean);
                 candles.setMarkers(eventMarkers);
-                recentEvents.forEach((evt) => {
-                    renderStructureTriangle(evt);
-                });
             });
         }
 
@@ -1115,23 +1520,30 @@
             if (!Array.isArray(pools) || !pools.length) {
                 return;
             }
-            pools.forEach((pool) => {
+
+            const selection = selectPoolsForRender(pools);
+            const local = selection.local;
+            const global = selection.global;
+
+            const renderOne = (pool) => {
                 const price = Number(pool.price);
-                if (!Number.isFinite(price)) {
-                    return;
-                }
+                if (!Number.isFinite(price)) return;
                 const role = (pool.role || "").toUpperCase();
-                const type = (pool.type || pool.kind || "").toUpperCase();
                 const line = candles.createPriceLine({
                     price,
                     color: role === "PRIMARY" ? "rgba(249, 199, 79, 0.65)" : "#577590",
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
-                    axisLabelVisible: false,
-                    title: `${type || "POOL"}`,
+                    axisLabelVisible: Boolean(pool._axisLabel),
+                    // Щоб не засмічувати поле: для «глобальних» рівнів лишаємо лише бейдж на шкалі.
+                    lineVisible: pool._lineVisible !== false,
+                    title: shortPoolTitle(pool),
                 });
                 poolLines.push(line);
-            });
+            };
+
+            local.forEach(renderOne);
+            global.forEach(renderOne);
         }
 
         function setRanges(ranges) {
@@ -1184,6 +1596,21 @@
                     return;
                 }
                 const label = zone.label || zone.type || zone.role || "ZONE";
+
+                // Якщо зона надто тонка — малюємо як один рівень (центр), а не 2 лінії.
+                if (Math.abs(maxPrice - minPrice) < 1e-9) {
+                    const line = candles.createPriceLine({
+                        price: minPrice,
+                        color: colors.max,
+                        lineWidth: 1,
+                        lineStyle: LightweightCharts.LineStyle.Solid,
+                        axisLabelVisible: false,
+                        title: `${label}`,
+                    });
+                    zoneLines.push(line);
+                    return;
+                }
+
                 const lineMin = candles.createPriceLine({
                     price: minPrice,
                     color: colors.min,
@@ -1224,7 +1651,8 @@
         }
 
         function setZones(zones) {
-            setBandZones(zones, { min: "#ffd166", max: "#ef476f" });
+            const selection = selectZonesForRender(zones);
+            setBandZones(selection.zones, { min: "#ffd166", max: "#ef476f" });
         }
 
         function clearAll() {

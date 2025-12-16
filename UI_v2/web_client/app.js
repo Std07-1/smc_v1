@@ -214,6 +214,8 @@ function mapPoolsFromViewerState(state) {
         price: pool.price,
         role: pool.role,
         type: pool.type,
+        strength: pool.strength ?? pool.strength_score ?? null,
+        touches: pool.touch_count ?? pool.touches ?? null,
     }));
 }
 
@@ -248,11 +250,24 @@ function mapZonesFromViewerState(state) {
 }
 
 function safeUnixSeconds(value) {
-    const num = Number(value);
-    if (!Number.isFinite(num)) {
+    if (value === null || value === undefined) {
         return undefined;
     }
-    return Math.floor(num / (num > 1e12 ? 1000 : 1));
+
+    // 1) Числа та "числові рядки" (sec або ms).
+    const direct = Number(value);
+    if (Number.isFinite(direct)) {
+        return Math.floor(direct / (direct > 1e12 ? 1000 : 1));
+    }
+
+    // 2) ISO-рядки часу (наприклад "2025-12-16T12:34:56Z").
+    if (typeof value === "string") {
+        const parsedMs = Date.parse(value);
+        if (Number.isFinite(parsedMs)) {
+            return Math.floor(parsedMs / 1000);
+        }
+    }
+    return undefined;
 }
 
 function normalizeOhlcvBar(bar) {
