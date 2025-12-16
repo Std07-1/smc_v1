@@ -121,11 +121,40 @@ function buildFxcmWsBaseUrl() {
     return `${proto}//${window.location.hostname}:8082`;
 }
 
+function buildFxcmStatusWsBaseUrl() {
+    // Для “A по даних” (session high/low) нам потрібен лише fxcm:status.
+    // На відміну від OHLCV/ticks WS, status у public хочемо підключати за замовчуванням через same-origin.
+    try {
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        if (window.location.protocol === "file:") {
+            return "ws://127.0.0.1:8082";
+        }
+
+        // Якщо явно ввімкнули same-origin проксі для FXCM — використовуємо його.
+        if (isFxcmWsSameOrigin()) {
+            return `${proto}//${window.location.host}`;
+        }
+
+        // Локальний dev-стек: UI_v2 HTTP на :8080, FXCM WS міст на :8082.
+        const hostname = window.location.hostname;
+        const port = String(window.location.port || "").trim();
+        if ((isLocalHostname(hostname) || isPrivateLanIp(hostname)) && (port === "" || port === "8080")) {
+            return `${proto}//${hostname}:8082`;
+        }
+
+        // Public режим: очікуємо reverse-proxy location /fxcm/ на той самий origin.
+        return `${proto}//${window.location.host}`;
+    } catch (_e) {
+        return null;
+    }
+}
+
 const HTTP_BASE_URL = buildHttpBaseUrl();
 const WS_BASE_URL = buildWsBaseUrl();
 const FXCM_WS_ENABLED = isFxcmWsEnabled();
 const FXCM_OHLCV_WS_BASE_URL = FXCM_WS_ENABLED ? buildFxcmWsBaseUrl() : null;
 const FXCM_TICKS_WS_BASE_URL = FXCM_OHLCV_WS_BASE_URL;
+const FXCM_STATUS_WS_BASE_URL = buildFxcmStatusWsBaseUrl();
 const FXCM_APPLY_COMPLETE_ENABLED = isFxcmApplyCompleteEnabled();
 const DEFAULT_SYMBOL = "xauusd";
 const OHLCV_DEFAULT_TF = "1m";
@@ -139,6 +168,7 @@ const STORAGE_KEYS = {
     timeframe: "smc_viewer_selected_tf",
     chartHeight: "smc_viewer_chart_height",
     summaryCollapsed: "smc_viewer_summary_collapsed",
+    layersVisibility: "smc_viewer_layers_visibility",
 };
 
 let lastOhlcvResponse = null;
@@ -352,6 +382,7 @@ const OHLCV_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 const TICK_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 
 const FXCM_LIVE_STALE_MS = 5000;
+const STATUS_RECONNECT_MAX_ATTEMPTS = 12;
 
 const appState = {
     snapshot: {},
@@ -370,6 +401,10 @@ const appState = {
     tickWs: null,
     tickReconnectAttempt: 0,
     tickReconnectTimer: null,
+    statusWs: null,
+    statusReconnectAttempt: 0,
+    statusReconnectTimer: null,
+    lastFxcmStatus: null,
     tickLiveOpenTimeSec: null,
     tickLiveCandle: null,
     tickLiveVolumeCount: 0,
@@ -426,6 +461,7 @@ window.addEventListener("beforeunload", () => {
     cleanupSocket();
     cleanupOhlcvSocket();
     cleanupTickSocket();
+    cleanupStatusSocket();
 });
 
 function cacheElements() {
@@ -658,6 +694,13 @@ function bindMobileUi() {
                 desktopToggle.checked = checked;
             }
             appState.chartState.layersVisibility[key] = checked;
+            persistLayersVisibility();
+
+            if (key === "sessions" && appState.chart && typeof appState.chart.setSessionsEnabled === "function") {
+                appState.chart.setSessionsEnabled(checked);
+                applySessionRangeBoxFromFxcmStatus();
+            }
+
             rehydrateOverlays({ force: true });
         });
     });
@@ -748,6 +791,14 @@ function initChartController() {
     }
     try {
         appState.chart = window.createChartController(elements.chartContainer);
+
+        if (appState.chart && typeof appState.chart.setSessionsEnabled === "function") {
+            const enabled = appState.chartState?.layersVisibility?.sessions !== false;
+            appState.chart.setSessionsEnabled(enabled);
+        }
+
+        applySessionRangeBoxFromFxcmStatus();
+
         scheduleChartResize();
     } catch (error) {
         console.error("[UI] Не вдалося створити chartController", error);
@@ -791,6 +842,7 @@ function bindUi() {
                 openViewerSocket(appState.currentSymbol);
                 openOhlcvSocket(appState.currentSymbol, appState.currentTimeframe);
                 openTickSocket(appState.currentSymbol);
+                openStatusSocket();
             }
         });
     }
@@ -883,6 +935,14 @@ function bindLayerToggles() {
         checkbox.checked = defaultValue !== false;
         checkbox.addEventListener("change", () => {
             appState.chartState.layersVisibility[layerKey] = checkbox.checked;
+            persistLayersVisibility();
+
+            // Сесії рахуються від OHLCV і не залежать від viewer_state,
+            // тому вмикаємо/вимикаємо їх одразу.
+            if (layerKey === "sessions" && appState.chart && typeof appState.chart.setSessionsEnabled === "function") {
+                appState.chart.setSessionsEnabled(checkbox.checked);
+            }
+
             const drawerToggle = elements.drawer?.layers?.[layerKey];
             if (drawerToggle) {
                 drawerToggle.checked = checkbox.checked;
@@ -921,6 +981,11 @@ function clearChartLayer(layerKey) {
         case "zones":
             appState.chart.setZones([]);
             break;
+        case "sessions":
+            if (typeof appState.chart.setSessionsEnabled === "function") {
+                appState.chart.setSessionsEnabled(false);
+            }
+            break;
         default:
             break;
     }
@@ -941,6 +1006,7 @@ async function bootstrap() {
     openViewerSocket(initialSymbol);
     openOhlcvSocket(initialSymbol, appState.currentTimeframe);
     openTickSocket(initialSymbol);
+    openStatusSocket();
 }
 
 async function reloadSnapshot(manual) {
@@ -1076,6 +1142,7 @@ function handleSymbolChange(symbol) {
     openViewerSocket(symbol);
     openOhlcvSocket(symbol, appState.currentTimeframe);
     openTickSocket(symbol);
+    applySessionRangeBoxFromFxcmStatus();
 }
 
 function handleTimeframeChange(nextTf) {
@@ -1094,6 +1161,102 @@ function handleTimeframeChange(nextTf) {
         fetchOhlcv(appState.currentSymbol, normalized);
         openOhlcvSocket(appState.currentSymbol, normalized);
     }
+    applySessionRangeBoxFromFxcmStatus();
+}
+
+function parseUtcIsoToSeconds(value) {
+    const text = String(value || "").trim();
+    if (!text) return null;
+    const ms = Date.parse(text);
+    if (!Number.isFinite(ms)) return null;
+    return Math.floor(ms / 1000);
+}
+
+function utcDayStartSec(timeSec) {
+    const d = new Date(Number(timeSec) * 1000);
+    return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000);
+}
+
+function pickReferenceTimeSecForSessions() {
+    try {
+        const bars = Array.isArray(lastOhlcvResponse?.bars) ? lastOhlcvResponse.bars : [];
+        if (bars.length) {
+            const last = bars[bars.length - 1];
+            const t = safeUnixSeconds(last?.time ?? last?.t ?? last?.ts ?? last?.timestamp);
+            if (Number.isFinite(t)) {
+                return t;
+            }
+        }
+    } catch (_e) {
+        // ignore
+    }
+    return Math.floor(Date.now() / 1000);
+}
+
+function computeActiveSessionWindowUtc(timeSec) {
+    const nowSec = Number(timeSec);
+    if (!Number.isFinite(nowSec)) return null;
+
+    const dayStart = utcDayStartSec(nowSec);
+    const minOfDay = Math.floor((nowSec - dayStart) / 60);
+
+    // Має збігатися з розкладом у chart_adapter.js (UTC).
+    const ASIA = { startMin: 0 * 60, endMin: 9 * 60 };
+    const LONDON = { startMin: 9 * 60, endMin: 17 * 60 };
+    const NEW_YORK = { startMin: 17 * 60, endMin: 22 * 60 };
+
+    const pick = (window) => ({
+        from: dayStart + window.startMin * 60,
+        to: dayStart + window.endMin * 60,
+    });
+
+    if (minOfDay >= ASIA.startMin && minOfDay < ASIA.endMin) return pick(ASIA);
+    if (minOfDay >= LONDON.startMin && minOfDay < LONDON.endMin) return pick(LONDON);
+    if (minOfDay >= NEW_YORK.startMin && minOfDay < NEW_YORK.endMin) return pick(NEW_YORK);
+    return null;
+}
+
+function applySessionRangeBoxFromFxcmStatus() {
+    if (!appState.chart || typeof appState.chart.setSessionRangeBox !== "function") {
+        return;
+    }
+    const enabled = appState.chartState?.layersVisibility?.sessions !== false;
+    if (!enabled) {
+        appState.chart.setSessionRangeBox(null);
+        return;
+    }
+
+    const payload = appState.lastFxcmStatus;
+    const session = payload?.session;
+    const sessionState = String(session?.state || "").toLowerCase();
+    if (sessionState && sessionState !== "open") {
+        appState.chart.setSessionRangeBox(null);
+        return;
+    }
+    const symbols = Array.isArray(session?.symbols) ? session.symbols : [];
+
+    // ВАЖЛИВО: часові межі сесій малюємо як і раніше (фіксований UTC-розклад),
+    // не беремо market-open/close із fxcm:status.
+    const window = computeActiveSessionWindowUtc(pickReferenceTimeSecForSessions());
+    const from = Number(window?.from);
+    const to = Number(window?.to);
+    const symbol = String(appState.currentSymbol || "").toUpperCase();
+    const tf = normalizeTimeframe(appState.currentTimeframe);
+
+    const row = symbols.find((s) => {
+        const sSym = String(s?.symbol || "").toUpperCase();
+        const sTf = normalizeTimeframe(s?.tf);
+        return sSym === symbol && sTf === tf;
+    });
+    const low = Number(row?.low);
+    const high = Number(row?.high);
+
+    if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(low) || !Number.isFinite(high)) {
+        appState.chart.setSessionRangeBox(null);
+        return;
+    }
+
+    appState.chart.setSessionRangeBox({ from, to, low, high });
 }
 
 function renderFromCache(symbol) {
@@ -1634,6 +1797,113 @@ function openTickSocket(symbol) {
     }
 }
 
+function openStatusSocket() {
+    if (!FXCM_STATUS_WS_BASE_URL) {
+        cleanupStatusSocket();
+        return;
+    }
+    const key = "fxcm:status";
+    if (
+        appState.statusWs &&
+        appState.statusWs.readyState === WebSocket.OPEN &&
+        appState.statusWs.__key === key
+    ) {
+        return;
+    }
+
+    cleanupStatusSocket();
+    const wsUrl = `${FXCM_STATUS_WS_BASE_URL}/fxcm/status`;
+    try {
+        const ws = new WebSocket(wsUrl);
+        ws.__key = key;
+        appState.statusWs = ws;
+
+        ws.onopen = () => {
+            appState.statusReconnectAttempt = 0;
+            clearStatusReconnectTimer();
+            console.info(`[STATUS_WS] Connected ${key}`);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data);
+                handleStatusWsPayload(payload);
+            } catch (err) {
+                console.warn("[STATUS_WS] Не вдалося розпарсити повідомлення", err);
+            }
+        };
+
+        ws.onclose = () => {
+            console.warn(`[STATUS_WS] Disconnected ${key}`);
+            scheduleStatusReconnect();
+        };
+
+        ws.onerror = (err) => {
+            console.warn("[STATUS_WS] Помилка", err);
+            try {
+                ws.close();
+            } catch (_e) {
+                // ignore
+            }
+        };
+    } catch (err) {
+        console.warn("[STATUS_WS] Не вдалося створити WebSocket", err);
+    }
+}
+
+function cleanupStatusSocket() {
+    if (appState.statusWs) {
+        appState.statusWs.onopen = null;
+        appState.statusWs.onmessage = null;
+        appState.statusWs.onclose = null;
+        appState.statusWs.onerror = null;
+        try {
+            appState.statusWs.close();
+        } catch (_e) {
+            // ignore
+        }
+        appState.statusWs = null;
+    }
+    clearStatusReconnectTimer();
+}
+
+function scheduleStatusReconnect() {
+    if (!FXCM_STATUS_WS_BASE_URL) {
+        return;
+    }
+
+    if (appState.statusReconnectAttempt >= STATUS_RECONNECT_MAX_ATTEMPTS) {
+        // Не спамимо нескінченними reconnect'ами у public, якщо /fxcm/status недоступний.
+        return;
+    }
+    const attempt = Math.min(
+        appState.statusReconnectAttempt,
+        RECONNECT_DELAYS_MS.length - 1,
+    );
+    const delay = RECONNECT_DELAYS_MS[attempt];
+    appState.statusReconnectAttempt += 1;
+    clearStatusReconnectTimer();
+    appState.statusReconnectTimer = setTimeout(() => {
+        openStatusSocket();
+    }, delay);
+}
+
+function clearStatusReconnectTimer() {
+    if (appState.statusReconnectTimer) {
+        clearTimeout(appState.statusReconnectTimer);
+        appState.statusReconnectTimer = null;
+    }
+}
+
+function handleStatusWsPayload(payload) {
+    if (!payload) {
+        return;
+    }
+    noteFxcmLiveSeen();
+    appState.lastFxcmStatus = payload;
+    applySessionRangeBoxFromFxcmStatus();
+}
+
 function cleanupTickSocket() {
     if (appState.tickWs) {
         appState.tickWs.onopen = null;
@@ -2072,8 +2342,40 @@ function loadPersistedPreferences() {
             const raw = String(storedCollapsed).trim().toLowerCase();
             appState.ui.summaryCollapsed = raw === "1" || raw === "true" || raw === "yes" || raw === "on";
         }
+
+        const storedLayers = storage.getItem(STORAGE_KEYS.layersVisibility);
+        if (storedLayers) {
+            try {
+                const parsed = JSON.parse(storedLayers);
+                if (parsed && typeof parsed === "object") {
+                    const allowedKeys = ["events", "pools", "ranges", "ote", "zones", "sessions"];
+                    const next = { ...(appState.chartState.layersVisibility || {}) };
+                    allowedKeys.forEach((k) => {
+                        if (Object.prototype.hasOwnProperty.call(parsed, k)) {
+                            next[k] = Boolean(parsed[k]);
+                        }
+                    });
+                    appState.chartState.layersVisibility = next;
+                }
+            } catch (_e) {
+                // Якщо JSON пошкоджений — ігноруємо.
+            }
+        }
     } catch (err) {
         console.warn("[UI] Не вдалося зчитати налаштування з localStorage", err);
+    }
+}
+
+function persistLayersVisibility() {
+    const storage = getStorage();
+    if (!storage) {
+        return;
+    }
+    try {
+        const value = appState.chartState?.layersVisibility || {};
+        storage.setItem(STORAGE_KEYS.layersVisibility, JSON.stringify(value));
+    } catch (err) {
+        console.warn("[UI] Не вдалося зберегти шари у localStorage", err);
     }
 }
 

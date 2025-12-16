@@ -1,4 +1,4 @@
-"""Тести для WS-проксі FXCM (OHLCV/ticks)."""
+"""Тести для WS-проксі FXCM (OHLCV/ticks/status)."""
 
 from __future__ import annotations
 
@@ -41,3 +41,13 @@ def test_extract_tick_selection_wrong_path() -> None:
         FxcmOhlcvWsServer._extract_tick_selection("/fxcm/ohlcv?symbol=XAUUSD&tf=1m")
         is None
     )
+
+
+def test_is_status_path_ok() -> None:
+    assert FxcmOhlcvWsServer._is_status_path("/fxcm/status") is True
+    assert FxcmOhlcvWsServer._is_status_path("/fxcm/status?foo=bar") is True
+
+
+def test_is_status_path_wrong_path() -> None:
+    assert FxcmOhlcvWsServer._is_status_path("/fxcm/ohlcv?symbol=XAUUSD&tf=1m") is False
+    assert FxcmOhlcvWsServer._is_status_path("/fxcm/ticks?symbol=XAUUSD") is False

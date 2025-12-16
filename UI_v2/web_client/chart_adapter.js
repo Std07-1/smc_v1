@@ -216,29 +216,73 @@
         const sessionsScaleId = "sessions";
         const sessionSeries = {
             enabled: true,
-            asia: chart.addHistogramSeries({
-                priceScaleId: sessionsScaleId,
-                base: 0,
-            }),
-            london: chart.addHistogramSeries({
-                priceScaleId: sessionsScaleId,
-                base: 0,
-            }),
-            newYork: chart.addHistogramSeries({
-                priceScaleId: sessionsScaleId,
-                base: 0,
-            }),
+            // Сесії малюємо як «суцільні блоки» у власній шкалі 0..1.
+            // Критично: кожен блок — окрема BaselineSeries з 2 точками (start/end),
+            // щоб не було «підкошених» країв (діагоналей) і щоб не з'єднувались різні дні.
+            bands: {
+                asia: [],
+                london: [],
+                newYork: [],
+            },
         };
 
-        Object.values(sessionSeries).forEach((series) => {
-            if (!series || typeof series.applyOptions !== "function") {
-                return;
-            }
-            series.applyOptions({
-                lastValueVisible: false,
+        const SESSION_BAND_POOL_SIZE = 24;
+        const SESSION_BAND_VALUE = 1;
+
+        function createSessionBand(fillRgba) {
+            const band = chart.addBaselineSeries({
+                priceScaleId: sessionsScaleId,
+                baseValue: { type: "price", price: 0 },
+                autoscaleInfoProvider: () => ({
+                    priceRange: {
+                        minValue: 0,
+                        maxValue: 1,
+                    },
+                }),
+                baseLineVisible: false,
+                baseLineWidth: 0,
+                topFillColor1: fillRgba,
+                topFillColor2: fillRgba,
+                bottomFillColor1: fillRgba,
+                bottomFillColor2: fillRgba,
+                lineWidth: 0,
                 priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false,
             });
+            band.applyOptions({ visible: false });
+            band.setData([]);
+            return band;
+        }
+
+        for (let i = 0; i < SESSION_BAND_POOL_SIZE; i += 1) {
+            sessionSeries.bands.asia.push(createSessionBand("rgba(38, 166, 154, 0.06)"));
+            sessionSeries.bands.london.push(createSessionBand("rgba(246, 195, 67, 0.055)"));
+            sessionSeries.bands.newYork.push(createSessionBand("rgba(239, 83, 80, 0.055)"));
+        }
+
+        // “A по даних”: бокс поточної сесії (high/low) на price-scale.
+        // Без ліній/лейблів — лише заливка між low↔high.
+        const sessionRangeBox = chart.addBaselineSeries({
+            baseValue: { type: "price", price: 0 },
+            baseLineVisible: false,
+            baseLineWidth: 0,
+            lineVisible: false,
+            lineColor: "rgba(0, 0, 0, 0)",
+            topLineColor: "rgba(0, 0, 0, 0)",
+            bottomLineColor: "rgba(0, 0, 0, 0)",
+            topFillColor1: "rgba(209, 212, 220, 0.08)",
+            topFillColor2: "rgba(209, 212, 220, 0.04)",
+            bottomFillColor1: "rgba(209, 212, 220, 0.08)",
+            bottomFillColor2: "rgba(209, 212, 220, 0.04)",
+            lineWidth: 0,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
         });
+        sessionRangeBox.applyOptions({ visible: false });
+        sessionRangeBox.setData([]);
+        let lastSessionRangeRequest = null;
         chart.priceScale(sessionsScaleId).applyOptions({
             scaleMargins: {
                 top: 0.0,
@@ -340,34 +384,41 @@
             startX: 0,
             startRange: null,
             baseRange: null,
+            pointerId: null,
         };
         const DRAG_ACTIVATION_PX = 6;
         const WHEEL_OPTIONS = { passive: false };
         const MIN_PRICE_SPAN = 1e-4;
 
-        candles.applyOptions({
-            autoscaleInfoProvider: (baseImplementation) => {
-                if (!priceScaleState.manualRange) {
-                    const base = baseImplementation();
-                    if (base?.priceRange) {
-                        priceScaleState.lastAutoRange = {
-                            min: base.priceRange.minValue,
-                            max: base.priceRange.maxValue,
-                        };
-                    }
-                    return base;
-                }
-                const range = priceScaleState.manualRange;
+        function priceScaleAutoscaleInfoProvider(baseImplementation) {
+            if (!priceScaleState.manualRange) {
                 const base = baseImplementation();
-                return {
-                    priceRange: {
-                        minValue: range.min,
-                        maxValue: range.max,
-                    },
-                    margins: base?.margins,
-                };
-            },
-        });
+                if (base?.priceRange) {
+                    priceScaleState.lastAutoRange = {
+                        min: base.priceRange.minValue,
+                        max: base.priceRange.maxValue,
+                    };
+                }
+                return base;
+            }
+
+            // Коли активний manualRange (наш vertical-pan), всі серії на правій шкалі
+            // мають повертати ОДНАКОВИЙ priceRange, інакше lightweight-charts буде
+            // “склеювати” діапазони і виходить ефект «стеля/підлога».
+            const range = priceScaleState.manualRange;
+            const base = baseImplementation();
+            return {
+                priceRange: {
+                    minValue: range.min,
+                    maxValue: range.max,
+                },
+                margins: base?.margins,
+            };
+        }
+
+        candles.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
+        liveCandles.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
+        sessionRangeBox.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
 
         setupPriceScaleInteractions();
         setupResizeHandling();
@@ -515,7 +566,7 @@
 
             const candleData = normalized.map((row) => row.candle);
             const volumeValues = normalized.map((row) => row.volume);
-            lastCandleDataset = candleData;
+            lastCandleDataset = candleData.slice();
 
             // Фіксуємо шкалу volume по всьому датасету (а не по видимому фрагменту).
             // Це прибирає "провалювання" обсягів при горизонтальному скролі.
@@ -593,58 +644,56 @@
             lastBarsSignature = signature;
         }
 
-        function minuteOfDayUtc(timeSec) {
+        function utcDayStartSec(timeSec) {
             const d = new Date(Number(timeSec) * 1000);
-            return d.getUTCHours() * 60 + d.getUTCMinutes();
-        }
-
-        function isInSessionUtc(timeSec, startMinute, endMinute) {
-            const m = minuteOfDayUtc(timeSec);
-            if (startMinute <= endMinute) {
-                return m >= startMinute && m < endMinute;
-            }
-            // На випадок сесій через 00:00.
-            return m >= startMinute || m < endMinute;
+            return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000);
         }
 
         function setSessionsData(candleData) {
-            if (!sessionSeries.asia || !sessionSeries.london || !sessionSeries.newYork) {
-                return;
-            }
-            if (!sessionSeries.enabled) {
-                sessionSeries.asia.setData([]);
-                sessionSeries.london.setData([]);
-                sessionSeries.newYork.setData([]);
-                return;
-            }
-
-            const ASIA = { start: 0 * 60, end: 9 * 60, color: "rgba(38, 166, 154, 0.05)" };
-            const LONDON = { start: 8 * 60, end: 17 * 60, color: "rgba(246, 195, 67, 0.045)" };
-            const NEW_YORK = { start: 13 * 60, end: 22 * 60, color: "rgba(239, 83, 80, 0.045)" };
-
-            const asiaData = [];
-            const londonData = [];
-            const nyData = [];
-
-            (Array.isArray(candleData) ? candleData : []).forEach((bar) => {
-                if (!bar || !Number.isFinite(Number(bar.time))) {
+            const applyBlock = (series, visible, from, to) => {
+                if (!series || typeof series.setData !== "function") {
                     return;
                 }
-                const t = Number(bar.time);
-                if (isInSessionUtc(t, ASIA.start, ASIA.end)) {
-                    asiaData.push({ time: t, value: 1, color: ASIA.color });
+                if (!visible) {
+                    series.setData([]);
+                    if (typeof series.applyOptions === "function") {
+                        series.applyOptions({ visible: false });
+                    }
+                    return;
                 }
-                if (isInSessionUtc(t, LONDON.start, LONDON.end)) {
-                    londonData.push({ time: t, value: 1, color: LONDON.color });
+                const start = Math.floor(from);
+                const end = Math.floor(to);
+                series.setData([
+                    { time: start, value: SESSION_BAND_VALUE },
+                    { time: end, value: SESSION_BAND_VALUE },
+                ]);
+                if (typeof series.applyOptions === "function") {
+                    series.applyOptions({ visible: true });
                 }
-                if (isInSessionUtc(t, NEW_YORK.start, NEW_YORK.end)) {
-                    nyData.push({ time: t, value: 1, color: NEW_YORK.color });
-                }
-            });
+            };
 
-            sessionSeries.asia.setData(asiaData);
-            sessionSeries.london.setData(londonData);
-            sessionSeries.newYork.setData(nyData);
+            const clearAllBands = () => {
+                for (const band of sessionSeries.bands.asia) {
+                    applyBlock(band, false);
+                }
+                for (const band of sessionSeries.bands.london) {
+                    applyBlock(band, false);
+                }
+                for (const band of sessionSeries.bands.newYork) {
+                    applyBlock(band, false);
+                }
+            };
+
+            if (!sessionSeries.enabled) {
+                clearAllBands();
+                return;
+            }
+
+            // Стару «підкладку» сесій (Asia/London/NY як кольоровий фон) вимкнено,
+            // щоб не накладались дві візуалізації сесій одночасно.
+            // “A по даних” (high/low бокс) лишається окремо у setSessionRangeBox().
+            clearAllBands();
+            return;
         }
 
         function setSessionsEnabled(enabled) {
@@ -653,7 +702,68 @@
                 return;
             }
             sessionSeries.enabled = next;
+
+            const applyVisible = (series, value) => {
+                if (!series || typeof series.applyOptions !== "function") {
+                    return;
+                }
+                series.applyOptions({ visible: value });
+            };
+            for (const band of sessionSeries.bands.asia) {
+                applyVisible(band, next);
+            }
+            for (const band of sessionSeries.bands.london) {
+                applyVisible(band, next);
+            }
+            for (const band of sessionSeries.bands.newYork) {
+                applyVisible(band, next);
+            }
+
             setSessionsData(lastCandleDataset);
+
+            // Синхронізуємо також бокс поточної сесії.
+            setSessionRangeBox(lastSessionRangeRequest);
+        }
+
+        function setSessionRangeBox(range) {
+            lastSessionRangeRequest = range || null;
+            if (!sessionSeries.enabled) {
+                sessionRangeBox.setData([]);
+                sessionRangeBox.applyOptions({ visible: false });
+                return;
+            }
+
+            const from = Number(range?.from);
+            const to = Number(range?.to);
+            const low = Number(range?.low);
+            const high = Number(range?.high);
+            if (
+                !Number.isFinite(from) ||
+                !Number.isFinite(to) ||
+                !Number.isFinite(low) ||
+                !Number.isFinite(high) ||
+                !(to > from) ||
+                !(high >= low)
+            ) {
+                sessionRangeBox.setData([]);
+                sessionRangeBox.applyOptions({ visible: false });
+                return;
+            }
+
+            sessionRangeBox.applyOptions({
+                visible: true,
+                baseValue: { type: "price", price: low },
+                baseLineVisible: false,
+                baseLineWidth: 0,
+                lineVisible: false,
+                lineColor: "rgba(0, 0, 0, 0)",
+                topLineColor: "rgba(0, 0, 0, 0)",
+                bottomLineColor: "rgba(0, 0, 0, 0)",
+            });
+            sessionRangeBox.setData([
+                { time: Math.floor(from), value: high },
+                { time: Math.floor(to), value: high },
+            ]);
         }
 
         function setLiveBar(bar) {
@@ -759,11 +869,24 @@
                     });
                 }
                 lastBar = normalized;
+                if (Array.isArray(lastCandleDataset) && lastCandleDataset.length) {
+                    const lastIdx = lastCandleDataset.length - 1;
+                    const prev = lastCandleDataset[lastIdx];
+                    const prevTime = Number(prev?.time);
+                    if (Number.isFinite(prevTime) && normalized.time === prevTime) {
+                        lastCandleDataset[lastIdx] = normalized;
+                    } else if (!Number.isFinite(prevTime) || normalized.time > prevTime) {
+                        lastCandleDataset.push(normalized);
+                    }
+                } else {
+                    lastCandleDataset = [normalized];
+                }
                 if (chartTimeRange.min == null) {
                     chartTimeRange.min = normalized.time;
                 }
                 chartTimeRange.max = Math.max(chartTimeRange.max ?? normalized.time, normalized.time);
                 updateCurrentPriceLine();
+                setSessionsData(lastCandleDataset);
             }
         }
 
@@ -781,7 +904,6 @@
                 console.warn("chart_adapter: не вдалося прибрати current price line", err);
             }
             currentPriceLine = null;
-                setSessionsEnabled,
             currentPriceLineOwner = null;
             currentPriceLineState = { price: null, color: null, owner: null };
         }
@@ -997,27 +1119,23 @@
                 ) {
                     return;
                 }
-                const area = chart.addAreaSeries({
-                    lineColor: "rgba(59, 130, 246, 0.8)",
-                    topColor: "rgba(59, 130, 246, 0.2)",
-                    bottomColor: "rgba(59, 130, 246, 0.05)",
+                // AreaSeries заливає до baseline=0, тож для «box» між min↔max використовуємо BaselineSeries.
+                const band = chart.addBaselineSeries({
+                    baseValue: { type: "price", price: minPrice },
+                    topFillColor1: "rgba(59, 130, 246, 0.18)",
+                    topFillColor2: "rgba(59, 130, 246, 0.06)",
+                    bottomFillColor1: "rgba(59, 130, 246, 0.18)",
+                    bottomFillColor2: "rgba(59, 130, 246, 0.06)",
+                    lineWidth: 0,
                     priceLineVisible: false,
+                    lastValueVisible: false,
+                    crosshairMarkerVisible: false,
                 });
-                area.setData([
+                band.setData([
                     { time: Math.floor(from), value: maxPrice },
                     { time: Math.floor(to), value: maxPrice },
                 ]);
-                const bottom = chart.addAreaSeries({
-                    lineColor: "rgba(59, 130, 246, 0.8)",
-                    topColor: "rgba(59, 130, 246, 0.05)",
-                    bottomColor: "rgba(59, 130, 246, 0.2)",
-                    priceLineVisible: false,
-                });
-                bottom.setData([
-                    { time: Math.floor(from), value: minPrice },
-                    { time: Math.floor(to), value: minPrice },
-                ]);
-                rangeAreas.push(area, bottom);
+                rangeAreas.push(band);
             });
         }
 
@@ -1081,6 +1199,8 @@
             liveCandles.setData([]);
             volume.setData([]);
             liveVolume.setData([]);
+            setSessionsData([]);
+            setSessionRangeBox(null);
             lastBar = null;
             lastLiveBar = null;
             lastLiveVolume = 0;
@@ -1108,6 +1228,8 @@
             setLiquidityPools,
             setRanges,
             setZones,
+            setSessionsEnabled,
+            setSessionRangeBox,
             resizeToContainer,
             clearAll,
             dispose() {
@@ -1363,6 +1485,20 @@
                 return;
             }
 
+            // Під час нашого vertical-pan тимчасово блокуємо drag-скрол бібліотеки,
+            // щоб не було «упирання» і переходу в масштабування.
+            const setLibraryDragEnabled = (enabled) => {
+                try {
+                    chart.applyOptions({
+                        handleScroll: {
+                            pressedMouseMove: Boolean(enabled),
+                        },
+                    });
+                } catch (_e) {
+                    // ignore
+                }
+            };
+
             const handleWheel = (event) => {
                 const pointerInAxis = isPointerInPriceAxis(event);
                 const pointerInPane = isPointerInsidePane(event);
@@ -1385,48 +1521,66 @@
             container.addEventListener("wheel", handleWheel, WHEEL_OPTIONS);
             interactionCleanup.push(() => container.removeEventListener("wheel", handleWheel, WHEEL_OPTIONS));
 
-            const handleMouseDown = (event) => {
-                if (event.button !== 0 || !isPointerInsidePane(event)) {
+            const stopVerticalPan = () => {
+                if (!verticalPanState.pending) {
                     return;
                 }
+                verticalPanState.pending = false;
+                verticalPanState.active = false;
+                verticalPanState.startRange = null;
+                verticalPanState.baseRange = null;
+                verticalPanState.pointerId = null;
+                container.classList.remove("vertical-pan-active");
+                setLibraryDragEnabled(true);
+            };
+
+            const beginPan = (clientX, clientY, pointerId = null) => {
                 const currentRange = getEffectivePriceRange();
                 if (!currentRange) {
                     return;
                 }
                 verticalPanState.pending = true;
                 verticalPanState.active = false;
-                verticalPanState.startY = event.clientY;
-                verticalPanState.startX = event.clientX;
+                verticalPanState.startY = clientY;
+                verticalPanState.startX = clientX;
                 verticalPanState.baseRange = currentRange;
                 verticalPanState.startRange = null;
+                verticalPanState.pointerId = pointerId;
             };
-            container.addEventListener("mousedown", handleMouseDown, true);
-            interactionCleanup.push(() => container.removeEventListener("mousedown", handleMouseDown, true));
 
-            const handleMouseMove = (event) => {
+            const movePan = (event, clientX, clientY) => {
                 if (!verticalPanState.pending) {
                     return;
                 }
+                if (verticalPanState.pointerId !== null && event?.pointerId !== undefined) {
+                    if (event.pointerId !== verticalPanState.pointerId) {
+                        return;
+                    }
+                }
+
                 const paneHeight = getPaneMetrics().paneHeight;
                 if (!paneHeight) {
                     return;
                 }
-                const deltaY = event.clientY - verticalPanState.startY;
-                const deltaX = event.clientX - verticalPanState.startX;
+                const deltaY = clientY - verticalPanState.startY;
+                const deltaX = clientX - verticalPanState.startX;
+
                 if (!verticalPanState.active) {
-                    if (
-                        Math.abs(deltaY) < DRAG_ACTIVATION_PX ||
-                        Math.abs(deltaY) <= Math.abs(deltaX)
-                    ) {
+                    if (Math.abs(deltaY) < DRAG_ACTIVATION_PX || Math.abs(deltaY) <= Math.abs(deltaX)) {
                         return;
                     }
                     ensureManualRange(verticalPanState.baseRange);
                     verticalPanState.startRange = { ...priceScaleState.manualRange };
                     verticalPanState.active = true;
                     container.classList.add("vertical-pan-active");
+
+                    // Блокуємо drag бібліотеки тільки коли точно почали vertical-pan.
+                    setLibraryDragEnabled(false);
                 }
+
                 event.preventDefault();
                 event.stopPropagation();
+
                 const span = verticalPanState.startRange.max - verticalPanState.startRange.min;
                 if (!(span > 0)) {
                     return;
@@ -1437,32 +1591,67 @@
                     max: verticalPanState.startRange.max + offset,
                 });
             };
-            window.addEventListener("mousemove", handleMouseMove);
-            interactionCleanup.push(() => window.removeEventListener("mousemove", handleMouseMove));
 
-            const stopVerticalPan = () => {
-                if (!verticalPanState.pending) {
-                    return;
-                }
-                verticalPanState.pending = false;
-                verticalPanState.active = false;
-                verticalPanState.startRange = null;
-                verticalPanState.baseRange = null;
-                container.classList.remove("vertical-pan-active");
-            };
-            const handleMouseUp = () => {
-                stopVerticalPan();
-            };
-            window.addEventListener("mouseup", handleMouseUp);
-            interactionCleanup.push(() => window.removeEventListener("mouseup", handleMouseUp));
-            window.addEventListener("blur", stopVerticalPan);
-            interactionCleanup.push(() => window.removeEventListener("blur", stopVerticalPan));
+            const usePointerEvents = typeof window.PointerEvent !== "undefined";
 
-            const handleLeave = () => {
-                stopVerticalPan();
-            };
-            container.addEventListener("mouseleave", handleLeave);
-            interactionCleanup.push(() => container.removeEventListener("mouseleave", handleLeave));
+            if (usePointerEvents) {
+                const handlePointerDown = (event) => {
+                    if (!event || event.button !== 0) {
+                        return;
+                    }
+                    if (!isPointerInsidePane(event)) {
+                        return;
+                    }
+                    beginPan(event.clientX, event.clientY, event.pointerId);
+                };
+                container.addEventListener("pointerdown", handlePointerDown, true);
+                interactionCleanup.push(() => container.removeEventListener("pointerdown", handlePointerDown, true));
+
+                const handlePointerMove = (event) => {
+                    movePan(event, event.clientX, event.clientY);
+                };
+                window.addEventListener("pointermove", handlePointerMove, true);
+                interactionCleanup.push(() => window.removeEventListener("pointermove", handlePointerMove, true));
+
+                const handlePointerUp = () => {
+                    stopVerticalPan();
+                };
+                window.addEventListener("pointerup", handlePointerUp, true);
+                interactionCleanup.push(() => window.removeEventListener("pointerup", handlePointerUp, true));
+                window.addEventListener("pointercancel", handlePointerUp, true);
+                interactionCleanup.push(() => window.removeEventListener("pointercancel", handlePointerUp, true));
+                window.addEventListener("blur", stopVerticalPan);
+                interactionCleanup.push(() => window.removeEventListener("blur", stopVerticalPan));
+            } else {
+                const handleMouseDown = (event) => {
+                    if (event.button !== 0 || !isPointerInsidePane(event)) {
+                        return;
+                    }
+                    beginPan(event.clientX, event.clientY, null);
+                };
+                container.addEventListener("mousedown", handleMouseDown, true);
+                interactionCleanup.push(() => container.removeEventListener("mousedown", handleMouseDown, true));
+
+                const handleMouseMove = (event) => {
+                    movePan(event, event.clientX, event.clientY);
+                };
+                window.addEventListener("mousemove", handleMouseMove, true);
+                interactionCleanup.push(() => window.removeEventListener("mousemove", handleMouseMove, true));
+
+                const handleMouseUp = () => {
+                    stopVerticalPan();
+                };
+                window.addEventListener("mouseup", handleMouseUp);
+                interactionCleanup.push(() => window.removeEventListener("mouseup", handleMouseUp));
+                window.addEventListener("blur", stopVerticalPan);
+                interactionCleanup.push(() => window.removeEventListener("blur", stopVerticalPan));
+
+                const handleLeave = () => {
+                    stopVerticalPan();
+                };
+                container.addEventListener("mouseleave", handleLeave);
+                interactionCleanup.push(() => container.removeEventListener("mouseleave", handleLeave));
+            }
 
             const handleDblClick = (event) => {
                 if (isPointerInPriceAxis(event)) {

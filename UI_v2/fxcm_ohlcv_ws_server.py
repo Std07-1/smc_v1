@@ -7,6 +7,7 @@
 WS endpoints:
 - ws://HOST:PORT/fxcm/ohlcv?symbol=XAUUSD&tf=1m
 - ws://HOST:PORT/fxcm/ticks?symbol=XAUUSD
+- ws://HOST:PORT/fxcm/status
 
 Пейлоад:
 - OHLCV: прокидуємо лише потрібні поля: symbol, tf, bars[] (із complete/synthetic).
@@ -44,6 +45,7 @@ class FxcmOhlcvWsServer:
     redis: Redis  # type: ignore[type-arg]
     channel_name: str = "fxcm:ohlcv"
     price_tick_channel_name: str = "fxcm:price_tik"
+    status_channel_name: str = "fxcm:status"
     host: str = "127.0.0.1"
     port: int = 8082
 
@@ -73,13 +75,18 @@ class FxcmOhlcvWsServer:
         path = websocket.path or ""
         ohlcv_selection = self._extract_ohlcv_selection(path)
         tick_selection = self._extract_tick_selection(path)
-        if ohlcv_selection is None and tick_selection is None:
+        wants_status = self._is_status_path(path)
+        if ohlcv_selection is None and tick_selection is None and not wants_status:
             await websocket.close(code=4400, reason="unsupported endpoint")
             return
 
         if ohlcv_selection is not None:
             symbol, tf = ohlcv_selection
             await self._handle_ohlcv(websocket, symbol=symbol, tf=tf)
+            return
+
+        if wants_status:
+            await self._handle_status(websocket)
             return
 
         assert tick_selection is not None
@@ -186,6 +193,36 @@ class FxcmOhlcvWsServer:
                 pass
             await pubsub.close()
 
+    async def _handle_status(self, websocket: WebSocketServerProtocol) -> None:
+        logger.info("[FXCM STATUS WS] Client subscribed")
+
+        pubsub = self.redis.pubsub()
+        await pubsub.subscribe(self.status_channel_name)
+        try:
+            while True:
+                if websocket.closed:
+                    break
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=1.0,
+                )
+                if message is None:
+                    continue
+
+                payload = self._parse_message(message.get("data"))
+                if payload is None:
+                    continue
+
+                await websocket.send(json.dumps(payload, default=str))
+        except ConnectionClosed:
+            logger.debug("[FXCM STATUS WS] Client disconnected")
+        finally:
+            try:
+                await pubsub.unsubscribe(self.status_channel_name)
+            except Exception:
+                pass
+            await pubsub.close()
+
     @staticmethod
     def _extract_ohlcv_selection(path: str) -> tuple[str, str] | None:
         parsed = urlsplit(path)
@@ -209,6 +246,11 @@ class FxcmOhlcvWsServer:
         symbol_raw = (query.get("symbol") or [""])[0]
         symbol = str(symbol_raw).strip().upper()
         return symbol or None
+
+    @staticmethod
+    def _is_status_path(path: str) -> bool:
+        parsed = urlsplit(path)
+        return parsed.path == "/fxcm/status"
 
     @staticmethod
     def _parse_message(data: Any) -> dict[str, Any] | None:

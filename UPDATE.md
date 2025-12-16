@@ -14,6 +14,52 @@
 
 ---
 
+## 2025-12-16 — UI_v2 (Web): сесії (UTC) як блоки + персист шарів + Baseline для range box
+
+**Що змінено**
+
+- Додано шар **«Сесії (UTC)»** (Asia/London/New York) з перемикачем у меню «Шари» та в мобільному drawer.
+- Перероблено рендер сесій: замість «полос» (histogram по кожному бару) малюємо **суцільні блоки** на окремій шкалі 0..1 (не залежить від ціни інструмента).
+- Додано “A по даних” для поточної сесії: UI бере `high/low` з `fxcm:status.session.symbols[]` (per Symbol/TF) і малює **бокс між low↔high** (без ліній) через BaselineSeries.
+- Додано WS endpoint `/fxcm/status` у FXCM WS-міст, щоб web UI міг отримувати `fxcm:status` у public/same-origin режимі.
+- Виправлено “box” для діапазонів у структурі: `setRanges()` переведено з 2×AreaSeries на **BaselineSeries**, щоб зона була між `min↔max`, а не «до нуля».
+- Виправлено керування шаром сесій: `setSessionsEnabled()` експортується з chartController та застосовується одразу після ініціалізації графіка.
+- Додано персист `layersVisibility` у `localStorage`, щоб перемикачі шарів (включно з сесіями) **не збивались після рестарту/рефреша**.
+
+**Де**
+
+- UI_v2/web_client/index.html
+- UI_v2/web_client/styles.css
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/fxcm_ohlcv_ws_server.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_fxcm_ws_server.py` → `11 passed`.
+
+---
+
+## 2025-12-16 — UI_v2 (Web): «A по даних» без ліній + один шар сесій + фікс vertical-pan
+
+**Що змінено**
+
+- Для «A по даних» (high/low box) часові межі сесії знову рахуються **по фіксованому UTC-розкладу** (Asia/London/NY), а не з `fxcm:status.current_open_utc/current_close_utc`.
+- Прибрано накладання «двох версій» сесій: старий кольоровий фон Asia/London/NY вимкнено; лишився лише data-driven high/low box під тим самим перемикачем.
+- Прибрано горизонтальні лінії у high/low box: вимкнено baseline/series lines (`baseLineVisible=false`, `lineVisible=false`, прозорі line colors як страховка).
+- Виправлено проблему «стеля/підлога» при вертикальному drag по графіку: синхронізовано `autoscaleInfoProvider` для `candles/liveCandles/sessionRangeBox`, щоб manual range не “склеювався” з автоскейлом інших серій.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_fxcm_ws_server.py` → `11 passed`.
+
+---
+
 ## 2025-12-13 — S2/S3: `fxcm:commands` + стабільний payload + тести requester-а
 
 **Що змінено**
