@@ -132,3 +132,13 @@
 - 2025-12-18 — E4: видалено thin-compat модулі `UI_v2/schemas.py` та `data/fxcm_schema.py` (0 usages у repo).
 
 - 2025-12-18 — E5: документацію оновлено під нову реальність (жодних compat-шляхів у "як імпортувати"; compat згадується лише як історичний етап).
+
+- 2025-12-18 — Deploy/VPS: origin HTTPS (443) для Cloudflare + same-origin proxy
+  - Файли: `deploy/nginx/smc_ui_v2.conf`.
+  - Суть: додано `server { listen 443 ssl http2; ... }` під Cloudflare Origin CA, маршрути `/`, `/smc-viewer/stream`, `/fxcm/*` без змін.
+  - Ризики: потребує коректного DNS (не tunnel-CNAME) та наявності сертифікату/ключа на VPS; інакше Cloudflare дає 502.
+
+- 2025-12-18 — Runtime/VPS: стійкість до тимчасового падіння Redis (reconnect + backoff)
+  - Файли: `data/fxcm_ingestor.py`, `data/fxcm_price_stream.py`, `data/fxcm_status_listener.py`, `app/main.py`.
+  - Суть: якщо Redis/мережа пропадає (router/redis restart), лістенери не валять процес; роблять перепідключення з exponential backoff (1s..60s).
+  - Тести: `pytest tests/test_redis_reconnect_loops.py` (імітація дисконекту → повторна підписка).

@@ -12,7 +12,7 @@
 
 1) Підніміть nginx на origin і підключіть конфіг
 
-- Використайте конфіг: `deploy/nginx/aione-smc.conf`
+- Використайте конфіг: `deploy/nginx/smc_ui_v2.conf`
 - Переконайтесь, що nginx слухає `80`.
 
 2) Cloudflare Zero Trust → Tunnels

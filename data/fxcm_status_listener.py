@@ -334,66 +334,89 @@ async def run_fxcm_status_listener(
         )
         return
 
-    redis = Redis(host=host, port=port)
-    pubsub = redis.pubsub()
-    await pubsub.subscribe(status_ch)
     logger.info(
         "[FXCM_STATUS] Старт лістенера host=%s port=%s channel=%s",
         host,
         port,
         status_ch,
     )
-    try:
-        async for message in pubsub.listen():
-            if not message or message.get("type") != "message":
-                continue
-            channel_raw = message.get("channel")
-            data_raw = message.get("data")
-            try:
-                channel = (
-                    channel_raw.decode("utf-8")
-                    if isinstance(channel_raw, bytes)
-                    else str(channel_raw)
-                )
-            except Exception:
-                continue
-            payload: Mapping[str, Any] | None = None
-            if isinstance(data_raw, bytes):
-                raw_text = data_raw.decode("utf-8", errors="ignore")
-            else:
-                raw_text = str(data_raw)
-            try:
-                obj = json_loads(raw_text)
-                if isinstance(obj, dict):
-                    payload = obj
-            except JSONDecodeError:
-                logger.debug(
-                    "[FXCM_STATUS] Неможливо розпарсити JSON з каналу %s", channel
-                )
-                continue
-            if payload is None:
-                continue
-            if status_ch and channel == status_ch:
+
+    backoff_sec = 1.0
+    while True:
+        redis = Redis(host=host, port=port)
+        pubsub = redis.pubsub()
+        try:
+            await pubsub.subscribe(status_ch)
+            logger.info(
+                "[FXCM_STATUS] Підписка активна (channel=%s)",
+                status_ch,
+            )
+
+            async for message in pubsub.listen():
+                backoff_sec = 1.0
+                if not message or message.get("type") != "message":
+                    continue
+                channel_raw = message.get("channel")
+                data_raw = message.get("data")
                 try:
-                    combined_status = parse_fxcm_aggregated_status(payload)
-                except (ValidationError, ValueError, TypeError) as exc:
-                    logger.warning(
-                        "[FXCM_STATUS] Некоректний status payload: %s",
-                        exc,
+                    channel = (
+                        channel_raw.decode("utf-8")
+                        if isinstance(channel_raw, bytes)
+                        else str(channel_raw)
+                    )
+                except Exception:
+                    continue
+                payload: Mapping[str, Any] | None = None
+                if isinstance(data_raw, bytes):
+                    raw_text = data_raw.decode("utf-8", errors="ignore")
+                else:
+                    raw_text = str(data_raw)
+                try:
+                    obj = json_loads(raw_text)
+                    if isinstance(obj, dict):
+                        payload = obj
+                except JSONDecodeError:
+                    logger.debug(
+                        "[FXCM_STATUS] Неможливо розпарсити JSON з каналу %s",
+                        channel,
                     )
                     continue
-                _apply_status_snapshot(combined_status)
-    except asyncio.CancelledError:
-        logger.info("[FXCM_STATUS] Отримано CancelledError, завершуємо роботу")
-        raise
-    finally:
-        try:
-            await pubsub.unsubscribe(status_ch)
-        except Exception:  # pragma: no cover - best effort
-            pass
-        await pubsub.close()
-        await redis.close()
-        logger.info("[FXCM_STATUS] Лістенер FXCM зупинено коректно")
+                if payload is None:
+                    continue
+                if status_ch and channel == status_ch:
+                    try:
+                        combined_status = parse_fxcm_aggregated_status(payload)
+                    except (ValidationError, ValueError, TypeError) as exc:
+                        logger.warning(
+                            "[FXCM_STATUS] Некоректний status payload: %s",
+                            exc,
+                        )
+                        continue
+                    _apply_status_snapshot(combined_status)
+        except asyncio.CancelledError:
+            logger.info("[FXCM_STATUS] Отримано CancelledError, завершуємо роботу")
+            raise
+        except Exception:
+            logger.warning(
+                "[FXCM_STATUS] Втрачено з'єднання з Redis. Повтор через %.1f с.",
+                backoff_sec,
+                exc_info=True,
+            )
+            await asyncio.sleep(backoff_sec)
+            backoff_sec = min(backoff_sec * 2.0, 60.0)
+        finally:
+            try:
+                await pubsub.unsubscribe(status_ch)
+            except Exception:  # pragma: no cover - best effort
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+            try:
+                await redis.close()
+            except Exception:
+                pass
 
 
 __all__ = [

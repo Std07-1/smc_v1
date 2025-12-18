@@ -361,23 +361,23 @@ async def _run_ui_v2_http_server(
 ) -> None:
     """Фоновий HTTP сервер для доступу до viewer snapshot."""
 
-    redis = Redis(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        decode_responses=False,
-    )
-    store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
-    server = ViewerStateHttpServer(
-        store=store,
-        ohlcv_provider=ohlcv_provider,
-        host=host,
-        port=port,
-    )
-
     retry_delay_sec = 5.0
+    backoff_sec = 1.0
     try:
         while True:
+            redis = Redis(
+                host=settings.redis_host,
+                port=settings.redis_port,
+                decode_responses=False,
+            )
             try:
+                store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
+                server = ViewerStateHttpServer(
+                    store=store,
+                    ohlcv_provider=ohlcv_provider,
+                    host=host,
+                    port=port,
+                )
                 await server.run()
                 return
             except asyncio.CancelledError:
@@ -397,8 +397,21 @@ async def _run_ui_v2_http_server(
                     retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
                     continue
                 raise
+            except Exception:
+                logger.warning(
+                    "[UI_v2] HTTP server: помилка/Redis недоступний. Повтор через %.1f с.",
+                    backoff_sec,
+                    exc_info=True,
+                )
+                await asyncio.sleep(backoff_sec)
+                backoff_sec = min(backoff_sec * 2.0, 60.0)
+            finally:
+                try:
+                    await redis.close()
+                except Exception:
+                    pass
     finally:
-        await redis.close()
+        return
 
 
 async def _run_ui_v2_ws_server(
@@ -406,24 +419,24 @@ async def _run_ui_v2_ws_server(
 ) -> None:
     """Фоновий WebSocket сервер для live viewer_state."""
 
-    redis = Redis(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        decode_responses=False,
-    )
-    store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
-    server = ViewerStateWsServer(
-        store=store,
-        redis=redis,
-        channel_name=channel,
-        host=host,
-        port=port,
-    )
-
     retry_delay_sec = 5.0
+    backoff_sec = 1.0
     try:
         while True:
+            redis = Redis(
+                host=settings.redis_host,
+                port=settings.redis_port,
+                decode_responses=False,
+            )
             try:
+                store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
+                server = ViewerStateWsServer(
+                    store=store,
+                    redis=redis,
+                    channel_name=channel,
+                    host=host,
+                    port=port,
+                )
                 await server.run()
                 return
             except asyncio.CancelledError:
@@ -443,29 +456,42 @@ async def _run_ui_v2_ws_server(
                     retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
                     continue
                 raise
+            except Exception:
+                logger.warning(
+                    "[UI_v2] WS server: помилка/Redis недоступний. Повтор через %.1f с.",
+                    backoff_sec,
+                    exc_info=True,
+                )
+                await asyncio.sleep(backoff_sec)
+                backoff_sec = min(backoff_sec * 2.0, 60.0)
+            finally:
+                try:
+                    await redis.close()
+                except Exception:
+                    pass
     finally:
-        await redis.close()
+        return
 
 
 async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
     """Фоновий WebSocket сервер для проксування каналу fxcm:ohlcv у браузер."""
 
-    redis = Redis(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        decode_responses=False,
-    )
-    server = FxcmOhlcvWsServer(
-        redis=redis,
-        channel_name="fxcm:ohlcv",
-        host=host,
-        port=port,
-    )
-
     retry_delay_sec = 5.0
+    backoff_sec = 1.0
     try:
         while True:
+            redis = Redis(
+                host=settings.redis_host,
+                port=settings.redis_port,
+                decode_responses=False,
+            )
             try:
+                server = FxcmOhlcvWsServer(
+                    redis=redis,
+                    channel_name="fxcm:ohlcv",
+                    host=host,
+                    port=port,
+                )
                 await server.run()
                 return
             except asyncio.CancelledError:
@@ -485,8 +511,21 @@ async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
                     retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
                     continue
                 raise
+            except Exception:
+                logger.warning(
+                    "[UI_v2] FXCM OHLCV WS server: помилка/Redis недоступний. Повтор через %.1f с.",
+                    backoff_sec,
+                    exc_info=True,
+                )
+                await asyncio.sleep(backoff_sec)
+                backoff_sec = min(backoff_sec * 2.0, 60.0)
+            finally:
+                try:
+                    await redis.close()
+                except Exception:
+                    pass
     finally:
-        await redis.close()
+        return
 
 
 if __name__ == "__main__":

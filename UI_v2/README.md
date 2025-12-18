@@ -1,19 +1,22 @@
 ## UI_v2 - базовий шар для SMC viewer
 
-Мета `UI_v2` - дати стабільний, типізований контракт між:
+Мета `UI_v2` — дати стабільний, типізований контракт між:
 
-- Stage1/SMC core (`publish_smc_state.py` -> `REDIS_CHANNEL_SMC_STATE`, `REDIS_SNAPSHOT_KEY_SMC`);
-- службою трансляції viewer-стану (broadcaster, окремий процес);
+- SMC рантаймом, який публікує агрегований стан у Redis (`UiSmcStatePayload`);
+- службою трансляції viewer-стану (broadcaster);
 - тонкими клієнтами (веб-фронтенд або інші клієнти).
 
 ### Шари UI_v2
 
-1. **schemas**
-   Описує контракти:
+0. **Контракти (SSOT)**
 
-- `SmcHintPlain` - plain SMC hint згідно `smc_hint_contract.md`;
-- `UiSmcStatePayload` / `UiSmcAssetPayload` - те, що публікує `publish_smc_state.py`;
-- `SmcViewerState` - агрегований стан для рендера (консоль, браузер, інші клієнти).
+Контракти UI_v2 є частиною SSOT і живуть у `core/contracts/*`:
+
+- `core/contracts/viewer_state.py`:
+  - `UiSmcStatePayload` / `UiSmcAssetPayload` — вхідний агрегований стан у Redis;
+  - `SmcViewerState` — агрегований стан для рендера (консоль/браузер/інші клієнти);
+  - `VIEWER_STATE_SCHEMA_VERSION`.
+- `docs/smc_hint_contract.md` — plain JSON контракт `SmcHintPlain` (що саме лежить у `asset["smc_hint"]`).
 
 1. **viewer_state_builder**
    Чиста функція `build_viewer_state(...)`:
@@ -32,8 +35,8 @@
 
 Очікуваний потік даних:
 
-1. Stage1 + SMC-core формують plain hint (`SmcHintPlain`) згідно `smc_hint_contract.md`.
-2. `publish_smc_state.py` упаковує активи в `UiSmcStatePayload` і публікує:
+1. SMC пайплайн формує plain hint (`SmcHintPlain`) згідно `smc_hint_contract.md`.
+2. Паблішер `UI/publish_smc_state.py` упаковує активи в `UiSmcStatePayload` і публікує:
 
    - канал: `REDIS_CHANNEL_SMC_STATE`;
    - snapshot-ключ: `REDIS_SNAPSHOT_KEY_SMC`.
@@ -160,7 +163,7 @@ curl "http://127.0.0.1:8080/smc-viewer/ohlcv?symbol=xauusd&tf=1m&limit=200"
 
 ### Інтеграція в `app/main.py`
 
-- Якщо `UI_V2_ENABLED` увімкнено, під час запуску Stage1 (`app/main.py`) створюються три таски:
+- Якщо `UI_V2_ENABLED` увімкнено, під час запуску SMC рантайму (`app/main.py`) створюються три таски:
   broadcaster (`SmcViewerBroadcaster.run_forever`), HTTP-сервер (`ViewerStateHttpServer`) та
   WebSocket-сервер (`ViewerStateWsServer`).
 - Увімкнення/вимкнення стеку контролюється ENV `UI_V2_ENABLED` (0/false — вимкнути).

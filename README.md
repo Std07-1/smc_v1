@@ -1,50 +1,54 @@
-# smc_v1 (AiOne_t Stage1 + SMC core)
+# smc_v1 (SMC pipeline + UI_v2, FXCM через Redis)
 
-`smc_v1` — це оперативний стек Stage1 для моніторингу FX (FXCM feed) із вбудованим
-SMC-core (structure + liquidity + AMD). Проєкт фокусується на стабільній доставці
-джерельних даних (UnifiedDataStore), детермінованій структурній аналітиці та
-телеметрії для наступних шарів (Stage2/UI/Fusion).
+`smc_v1` — це рантайм SMC-пайплайна (structure/liquidity/zones) з read-only UI_v2.
+Дані FXCM надходять **через Redis** від зовнішнього конектора (`fxcm_connector`, Python 3.7).
+
+Поточний main-потік запуску `python -m app.main` — **SMC-only** (legacy-шар у цьому репо не є основним шляхом).
 
 ---
 
-## Архітектура
+## Швидкі посилання (SSOT)
 
-- **data/** — `UnifiedDataStore`, WS-стрімер (`WSWorker`) та допоміжні утиліти.
-- **stage1/** — моніторинг активів (AssetMonitorStage1 + FX гейти), генерація сирих
-  сигналів і станів для UI.
-- **smc_core/** + **smc_structure/** + **smc_liquidity/** — детермінований pipeline,
-  що повертає `SmcHint` (structure/liquidity/zones/signals/meta).
-- **UI/** — публікація агрегованого стану в Redis та консольний consumer.
-- **tools/** — `smc_snapshot_runner` і дослідницькі скрипти для QA.
-- **tests/** — pytest-набір для SMC (structure, liquidity, AMD, bridge, input adapter).
+- Документація (TOC): `docs/README.md`
+- SMC-core overview: `docs/smc_core_overview.md`
+- FXCM інтеграція/канали: `docs/fxcm_integration.md`, `docs/fxcm_contract_audit.md`
+- Legacy/пояснення рантайм-потоку `app.main`: `docs/stage1_pipeline.md` (історичний документ)
 
-> ⚠️ Stage1 моніторинг і тригери вважаються закритим шаром: не додаємо нові фічі, не змінюємо пороги чи payload без окремого наказу. Поточна робота концентрується на SMC-core (structure/liquidity/zones).
+---
 
-Документацію по SMC знайдеш у `docs/smc_core_overview.md`, `docs/smc_structure.md`,
-`docs/smc_liquidity.md`. Детальний контракт інтеграції FXCM описано в
-`docs/fxcm_integration.md`, а короткий аудит каналів/інваріантів — у
-`docs/fxcm_contract_audit.md`.
+## Архітектура (скорочено)
+
+- **app/** — entrypoint (`app/main.py`) + runtime orchestration (SMC цикл, UI_v2, телеметрія).
+- **data/** — `UnifiedDataStore` + Redis listeners:
+  - `fxcm:ohlcv` → `UnifiedDataStore.put_bars()`
+  - `fxcm:price_tik` → live bid/ask/mid кеш
+  - `fxcm:status` → `FxcmFeedState` для UI/SMC
+- **smc_core/** + **smc_structure/** + **smc_liquidity/** + **smc_zones/** — детермінований SMC pipeline, вихід: `SmcHint`.
+- **core/** — SSOT для I/O (серіалізація/час) + контракти (`core/contracts/*`).
+- **UI_v2/** — HTTP+WS сервери для read-only перегляду (same-origin paths для фронту).
+- **UI/** — експериментальні/консольні клієнти (не обовʼязкові для прод-UI_v2).
+- **deploy/** — systemd/nginx/Cloudflare runbooks, Docker-периметр для Windows.
 
 ---
 
 ## Ключові можливості
 
-- Єдине джерело правди (Redis + JSONL snapshots) через `UnifiedDataStore`.
-- FXCM стрім + Stage1 тригери (vol spike, RSI, VWAP, breakout, volatility) **заморожені**: не розвиваємо їх без окремої директиви, фокус лише на SMC-core.
-- SMC-core з зафіксованими контрактами (structure/liquidity/zones/meta + bridge до
-  Stage2).
-- Довготривала пам'ять BOS/CHOCH із діагностичним логуванням (StructureEventHistory),
-  яку використовують OB_v1 та майбутні зони.
-- Нативний UI канал (Redis pub/sub) для моніторингу ліквідності та стадій AMD.
-- QA-утиліти для локального прогону SMC на історії (без запуску Stage1).
+- Єдине джерело даних (RAM ↔ Redis ↔ JSONL snapshots) через `UnifiedDataStore`.
+- SMC-core з контрактами (Contract-first): `SmcHint` + `schema_version`.
+- UI_v2: same-origin HTTP+WS (зручний для Cloudflare/nginx).
+- Стійкість до тимчасового падіння Redis (reconnect + backoff) у FXCM listeners та UI_v2 runners.
+- QA-утиліти для локального прогону SMC на історії: `tools/smc_snapshot_runner.py`.
 
-## Потік даних
+## Потік даних (рантайм)
 
-- `app.main` виконує `bootstrap()` → `UnifiedDataStore` → `run_fxcm_ingestor` / `run_fxcm_status_listener` → `screening_producer` → `UI.publish_full_state`.
-- `_warmup_datastore_from_snapshots()` підтягує останні JSONL-файли з `datastore/`, щоб прискорити прогрів RAM перед запуском.
-- Уся жива історія надходить **лише** через Redis-канали зовнішнього FXCM конектора: OHLCV через `fxcm:ohlcv`, price snapshots через `fxcm:price_tik`, а агрегований стан/health — через `fxcm:status`.
-- `_await_fxcm_history()` очікує поки стрім заповнить мінімальний `SCREENING_LOOKBACK` на `1m`; за потреби логи підказують, які символи ще не отримали дані.
-- Детальний конспект дивись у `docs/stage1_pipeline.md`, щоб не перечитувати `app/main.py` під час аудиту пайплайна.
+- `app.main`:
+  - робить bootstrap `UnifiedDataStore` з `config/datastore.yaml`;
+  - warmup з `datastore/*.jsonl` (best-effort, щоб швидше стартувати);
+  - запускає Redis listeners (`fxcm:ohlcv`, `fxcm:price_tik`, `fxcm:status`);
+  - крутить SMC цикл (`smc_producer`) і публікує агрегований стан у Redis для UI;
+  - (опційно) піднімає UI_v2 HTTP/WS + FXCM WS bridge.
+
+Деталі з контрактами/каналами: `docs/fxcm_integration.md`, `docs/fxcm_contract_audit.md`.
 
 ---
 
@@ -52,7 +56,7 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 
 - Python **3.11.9** (див. `runtime.txt`).
 - Redis 6+ (локально чи віддалено) з правами на читання/запис.
-- Доступ до FXCM (token/username/password) + опційний HMAC секрет.
+- Зовнішній FXCM конектор (окремий процес, Python 3.7) має публікувати канали в Redis.
 - Залежності з `requirements.txt` (рекомендується окреме віртуальне середовище).
 
 ---
@@ -60,7 +64,6 @@ SMC-core (structure + liquidity + AMD). Проєкт фокусується на
 ## Швидкий старт
 
 ```powershell
-git clone https://github.com/Std07-1/smc_v1.git
 cd smc_v1
 
 python -m venv .venv
@@ -74,47 +77,43 @@ pip install -r requirements.txt
 
 ## Налаштування середовища
 
-1. Скопіюй `.env.example` (якщо є) або створи `.env` у корені:
+1) Налаштуй `config/datastore.yaml` (base_dir/namespace, політики snapshot'ів).
 
-  ```dotenv
-  FXCM_ACCESS_TOKEN=...
-  FXCM_USERNAME=...
-  FXCM_PASSWORD=...
-  FXCM_HMAC_SECRET=
-  REDIS_HOST=127.0.0.1
-  REDIS_PORT=6379
-  REDIS_PASSWORD=
-  LOG_LEVEL=INFO
-  ```
+2) ENV для рантайму задавай явними змінними:
 
-2. Відредагуй `config/datastore.yaml` для директорій snapshot'ів, namespace та TTL.
-3. Бізнес-параметри Stage1/SMC живуть у `config/config.py` та `app/thresholds.py` —
-   не зберігай їх у змінних оточення.
+- **Linux/VPS (systemd):** через `/etc/smc/smc.env` (див. шаблон `deploy/systemd/smc.env.example`).
+- **Windows/dev:** через `$env:...` у PowerShell.
+
+Мінімум (SMC + UI_v2):
+
+- `REDIS_HOST`, `REDIS_PORT`
+- `UI_V2_ENABLED=1`
+- `SMC_VIEWER_HTTP_HOST/PORT` (типово `127.0.0.1:8080`)
+- `SMC_VIEWER_WS_HOST/PORT`, `SMC_VIEWER_WS_ENABLED=1` (типово `127.0.0.1:8081`)
+- `FXCM_OHLCV_WS_HOST/PORT`, `FXCM_OHLCV_WS_ENABLED` (типово `127.0.0.1:8082`)
+
+3) Бізнес-константи/параметри пайплайна не ховай в ENV — вони мають бути в `config/config.py` або в явних параметрах (див. docs/architecture/principles.md).
 
 ---
 
 ## Запуск сервісів
 
-- **Повний Stage1 pipeline** (FXCM ingest → Stage1 монітор → SMC → UI):
+- **Основний рантайм** (FXCM ingest → SMC → UI_v2):
 
   ```powershell
   python -m app.main
   ```
 
-- **SMC viewer (extended)** — автоматично стартує разом із `app.main`, але можна
-  запускати вручну:
+- **Консольний/експериментальний viewer (опційно)**:
 
   ```powershell
   python -m UI.ui_consumer_experimental_entry
   ```
 
-  Viewer спирається на `publish_smc_state`, читає payload напряму з Redis та
-  відображає тренд, рендж, AMD, ліквідність і FXCM статус для одного символу
-  (за замовчуванням береться перший із `FXCM_FAST_SYMBOLS`). Канал Stage1
-  (`ai_one:ui:asset_state`) видалено як легасі.
+  Це legacy-інструмент для діагностики. Для прод-перегляду використовуємо UI_v2 (HTTP/WS).
 
 - **QA/SMC snapshot runner** — детермінований прогон SMC на історичній вибірці без
-  Stage1:
+  legacy-шару:
 
   ```powershell
   python -m tools.smc_snapshot_runner XAUUSD --tf 5m --extra 15m 1h --limit 500
@@ -122,9 +121,69 @@ pip install -r requirements.txt
 
 ---
 
-## Прод: Cloudflare Tunnel (Windows) → nginx (Docker) → UI_v2 (8080/8081)
+## Режими деплою (SSOT)
+
+Мета: швидко розуміти, **які саме deploy-файли є джерелом істини** для кожного сценарію.
+
+- **VPS (prod), Cloudflare DNS (A-record) → nginx → SMC**
+  - SSOT: `deploy/systemd/smc.service`, `deploy/systemd/smc.env.example`, `deploy/nginx/smc_ui_v2.conf`
+  - Суть: Cloudflare (edge) ходить до origin напряму (HTTP:80 або HTTPS:443 з Origin CA).
+
+- **VPS (prod), Cloudflare Tunnel → nginx → SMC**
+  - SSOT: `deploy/cloudflare_tunnel/README.md`, `deploy/cloudflare_tunnel/cloudflared.ingress.example.yml`, `deploy/nginx/smc_ui_v2.conf`
+  - Суть: тунель підключається до nginx на VPS (origin), зовнішній доступ тільки через Tunnel.
+
+- **Windows (без VPS), Tunnel → nginx (Docker) → UI_v2 на хості**
+  - SSOT: `deploy/viewer_public/README.md`, `deploy/viewer_public/docker-compose.yml`, `deploy/viewer_public/nginx.conf`
+  - Суть: бекенд крутиться на Windows, nginx у Docker робить allowlist/rate-limit і same-origin для домену.
+
+---
+
+## VPS quickstart (Ubuntu, systemd + nginx + Redis)
+
+Ціль: один VPS, два локальні сервіси (Redis + SMC), публічний доступ через Cloudflare → nginx → UI_v2.
+
+- SSOT файли: `deploy/systemd/smc.service`, `deploy/systemd/smc.env.example`, `deploy/nginx/smc_ui_v2.conf`.
+
+Мінімальний план (вручну, як чекліст):
+
+```bash
+# 1) Пакети
+sudo apt-get update
+sudo apt-get install -y redis-server nginx
+
+# 2) ENV для сервісу
+sudo mkdir -p /etc/smc
+sudo cp deploy/systemd/smc.env.example /etc/smc/smc.env
+
+# 3) systemd unit
+sudo cp deploy/systemd/smc.service /etc/systemd/system/smc.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now redis-server smc
+
+# 4) nginx same-origin proxy
+sudo cp deploy/nginx/smc_ui_v2.conf /etc/nginx/sites-available/smc_ui_v2.conf
+sudo ln -sf /etc/nginx/sites-available/smc_ui_v2.conf /etc/nginx/sites-enabled/smc_ui_v2.conf
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Примітки:
+
+- Якщо Cloudflare ходить до origin по HTTPS (Full/Strict) — використовуй `listen 443` блок у `deploy/nginx/smc_ui_v2.conf` і встанови Cloudflare Origin CA сертифікат на VPS.
+- Якщо замість A-record використовується Tunnel — див. `deploy/cloudflare_tunnel/README.md`.
+
+## Прод: Cloudflare Tunnel (Windows) → nginx (Docker) → UI_v2 (коротко)
 
 Ціль: same-origin доставка під **основним доменом** `https://aione-smc.com` (альтернатива: `https://www.aione-smc.com`), щоб і HTTP, і WS працювали "як TradingView".
+
+Детальний runbook:
+
+- `deploy/viewer_public/README.md`
+- `docs/runbook_cloudflare_named_tunnel_windows.md`
+- `docs/runbook_tradingview_like_live_public_domain.md`
+
+Швидкий шлях:
 
 1) Запусти UI_v2 локально (бекенд на хості)
 
@@ -200,10 +259,10 @@ Audit рейок/SSOT (дефолтно лише production surface): `python to
 
 | Шлях | Призначення |
 | --- | --- |
-| `app/` | Точка входу (`main.py`), bootstrap, screening producer, helpers |
-| `config/` | Конфіг Stage1/SMC, datastore.yaml |
+| `app/` | Точка входу (`main.py`), bootstrap, SMC runtime orchestration, helpers |
+| `config/` | Конфіг SMC/runtime, datastore.yaml |
 | `data/` | UnifiedDataStore, WS worker, raw data утиліти |
-| `stage1/` | Моніторинг активів, тригери, індикатори |
+| `UI_v2/` | Read-only UI (HTTP + WS + FXCM WS bridge) |
 | `smc_core/`, `smc_structure/`, `smc_liquidity/` | SMC pipeline + типи |
 | `UI/` | Публікація стану та консольний клієнт |
 | `docs/` | Актуальна SMC документація |
@@ -227,4 +286,4 @@ Audit рейок/SSOT (дефолтно лише production surface): `python to
 - **GitHub:** [Std07-1](https://github.com/Std07-1)
 - **Telegram:** [@Std07_1](https://t.me/Std07_1)
 
-Оновлено: 23.11.2025
+Оновлено: 18.12.2025

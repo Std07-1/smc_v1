@@ -546,9 +546,6 @@ async def run_fxcm_ingestor(
     )
     normalized_algo = (hmac_algo or "sha256").strip().lower() or "sha256"
 
-    redis = Redis(host=host, port=port)
-    pubsub = redis.pubsub()
-
     logger.info(
         "[FXCM_INGEST] Старт інжестора: host=%s port=%s channel=%s",
         host,
@@ -565,80 +562,100 @@ async def run_fxcm_ingestor(
             ", ".join(f"{s}:{tf}" for (s, tf) in sorted(allowed_pairs)),
         )
 
-    await pubsub.subscribe(channel)
-
     processed = 0
     log_every_n = max(1, int(log_every_n))
     hmac_required = bool(hmac_required)
 
-    try:
-        async for message in pubsub.listen():
-            if message is None:
-                continue
-
-            mtype = message.get("type")
-            if mtype != "message":
-                # subscribe/unsubscribe та інші службові події ігноруємо
-                continue
-
-            raw_data = message.get("data")
-            if not raw_data:
-                continue
-
-            try:
-                if isinstance(raw_data, bytes):
-                    payload = json_loads(raw_data.decode("utf-8"))
-                elif isinstance(raw_data, str):
-                    payload = json_loads(raw_data)
-                else:
-                    # Нестандартний тип від Redis — намагаємось привести до str
-                    payload = json_loads(str(raw_data))
-            except JSONDecodeError:
-                logger.warning(
-                    "[FXCM_INGEST] Некоректний JSON у повідомленні з каналу %s",
-                    channel,
-                )
-                continue
-
-            if not isinstance(payload, dict):
-                logger.warning(
-                    "[FXCM_INGEST] Очікував dict у payload, отримав %r",
-                    type(payload),
-                )
-                continue
-
-            rows, symbol, interval = await _process_payload(
-                store,
-                payload,
-                hmac_secret=normalized_secret,
-                hmac_algo=normalized_algo,
-                hmac_required=hmac_required,
-                allowed_pairs=allowed_pairs,
-            )
-
-            if rows <= 0:
-                continue
-
-            processed += rows
-            if processed % log_every_n == 0 and symbol and interval:
-                logger.info(
-                    "[FXCM_INGEST] Інгестовано барів: %d (останній пакет: %s %s, rows=%d)",
-                    processed,
-                    symbol,
-                    interval,
-                    rows,
-                )
-    except asyncio.CancelledError:
-        # Очікуваний шлях завершення при зупинці пайплайна
-        logger.info("[FXCM_INGEST] Отримано CancelledError, завершуємо роботу.")
-    finally:
+    backoff_sec = 1.0
+    while True:
+        redis = Redis(host=host, port=port)
+        pubsub = redis.pubsub()
         try:
-            await pubsub.unsubscribe(channel)
-        except Exception:  # noqa: BLE001
-            pass
-        await pubsub.close()
-        await redis.close()
-        logger.info("[FXCM_INGEST] Інжестор FXCM зупинено коректно.")
+            await pubsub.subscribe(channel)
+            logger.info("[FXCM_INGEST] Підписка активна (channel=%s)", channel)
+
+            async for message in pubsub.listen():
+                backoff_sec = 1.0
+                if message is None:
+                    continue
+
+                mtype = message.get("type")
+                if mtype != "message":
+                    # subscribe/unsubscribe та інші службові події ігноруємо
+                    continue
+
+                raw_data = message.get("data")
+                if not raw_data:
+                    continue
+
+                try:
+                    if isinstance(raw_data, bytes):
+                        payload = json_loads(raw_data.decode("utf-8"))
+                    elif isinstance(raw_data, str):
+                        payload = json_loads(raw_data)
+                    else:
+                        # Нестандартний тип від Redis — намагаємось привести до str
+                        payload = json_loads(str(raw_data))
+                except JSONDecodeError:
+                    logger.warning(
+                        "[FXCM_INGEST] Некоректний JSON у повідомленні з каналу %s",
+                        channel,
+                    )
+                    continue
+
+                if not isinstance(payload, dict):
+                    logger.warning(
+                        "[FXCM_INGEST] Очікував dict у payload, отримав %r",
+                        type(payload),
+                    )
+                    continue
+
+                rows, symbol, interval = await _process_payload(
+                    store,
+                    payload,
+                    hmac_secret=normalized_secret,
+                    hmac_algo=normalized_algo,
+                    hmac_required=hmac_required,
+                    allowed_pairs=allowed_pairs,
+                )
+
+                if rows <= 0:
+                    continue
+
+                processed += rows
+                if processed % log_every_n == 0 and symbol and interval:
+                    logger.info(
+                        "[FXCM_INGEST] Інгестовано барів: %d (останній пакет: %s %s, rows=%d)",
+                        processed,
+                        symbol,
+                        interval,
+                        rows,
+                    )
+        except asyncio.CancelledError:
+            # Очікуваний шлях завершення при зупинці пайплайна
+            logger.info("[FXCM_INGEST] Отримано CancelledError, завершуємо роботу.")
+            raise
+        except Exception:
+            logger.warning(
+                "[FXCM_INGEST] Втрачено з'єднання з Redis. Повтор через %.1f с.",
+                backoff_sec,
+                exc_info=True,
+            )
+            await asyncio.sleep(backoff_sec)
+            backoff_sec = min(backoff_sec * 2.0, 60.0)
+        finally:
+            try:
+                await pubsub.unsubscribe(channel)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
+            try:
+                await redis.close()
+            except Exception:
+                pass
 
 
 __all__ = ["run_fxcm_ingestor"]

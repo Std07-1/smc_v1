@@ -33,6 +33,109 @@
 
 ---
 
+## 2025-12-18 — Deploy/VPS: HTTPS origin (443) для Cloudflare + стійкість до падіння Redis
+
+**Що змінено**
+
+- Додано origin HTTPS (443) у nginx-конфіг для same-origin proxy під Cloudflare Origin CA; шляхи/WS upgrade не змінені.
+- Додано самовідновлення при тимчасовій втраті Redis/мережі: FXCM лістенери та UI_v2 раннери тепер роблять reconnect з exponential backoff замість падіння процесу.
+- Додано тести на reconnect-цикл (імітація Redis down → повторна підписка).
+
+**Де**
+
+- deploy/nginx/smc_ui_v2.conf
+- data/fxcm_ingestor.py
+- data/fxcm_price_stream.py
+- data/fxcm_status_listener.py
+- app/main.py
+- tests/test_redis_reconnect_loops.py
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_redis_reconnect_loops.py tests/test_smc_pipeline_integration.py tests/test_app_smc_producer_pipeline_local.py tests/test_app_smc_producer_history_gate.py tests/test_ui_v2_viewer_state_builder.py` → `20 passed`.
+
+**Примітки/ризики**
+
+- `curl -I` робить HEAD і може давати `405` (це очікувано); для smoke-check використовувати GET.
+- Якщо Cloudflare DNS вказує на tunnel (`*.cfargotunnel.com`), а тунель не активний — буде `502` навіть при живому origin.
+
+---
+
+## 2025-12-18 — Cleanup: прибрано невикористані compat-модулі та дубль nginx-конфіга
+
+**Що змінено**
+
+- Видалено невикористані thin-compat wrappers (0 імпортів у repo), щоб не вводили в оману й не дублювали SSOT.
+- Видалено дубль nginx-конфіга; SSOT для same-origin проксі — `deploy/nginx/smc_ui_v2.conf`.
+- Доки/посилання вирівняно під канонічний конфіг.
+
+**Де**
+
+- UI_v2/schemas.py (видалено)
+- data/fxcm_schema.py (видалено)
+- deploy/nginx/aione-smc.conf (видалено)
+- deploy/cloudflare_tunnel/README.md
+- UPDATE.md
+
+**Тести/перевірка**
+
+- `python tools/audit_repo_report.py` → OK
+- `pytest tests/test_redis_reconnect_loops.py tests/test_ui_v2_smc_viewer_broadcaster.py tests/test_fxcm_schema_and_ingestor_contract.py` → `16 passed`
+
+---
+
+## 2025-12-18 — Docs: матриця deploy-режимів (SSOT) у README
+
+**Що змінено**
+
+- Додано короткий список режимів деплою з явним SSOT-набором файлів (VPS A-record, VPS Tunnel, Windows/Docker Tunnel).
+
+**Де**
+
+- README.md
+
+**Тести/перевірка**
+
+- Не застосовується (лише документація).
+
+---
+
+## 2025-12-18 — Docs: повне актуалізування README під поточний рантайм
+
+**Що змінено**
+
+- Опис приведено до реальності: `app.main` = SMC-only пайплайн + UI_v2; FXCM дані приходять через Redis від зовнішнього конектора.
+- Прибрано застарілі згадки (`WSWorker`, `stage1/`, `.env.example`, `app/thresholds.py`) і вирівняно секції запуску/конфігу/деплою.
+- Додано явні SSOT-посилання на docs та runbooks, щоб README не дублював детальні інструкції.
+
+**Де**
+
+- README.md
+
+**Тести/перевірка**
+
+- Не застосовується (лише документація).
+
+---
+
+## 2025-12-18 — Docs: UI_v2 README під SMC-only + VPS quickstart
+
+**Що змінено**
+
+- Оновлено `UI_v2/README.md`: прибрано Stage1-формулювання та згадки про видалений `schemas` модуль; контракти прив’язані до SSOT `core/contracts/*`.
+- У README додано короткий операційний quickstart для VPS (Ubuntu: systemd + nginx + Redis) з посиланням на SSOT deploy-файли.
+
+**Де**
+
+- UI_v2/README.md
+- README.md
+
+**Тести/перевірка**
+
+- Не застосовується (лише документація).
+
+---
+
 ## 2025-12-17 — Deploy: same-origin reverse-proxy (Cloudflare Tunnel → nginx → 8080/8081)
 
 **Що змінено**
@@ -42,7 +145,7 @@
 
 **Де**
 
-- deploy/nginx/aione-smc.conf
+- deploy/nginx/smc_ui_v2.conf
 - deploy/cloudflare_tunnel/README.md
 
 **Тести/перевірка**
@@ -65,7 +168,7 @@
 
 - deploy/viewer_public/docker-compose.yml
 - deploy/viewer_public/nginx.conf
-- deploy/nginx/aione-smc.conf
+- deploy/nginx/smc_ui_v2.conf
 - deploy/cloudflare_tunnel/README.md
 - tools/smoke_same_origin.ps1
 - README.md
