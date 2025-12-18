@@ -165,7 +165,11 @@ class FxcmWarmupRequester:
                 tf_ms=tf_ms,
                 contract_1m_bars=contract_1m_bars,
             )
-            min_bars = (
+            # Важливо: S3 не має блокувати систему. Готовність визначаємо по
+            # мінімальному desired-limit (типово 300), а більшу історію (напр. 14d)
+            # добираємо best-effort у фоні.
+            status_min_bars = int(desired_bars)
+            request_bars = (
                 max(int(desired_bars), int(contract_bars_tf))
                 if contract_bars_tf > 0
                 else int(desired_bars)
@@ -175,29 +179,37 @@ class FxcmWarmupRequester:
                 store=self.store,
                 symbol=sym,
                 timeframe=tf_norm,
-                min_history_bars=min_bars,
+                min_history_bars=status_min_bars,
                 stale_k=self.stale_k,
                 now_ms=now_ms,
             )
 
+            # Якщо мінімум для роботи є, але контрактна ціль більша — просимо
+            # підтягнути історію у фоні (rate-limited).
             if status.state == "ok":
-                self._clear_active_issue(sym=sym, tf=tf_norm)
-                continue
-
-            cmd_type = None
-            reason = None
-            if status.needs_warmup:
-                cmd_type = "fxcm_warmup"
-                reason = "insufficient_history"
-            elif status.needs_backfill:
-                # Практика інтеграції: у FXCM конекторі backfill для 1m може бути не
-                # реалізований (позначається як tick TF). Щоб не «стріляти в нікуди»,
-                # для 1m просимо warmup з lookback_minutes.
-                if tf_norm == "1m":
+                if contract_bars_tf > 0 and int(status.bars_count) < int(
+                    contract_bars_tf
+                ):
                     cmd_type = "fxcm_warmup"
+                    reason = "prefetch_history"
                 else:
-                    cmd_type = "fxcm_backfill"
-                reason = "stale_tail"
+                    self._clear_active_issue(sym=sym, tf=tf_norm)
+                    continue
+            else:
+                cmd_type = None
+                reason = None
+                if status.needs_warmup:
+                    cmd_type = "fxcm_warmup"
+                    reason = "insufficient_history"
+                elif status.needs_backfill:
+                    # Практика інтеграції: у FXCM конекторі backfill для 1m може бути не
+                    # реалізований (позначається як tick TF). Щоб не «стріляти в нікуди»,
+                    # для 1m просимо warmup з lookback_minutes.
+                    if tf_norm == "1m":
+                        cmd_type = "fxcm_warmup"
+                    else:
+                        cmd_type = "fxcm_backfill"
+                    reason = "stale_tail"
 
             if not cmd_type:
                 continue
@@ -208,15 +220,15 @@ class FxcmWarmupRequester:
 
             lookback_minutes = _compute_lookback_minutes(
                 tf_ms=tf_ms,
-                min_history_bars=min_bars,
+                min_history_bars=request_bars,
             )
 
             payload: dict[str, Any] = {
                 "type": cmd_type,
                 "symbol": sym.upper(),
                 "tf": tf_norm,
-                "min_history_bars": min_bars,
-                "lookback_bars": min_bars,
+                "min_history_bars": request_bars,
+                "lookback_bars": request_bars,
                 "lookback_minutes": lookback_minutes,
                 "reason": reason,
                 "s2": {

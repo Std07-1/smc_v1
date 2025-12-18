@@ -213,3 +213,52 @@ async def test_requester_resets_active_issue_when_state_becomes_ok(
     await requester._run_once()
     assert len(fake_redis.published) == 2
     assert json.loads(fake_redis.published[1][1])["type"] == "fxcm_warmup"
+
+
+@pytest.mark.asyncio
+async def test_requester_prefetches_when_ok_but_contract_wants_more(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_redis = _FakeRedis()
+
+    # Є мінімум (300 барів) і хвіст свіжий -> state=ok,
+    # але контракт вимагає більше -> має бути prefetch_history.
+    now_ms = 1_700_000_000_000
+    last_open_ms = now_ms - (1 * 60_000)
+    df_ok = pd.DataFrame(
+        [
+            {
+                "open_time": last_open_ms / 1000.0,
+                "close_time": last_open_ms / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            }
+        ]
+        * 300
+    )
+    fake_store = _FakeStore(df=df_ok)
+
+    monkeypatch.setattr("app.fxcm_warmup_requester.utc_now_ms", lambda: int(now_ms))
+    monkeypatch.setattr(
+        "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("open")
+    )
+
+    requester = FxcmWarmupRequester(
+        redis=fake_redis,  # type: ignore[arg-type]
+        store=fake_store,  # type: ignore[arg-type]
+        allowed_pairs={("xauusd", "1m")},
+        min_history_bars_by_symbol={"xauusd": 2000},
+        cooldown_sec=1,
+        stale_k=3.0,
+    )
+
+    await requester._run_once()
+    assert len(fake_redis.published) == 1
+    payload = json.loads(fake_redis.published[0][1])
+    assert payload["type"] == "fxcm_warmup"
+    assert payload["reason"] == "prefetch_history"
+    assert payload["s2"]["history_state"] == "ok"
+    assert payload["lookback_bars"] == 2000

@@ -1,0 +1,41 @@
+[Unit]
+Description=AiOne SMC (Python 3.11+) worker
+After=network.target redis-server.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=smc
+Group=smc
+WorkingDirectory=/home/smc/smc_v1
+
+# ENV (Redis + UI_v2 ports + toggles)
+EnvironmentFile=/etc/smc/smc.env
+
+# Важливо: окремий venv під Python 3.11/3.12
+ExecStart=/home/smc/.venv/bin/python -m app.main
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+
+# Обмеження ресурсів, щоб SMC ніколи не задавив конектор
+MemoryMax=2G
+CPUQuota=150%
+
+# Рекомендовано для asyncio/WS
+LimitNOFILE=65535
+
+# Логи в journalctl
+StandardOutput=journal
+StandardError=journal
+
+# Трошки hardening без фанатизму
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/smc/smc_v1/tmp /home/smc/smc_v1/datastore
+
+[Install]
+WantedBy=multi-user.target
