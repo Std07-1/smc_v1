@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD036 -->
+
 # UPDATE_CORE.md
 
 Журнал змін **core-логіки** (SMC core / liquidity / structure / zones / пайплайни, що впливають на сигнали).
@@ -47,3 +49,28 @@
 **Тести/перевірка**
 
 - Запущено таргетно: `pytest tests/test_smc_core_contracts.py` → `1 passed`.
+
+## 2025-12-18 — Wave F (F0/F1/F2/F3): quality gates для SMC/Stage3 (рейки + тести + latency smoke)
+
+**Що змінено**
+
+- Додано документ з матрицею quality-gates (DATA/TF_TRUTH/PRIMARY_ONLY/SERDE/LATENCY/RISK) з режимами `accept/warn/drop` (у F0–F2 лише accept+warn).
+- Додано tests-only гейти для DATA + TF_TRUTH + PRIMARY_ONLY, щоб ловити регреси без зміни runtime.
+- Додано рейки імпортів (pre-commit boundary): заборонено тягнути SMC пакети у випадкові модулі поза контрольованими винятками.
+- Додано latency smoke інструмент для локального виміру p50/p75/p95 та лічильників `no_data/exceptions` (без CI-гейту).
+- Додано мінімальний bootstrap `sys.path` у smoke tool, щоб `python tools/smc_latency_smoke.py ...` працював без `-m`.
+
+**Де**
+
+- docs/quality_gates_smc_stage3.md
+- tests/test_smc_data_gate_open_close_ms.py
+- tests/test_smc_tf_truth_primary_present.py
+- tests/test_smc_primary_only_gate.py
+- tools/import_rules.toml
+- tools/smc_latency_smoke.py
+
+**Тести/перевірка**
+
+- `python -m pre_commit run --all-files` → Passed
+- `python tools/audit_repo_report.py` (production surface) → OK (0 findings)
+- `python -m pytest -q` → `220 passed`

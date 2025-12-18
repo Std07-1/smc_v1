@@ -12,6 +12,7 @@ from collections.abc import Sequence
 
 import pandas as pd
 
+from core.serialization import safe_float as _safe_float
 from smc_core.config import SmcCoreConfig
 from smc_core.smc_types import (
     SmcInput,
@@ -24,7 +25,6 @@ from smc_core.smc_types import (
 from smc_zones.breaker_detector import detect_breakers
 from smc_zones.fvg_detector import detect_fvg_zones
 from smc_zones.orderblock_detector import detect_order_blocks
-from utils.utils import safe_float as _safe_float
 
 
 def compute_zones_state(

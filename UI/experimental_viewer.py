@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import json
 import math
 import re
 from datetime import UTC, datetime
@@ -15,9 +14,44 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from utils.utils import get_tick_size
+from core.contracts import normalize_smc_schema_version
+from core.serialization import (
+    coerce_dict,
+    json_dumps,
+    safe_float,
+    safe_int,
+    duration_seconds_to_hms,
+    try_iso_to_human_utc,
+    utc_ms_to_human_utc,
+    utc_seconds_to_human_utc,
+)
+from config.config import TICK_SIZE_BRACKETS, TICK_SIZE_DEFAULT, TICK_SIZE_MAP
 
 FXCM_LAG_COMPACT_THRESHOLD_SECONDS = 5 * 60
+
+
+def _get_tick_size(symbol: str, price_hint: float | None = None) -> float:
+    """Визначає tick_size для UI.
+
+    Пріоритет:
+        1) TICK_SIZE_MAP
+        2) TICK_SIZE_BRACKETS (перший поріг де ціна < limit)
+        3) TICK_SIZE_DEFAULT
+    """
+
+    sym = (symbol or "").lower()
+    tick_conf = TICK_SIZE_MAP.get(sym) or TICK_SIZE_MAP.get(sym.upper())
+    if isinstance(tick_conf, (int, float)) and tick_conf > 0:
+        return float(tick_conf)
+    if price_hint is not None and TICK_SIZE_BRACKETS:
+        try:
+            p = float(price_hint)
+            for limit_price, tick in TICK_SIZE_BRACKETS:
+                if p < limit_price:
+                    return float(tick)
+        except Exception:
+            pass
+    return float(TICK_SIZE_DEFAULT)
 
 
 class SmcExperimentalViewer:
@@ -124,7 +158,7 @@ class SmcExperimentalViewer:
 
         try:
             self.snapshot_path.write_text(
-                json.dumps(viewer_state, ensure_ascii=False, indent=2),
+                json_dumps(viewer_state, pretty=True),
                 encoding="utf-8",
             )
         except Exception:
@@ -364,9 +398,10 @@ class SmcExperimentalViewer:
         smc_block = asset.get("smc")
         return smc_block if isinstance(smc_block, dict) else {}
 
-    @staticmethod
-    def _as_dict(payload: Any) -> dict[str, Any]:
-        return payload if isinstance(payload, dict) else {}
+    # Заборонені локальні def _as_dict/_safe_*: використовуємо SSOT.
+    _as_dict = staticmethod(coerce_dict)
+    _safe_float = staticmethod(safe_float)
+    _safe_int = staticmethod(safe_int)
 
     def _simplify_events(self, events: Any) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
@@ -387,6 +422,10 @@ class SmcExperimentalViewer:
                     normalized_ts = self._format_utc_from_ms(time_value)
                     if normalized_ts:
                         time_value = normalized_ts
+                elif isinstance(time_value, str):
+                    normalized_text = try_iso_to_human_utc(time_value)
+                    if normalized_text:
+                        time_value = normalized_text
                 output.append(
                     {
                         "type": event.get("event_type") or event.get("type"),
@@ -707,7 +746,7 @@ class SmcExperimentalViewer:
     def _price_decimals(self, price_value: float, symbol: str | None) -> int:
         ticker = (symbol or self.symbol or "").lower()
         try:
-            tick_size = get_tick_size(ticker, price_value)
+            tick_size = _get_tick_size(ticker, price_value)
         except Exception:
             tick_size = 0.0
         decimals = 2
@@ -728,17 +767,13 @@ class SmcExperimentalViewer:
         millis = self._safe_int(value)
         if millis is None:
             return None
-        seconds, remainder = divmod(millis, 1000)
-        dt = datetime.fromtimestamp(seconds, tz=UTC)
-        dt = dt.replace(microsecond=remainder * 1000)
-        return dt.isoformat()
+        return utc_ms_to_human_utc(millis)
 
     def _format_utc_from_seconds(self, value: Any) -> str | None:
         seconds = self._safe_float(value)
         if seconds is None:
             return None
-        dt = datetime.fromtimestamp(seconds, tz=UTC)
-        return dt.isoformat()
+        return utc_seconds_to_human_utc(seconds)
 
     def _format_fxcm_status_ts(self, value: float) -> str | None:
         if value >= 10_000_000_000:
@@ -794,9 +829,14 @@ class SmcExperimentalViewer:
         next_open_value = fxcm_payload.get("next_open_utc")
         if isinstance(next_open_value, (int, float)):
             next_open_value = self._format_utc_from_ms(next_open_value)
+        elif isinstance(next_open_value, str):
+            normalized_text = try_iso_to_human_utc(next_open_value)
+            if normalized_text:
+                next_open_value = normalized_text
         elif self._is_placeholder_value(next_open_value):
             next_open_value = None
 
+        status_ts = fxcm_payload.get("status_ts_iso")
         status_ts = fxcm_payload.get("status_ts_iso")
         if not status_ts:
             raw_status_ts = fxcm_payload.get("status_ts")
@@ -805,8 +845,13 @@ class SmcExperimentalViewer:
                 status_ts = self._format_fxcm_status_ts(status_value)
             else:
                 status_ts = raw_status_ts
+        elif isinstance(status_ts, str):
+            normalized_text = try_iso_to_human_utc(status_ts)
+            if normalized_text:
+                status_ts = normalized_text
 
         normalized: dict[str, Any] = {
+            "lag_human": duration_seconds_to_hms(lag_seconds) if lag_seconds else "-",
             "market_state": market_state,
             "process_state": process_state,
             "price_state": price_state,
@@ -918,6 +963,10 @@ class SmcExperimentalViewer:
                     schema_value = str(value)
                     break
         if schema_value:
+            # Нормалізуємо legacy alias ("1.2") до канону ("smc_state_v1"),
+            # не змінюючи структуру payload і не кидаючи exception.
+            schema_value = normalize_smc_schema_version(schema_value)
+        if schema_value:
             self._last_schema = schema_value
             return schema_value
         return self._last_schema
@@ -994,25 +1043,6 @@ class SmcExperimentalViewer:
         try:
             return float(token)
         except ValueError:
-            return None
-
-    # ── Безпечні перетворення ----------------------------------------------
-    @staticmethod
-    def _safe_float(value: Any) -> float | None:
-        try:
-            if value is None:
-                return None
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-
-    @staticmethod
-    def _safe_int(value: Any) -> int | None:
-        try:
-            if value is None:
-                return None
-            return int(value)
-        except (TypeError, ValueError):
             return None
 
     @staticmethod

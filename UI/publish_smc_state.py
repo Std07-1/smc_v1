@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import time
 from collections import Counter
-from datetime import datetime
 from typing import Any, Protocol
 
 from redis.asyncio import Redis
@@ -18,7 +16,9 @@ from config.config import (
     UI_SMC_PAYLOAD_SCHEMA_VERSION,
     UI_SMC_SNAPSHOT_TTL_SEC,
 )
-from utils.utils import format_price as fmt_price_stage1, format_volume_usd, safe_float
+from core.formatters import fmt_price_stage1, fmt_volume_usd
+from core.serialization import json_dumps, utc_now_iso_z
+from core.serialization import safe_float
 
 try:  # pragma: no cover - best-effort залежність
     from smc_core.serializers import to_plain_smc_hint as _core_plain_smc_hint
@@ -209,7 +209,7 @@ async def publish_smc_state(  # type: ignore
     payload = {
         "type": REDIS_CHANNEL_SMC_STATE,
         "meta": {
-            "ts": datetime.utcnow().isoformat() + "Z",
+            "ts": utc_now_iso_z(),
             "seq": seq,
             "schema_version": UI_SMC_PAYLOAD_SCHEMA_VERSION,
         },
@@ -251,7 +251,7 @@ async def publish_smc_state(  # type: ignore
     if analytics:
         payload["analytics"] = analytics
 
-    payload_json = json.dumps(payload, default=str)
+    payload_json = json_dumps(payload)
 
     async def _set_snapshot() -> None:
         try:

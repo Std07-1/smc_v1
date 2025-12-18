@@ -13,7 +13,6 @@ import importlib
 import logging
 import time
 from collections.abc import Callable, Iterable
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from redis.asyncio import Redis
@@ -33,10 +32,14 @@ from config.config import (
     SMC_S2_STALE_K,
 )
 from config.constants import ASSET_STATE, K_STATS
+from core.serialization import (
+    utc_now_human_utc,
+    utc_now_iso_z,
+    utc_seconds_to_human_utc,
+)
 from data.fxcm_status_listener import get_fxcm_feed_state
 from data.unified_store import UnifiedDataStore
 from UI.publish_smc_state import publish_smc_state
-from utils.utils import create_error_signal
 
 if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгів
     from smc_core.engine import SmcCoreEngine
@@ -51,6 +54,23 @@ if not logger.handlers:
 
 _SMC_ENGINE: SmcCoreEngine | None = None
 _SMC_PLAIN_SERIALIZER: Callable[[Any], dict[str, Any] | None] | None = None
+
+
+def _create_error_signal(symbol: str, error: str) -> dict[str, Any]:
+    """Формує стандартний payload помилки для UI.
+
+    Це локальна compat-реалізація замість legacy `utils.utils.create_error_signal`.
+    """
+
+    return {
+        "symbol": symbol,
+        "signal": "NONE",
+        "trigger_reasons": ["processing_error"],
+        "confidence": 0.0,
+        "hints": [f"Помилка: {error}"],
+        "state": ASSET_STATE["ERROR"],
+        "visible": True,
+    }
 
 
 def _history_ok_for_compute(*, history_state: str, allow_stale_tail: bool) -> bool:
@@ -469,7 +489,7 @@ async def process_smc_batch(
             )
         except Exception as exc:  # pragma: no cover - захист від edge-case
             logger.error("[SMC] Помилка обробки %s: %s", sym, exc, exc_info=True)
-            err_payload = create_error_signal(sym, str(exc))
+            err_payload = _create_error_signal(sym, str(exc))
             err_payload["signal"] = "SMC_ERROR"
             err_payload["state"] = ASSET_STATE["ERROR"]
             state_manager.update_asset(sym, err_payload)
@@ -559,7 +579,7 @@ async def smc_producer(
         redis_conn,
         meta_extra={
             "cycle_seq": cycle_seq,
-            "cycle_started_ts": datetime.utcnow().isoformat() + "Z",
+            "cycle_started_ts": utc_now_human_utc(),
             "cycle_reason": "smc_bootstrap",
             **pipeline_meta,
         },
@@ -593,7 +613,7 @@ async def smc_producer(
                 redis_conn,
                 meta_extra={
                     "cycle_seq": cycle_seq,
-                    "cycle_started_ts": datetime.utcnow().isoformat() + "Z",
+                    "cycle_started_ts": utc_now_human_utc(),
                     "cycle_reason": "smc_idle_fxcm_status",
                     "fxcm_idle_reason": fxcm_reason,
                     "pipeline_state": "IDLE",
@@ -852,10 +872,8 @@ async def smc_producer(
             redis_conn,
             meta_extra={
                 "cycle_seq": cycle_seq,
-                "cycle_started_ts": datetime.fromtimestamp(cycle_started_ts).isoformat()
-                + "Z",
-                "cycle_ready_ts": datetime.fromtimestamp(cycle_ready_ts).isoformat()
-                + "Z",
+                "cycle_started_ts": utc_seconds_to_human_utc(cycle_started_ts),
+                "cycle_ready_ts": utc_seconds_to_human_utc(cycle_ready_ts),
                 "cycle_compute_ms": round(
                     (cycle_ready_ts - cycle_started_ts) * 1000.0, 2
                 ),

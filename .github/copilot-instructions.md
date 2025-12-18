@@ -8,6 +8,57 @@
 - Усе українською: чат, коментарі, докстрінги, логи.
 - Регулярно звіряй `.github/copilot-memory.md` та `roadmap.md` на предмет оновлень.
 
+## Дозволено
+
+- Редагувати файли у workspace (working tree).
+
+## Заборонено
+
+- Будь-які git-операції: commit, push, створення PR, робота з гілками без прямого наказу з підтвердженням.
+- Масові рефактори “по всьому репо” без хвиль і без причин, без чітких правил та без прямої команди з підтвердженням.
+
+## Архітектурні принципи (скоро)
+
+## Repo standards pack (обов'язково)
+
+Це мінімальний набір стандартів, який реально тримає систему без хаосу.
+
+### A) Принципи
+
+- **DRY**: не дублюємо правила форматування/серіалізації/контрактів між шарами.
+- **SSOT**:
+  - серіалізація/час → тільки через `core/serialization.py`;
+  - контракти → тільки `core/contracts/*` (compat у repo відсутній; тимчасові фасади допускаються лише з TTL і рейками).
+- **Separation of Concerns (SoC)**: бізнес-логіка не форматує строки/час і не робить прямі `json.dumps/json.loads`.
+- **Contract-first / Schema-first**: між шарами передаємо payload за контрактом + `schema_version`.
+- **Canonical representation**: всередині — канон; перетворення тільки на межах I/O (WS/Redis/HTTP/дампи).
+- **Smells** (уникати): God Object/Module (великий змішаний модуль), utils hell (helper sprawl).
+
+### B) Архітектурні “рейки” (enforcement)
+
+- **Layered boundaries / Dependency rule**:
+  - `core/` не залежить від доменів/шарів (винятків немає);
+  - домени не імпортують один одного напряму без узгодженого ACL.
+- **Public API boundary**: імпортуємо тільки з публічного (`package/__init__.py`, `core/contracts/*`), не з внутрішніх деталей.
+- **Adapter / Anti-corruption layer (ACL)**: нормалізація/перетворення даних — тільки на межі I/O.
+- **Feature flags / Runtime toggles**: контрольовані зміни поведінки (як strict validate) — тільки явними флагами.
+- **Backward compatibility / Compat layer**: якщо доводиться вводити тимчасові legacy-фасади, вони мають бути thin + з `REMOVE_AFTER` (див. `docs/deprecation_policy.md`) і не можуть використовуватись всередині repo.
+
+### C) Керування змінами (без хаосу)
+
+- **Minimal-diff policy / Change in waves**: маленькі хвилі з чіткою метою і тестом.
+- **API versioning**: `schema_version` як іменований канон + aliases для legacy; консюмери нормалізують.
+- **Deprecation policy**: deprecate → warn → migrate → remove (з датами/версіями, де доречно).
+- **Migration log discipline**: 1 запис на хвилю (що/чому/ризик) у `docs/architecture/migration_log.md` або `UPDATE*.md`.
+
+### D) Якість як gate (автоматично)
+
+- **Pre-commit gates**: перед “серйозними” змінами обов'язково:
+  - `C:/Aione_projects/smc_v1/.venv/Scripts/python.exe tools/audit_repo_report.py`
+  - `C:/Aione_projects/smc_v1/.venv/Scripts/python.exe -m pre_commit run --all-files`
+- **pytest недостатньо як єдиний gate**: `python -m pytest -q` не заміняє audit + pre-commit.
+- **Unit/Contract tests as gates**: контрактні тести на I/O межах (FXCM/UI/SMC payload) — мінімум 1–2.
+
 ## Цілі
 
 - Бізнес: PnL↑, winrate↑, FP↓, latency ≤200 мс/бар, прозорість↑.
@@ -143,7 +194,19 @@
   .\.venv\Scripts\python.exe -c "<однорядковий Python-код; інструкції розділяй ; >"
   ```
 
-- Правила: увесь код в одному рядку; інструкції розділяти `;`; не використовувати heredoc або `python - << 'PY'` та інший bash/zsh-синтаксис.
+- Правила: увесь код в одному рядку; інструкції розділяти `;` (НЕ `&&`); не використовувати heredoc або `python - << 'PY'` та інший bash/zsh-синтаксис.
+
+- Надійний шаблон запуску у PowerShell (щоб не залежати від PATH):
+
+  ```powershell
+  ; & "C:\Aione_projects\smc_v1\.venv\Scripts\python.exe" -m pytest -q
+  ; & "C:\Aione_projects\smc_v1\.venv\Scripts\python.exe" tools\audit_repo_report.py
+  ; & "C:\Aione_projects\smc_v1\.venv\Scripts\python.exe" -m pre_commit run --all-files
+  ```
+
+- Якщо термінал інколи підставляє кириличну `с` на початку команди (симптом: команди виглядають як `сpython ...` і падають):
+  - Одноразово в цьому терміналі виконай: `; function с { }` (no-op), після цього інжект не ламає запуск.
+  - Або відкрий новий термінал/перезапусти VS Code; як тимчасовий обхід — завжди починай команди з `;`.
 
 ## 8. Чого не робити
 

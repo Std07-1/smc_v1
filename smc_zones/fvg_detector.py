@@ -8,9 +8,9 @@ from typing import Any, Literal
 
 import pandas as pd
 
+from core.serialization import safe_float
 from smc_core.config import SmcCoreConfig
 from smc_core.smc_types import SmcStructureState, SmcZone, SmcZoneType
-from utils.utils import safe_float
 
 logger = logging.getLogger("smc_zones.fvg_detector")
 if not logger.handlers:

@@ -107,7 +107,7 @@ def test_build_state_returns_compact_sections(tmp_path) -> None:
     assert state["payload_seq"] == 42
     event_entry = state["structure"]["events"][0]
     assert event_entry["price"] == pytest.approx(2376.0)
-    assert str(event_entry["time"]).startswith("2025-11-25T12:00:00")
+    assert str(event_entry["time"]).startswith("2025-11-25 12:00:00")
     assert state["liquidity"]["magnets"][0]["strength"] == 3
 
     viewer.dump_snapshot(state)
@@ -247,5 +247,7 @@ def test_fxcm_status_ts_converts_seconds_string(tmp_path) -> None:
 
     assert normalized is not None
     status_ts = normalized.get("status_ts")
-    expected = datetime.fromtimestamp(1765207699.8571026, tz=UTC).isoformat()
+    expected = datetime.fromtimestamp(1765207699.8571026, tz=UTC).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     assert status_ts == expected

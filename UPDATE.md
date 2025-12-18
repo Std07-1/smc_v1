@@ -1,5 +1,7 @@
 # UPDATE.md
 
+<!-- markdownlint-disable MD036 MD013 -->
+
 Журнал змін (оновлюється **кожного разу**, коли я роблю будь-які правки у репозиторії).
 
 ## Формат запису (конвенція)
@@ -13,6 +15,128 @@
 - **Примітки/ризики** (за потреби): що може вплинути на рантайм.
 
 ---
+
+## 2025-12-17 — UI_v2 (Web): override `fxcm_ws_base` для FXCM WebSocket (public/Cloudflare)
+
+**Що змінено**
+
+- Додано query-параметр `fxcm_ws_base` для явного задання базового URL FXCM WS (OHLCV/ticks/status).
+- Це дозволяє підключати live-свічки через окремий тунель/домен, без вимоги same-origin path-проксі `/fxcm/*`.
+
+**Де**
+
+- UI_v2/web_client/app.js
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `13 passed`.
+
+---
+
+## 2025-12-17 — Deploy: same-origin reverse-proxy (Cloudflare Tunnel → nginx → 8080/8081)
+
+**Що змінено**
+
+- Додано мінімальний nginx-конфіг для same-origin: `/` → `8080`, `/smc-viewer/stream` (WS) → `8081`.
+- Додано коротку інструкцію під Cloudflare Tunnel (Public Hostname → nginx:80) і smoke-check.
+
+**Де**
+
+- deploy/nginx/aione-smc.conf
+- deploy/cloudflare_tunnel/README.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_server.py tests/test_ui_v2_viewer_state_ws_server.py` → `5 passed`.
+
+---
+
+## 2025-12-17 — Prod domain: `aione-smc.com` + nginx (Docker/Windows) на 80 + smoke-test
+
+**Що змінено**
+
+- Нормалізовано домен у доках під `https://aione-smc.com` (альтернатива: `https://www.aione-smc.com`).
+- Для Windows зроблено docker-nginx "primary": `deploy/viewer_public/docker-compose.yml` тепер слухає `80:80`.
+- У docker nginx конфігу додано `server_name aione-smc.com www.aione-smc.com;` і вимкнено буферизацію для WS `/smc-viewer/stream`.
+- Додано PowerShell smoke-test для same-origin (HTTP `/` + JSON snapshot).
+- README: додано коротку прод-інструкцію "Cloudflare Tunnel → nginx (Docker) → UI_v2".
+
+**Де**
+
+- deploy/viewer_public/docker-compose.yml
+- deploy/viewer_public/nginx.conf
+- deploy/nginx/aione-smc.conf
+- deploy/cloudflare_tunnel/README.md
+- tools/smoke_same_origin.ps1
+- README.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_server.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `13 passed`.
+
+---
+
+## 2025-12-17 — UI_v2 (Web): FXCM live WS за замовчуванням на `aione-smc.com` (same-origin `/fxcm/*`)
+
+**Що змінено**
+
+- На прод-доменах `aione-smc.com`/`www.aione-smc.com` FXCM live WS тепер увімкнений за замовчуванням (без query-параметрів).
+- same-origin для FXCM (`/fxcm/*`) вважається увімкненим за замовчуванням на прод-домені; порт `:8082` використовується лише в локальному dev.
+- Додано ручний стоп: `fxcm_ws=0` вимикає live навіть у проді.
+- Додано захист від “вічного молотіння”: для OHLCV/ticks reconnect зупиняється після 3 невдалих спроб.
+- Доки: додано smoke-check для WS `wss://aione-smc.com/fxcm/ohlcv?...` і приклад cloudflared ingress YAML для apex+www одним тунелем.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- deploy/viewer_public/nginx.conf
+- README.md
+- deploy/viewer_public/README.md
+- deploy/cloudflare_tunnel/README.md
+- deploy/cloudflare_tunnel/cloudflared.ingress.example.yml
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_server.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `13 passed`.
+
+---
+
+## 2025-12-17 — Docs: Windows named tunnel (короткий runbook) + актуалізація web-доків
+
+**Що змінено**
+
+- Додано короткий runbook для Windows named tunnel + швидкий дебаг 502 у форматі “3 команди”.
+- Оновлено web-інструкції/посилання: прибрано застарілі згадки Quick Tunnel/`:8088`, приклади приведено до `aione-smc.com` і локального `127.0.0.1:80`.
+
+**Де**
+
+- docs/runbook_cloudflare_named_tunnel_windows.md
+- docs/runbook_tradingview_like_live_public_domain.md
+- docs/README.md
+- docs/_inventory.md
+- docs/stage1_pipeline.md
+- deploy/viewer_public/README.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_server.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `13 passed`.
+
+---
+
+## 2025-12-17 — Deploy: вимкнено контейнерний cloudflared (лишаємо лише Windows service)
+
+**Що змінено**
+
+- Сервіс `cloudflared` у docker-compose закоментований, щоб випадково не стартував у Docker.
+- Канонічний шлях для прод-домену: Windows service Cloudflared → nginx у Docker на `:80` (same-origin reverse-proxy).
+
+**Де**
+
+- deploy/viewer_public/docker-compose.yml
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_server.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `13 passed`.
 
 ## 2025-12-16 — Dev process: зафіксовано правило «зміна → тест → UPDATE → відповідь»
 
@@ -547,8 +671,8 @@
 **Що змінено**
 
 - Прибрано Rich-based логування (`RichHandler`) у ключових модулях (Data/UI/SMC core helpers) — залишились прості стандартні логи через `logging.StreamHandler()`.
-- Rich Live console status bar прибрано: `run_console_status_bar()` тепер no-op; при цьому `build_status_snapshot()` залишено для тестів і можливих інтеграцій.
-- `app/rich_console.py` більше не тягне `rich` і лишається lightweight shim для сумісності старих імпортів.
+- Rich Live console status bar тоді було вимкнено (no-op), але у хвилі D1 (2025-12-17) модуль `app/console_status_bar.py` повністю видалено.
+- Lightweight shim `app/rich_console.py` (і `utils/rich_console.py`) у хвилі D1 (2025-12-17) повністю видалено.
 
 **Де**
 
@@ -576,7 +700,8 @@
 **Що змінено**
 
 - Зафіксовано нюанс UI_v2: volume-серія є, але в основному UI-шляху live-бар з FXCM WS будується без `volume`, тому live-volume може бути нульовим; dev стенд (`chart_demo.js`) передає `volume`.
-- Додано явні посилання на “джерело істини” контрактів у цьому репо: `data/fxcm_schema.py` + `tests/test_fxcm_schema_and_ingestor_contract.py`.
+- Додано явні посилання на “джерело істини” контрактів у цьому репо: (історично: `data/fxcm_schema.py`) + `tests/test_fxcm_schema_and_ingestor_contract.py`.
+  - Примітка (2025-12-18): нині SSOT — `core/contracts/fxcm_channels.py` + `core/contracts/fxcm_validate.py`.
 - Додано посилання в кореневий README на `docs/fxcm_contract_audit.md`, щоб не перечитувати код під час звірки інтеграції.
 
 **Де**
@@ -598,7 +723,8 @@
 **Що змінено**
 
 - Переписано `docs/stage1_pipeline.md` як довідник реального `app.main` пайплайна (SMC-only): прибрано застарілий Stage1 моніторинг (`AssetMonitorStage1`, `screening_producer`) та `_await_fxcm_history()`.
-- Додано посилання на джерело істини FXCM-контрактів у цьому репо: `data/fxcm_schema.py` + `tests/test_fxcm_schema_and_ingestor_contract.py`.
+- Додано посилання на джерело істини FXCM-контрактів у цьому репо: (історично: `data/fxcm_schema.py`) + `tests/test_fxcm_schema_and_ingestor_contract.py`.
+  - Примітка (2025-12-18): нині SSOT — `core/contracts/fxcm_channels.py` + `core/contracts/fxcm_validate.py`.
 - Оновлено діагностику: актуальні log-теги та канали (`fxcm:*`, `ui.metrics`).
 
 **Де**
@@ -971,9 +1097,11 @@
 
 **Де**
 
-- data/fxcm_schema.py
+- (історично) data/fxcm_schema.py
 - data/fxcm_ingestor.py
 - tests/test_fxcm_schema_and_ingestor_contract.py
+
+> Примітка (2025-12-18): `data/fxcm_schema.py` видалено; SSOT перенесено у `core/contracts/fxcm_channels.py` + `core/contracts/fxcm_validate.py`.
 
 **Тести/перевірка**
 
@@ -1038,12 +1166,14 @@
 
 **Де**
 
-- data/fxcm_schema.py
+- (історично) data/fxcm_schema.py
 - tests/test_fxcm_schema_and_ingestor_contract.py
 - UI_v2/web_client/chart_adapter.js
 - UI_v2/web_client/chart_demo.js
 - tools/uds_ohlcv_gap_check.py
 - docs/fxcm_tick_agg_update_2025-12-13.md
+
+> Примітка (2025-12-18): `data/fxcm_schema.py` видалено; soft-валидація тепер у `core/contracts/fxcm_validate.py`.
 
 **Тести/перевірка**
 

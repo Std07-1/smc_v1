@@ -21,7 +21,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import math
 import os
@@ -41,6 +40,7 @@ from config.config import (
     PRICE_TICK_DROP_SECONDS,
     PRICE_TICK_STALE_SECONDS,
 )
+from core.serialization import json_dumps, json_loads
 from data.fxcm_status_listener import get_fxcm_feed_state
 
 # ── Логування ──
@@ -414,7 +414,11 @@ class RedisAdapter:
         for attempt in range(self.cfg.io_retry_attempts):
             try:
                 raw = await self.r.get(key)
-                return default if raw is None else json.loads(raw)
+                if raw is None:
+                    return default
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8", errors="replace")
+                return json_loads(str(raw))
             except Exception as e:
                 await asyncio.sleep(self.cfg.io_retry_backoff * (2**attempt))
                 if attempt == self.cfg.io_retry_attempts - 1:
@@ -424,7 +428,7 @@ class RedisAdapter:
 
     async def jset(self, *parts: str, value: object, ttl: int | None = None) -> None:
         key = k(self.cfg.namespace, *parts)
-        data = json.dumps(value, ensure_ascii=False)
+        data = json_dumps(value)
         for attempt in range(self.cfg.io_retry_attempts):
             try:
                 if ttl:
@@ -703,13 +707,13 @@ class StorageAdapter:
                         last_line = line
                 if last_line:
                     try:
-                        payload = json.loads(last_line)
+                        payload = json_loads(last_line)
                         last_open = _normalize_epoch(payload.get("open_time"))  # type: ignore[arg-type]
                     except Exception:
                         last_open = None
             elif path.suffix == ".json":
                 try:
-                    payload = json.loads(path.read_text(encoding="utf-8"))
+                    payload = json_loads(path.read_text(encoding="utf-8"))
                     if isinstance(payload, list):
                         rows = len(payload)
                         if rows:

@@ -16,7 +16,7 @@
 3. **SMC цикл**
    - `smc_producer` читає історичні бари з `UnifiedDataStore` (для whitelisted символів), рахує SMC-core та публікує агрегований стан у Redis для UI.
 4. **UI/споживачі**
-   - UI_v2 піднімає HTTP+WS інтерфейси для read-only перегляду (див. `UI_v2/web_client/README.md`).
+   - UI_v2 піднімає HTTP+WS інтерфейси для read-only перегляду (див. `deploy/viewer_public/README.md`).
    - Метрики для UI публікуються окремим таском у канал `ui.metrics`.
 
 ## 2. Єдине джерело даних
@@ -27,7 +27,8 @@
 
 Джерело істини для FXCM-контрактів у цьому репо:
 
-- мінімальна схема повідомлень: `data/fxcm_schema.py`;
+- TypedDict контракти + назви каналів: `core/contracts/fxcm_channels.py`;
+- soft-валидація (drop некоректних барів без падіння процесу): `core/contracts/fxcm_validate.py`;
 - інваріанти інжесту (наприклад, skip live-барів `complete=false`): `tests/test_fxcm_schema_and_ingestor_contract.py`;
 - огляд каналів/ланцюжка даних: `docs/fxcm_contract_audit.md` та `docs/fxcm_integration.md`.
 

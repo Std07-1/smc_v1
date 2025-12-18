@@ -36,13 +36,15 @@ def store(tmp_path: Path) -> UnifiedDataStore:
 def test_price_tick_cache_returns_live_mid(store: UnifiedDataStore) -> None:
     """Кеш має повертати нормалізований mid/bid/ask зі свіжого тика."""
 
+    now = time.time()
+
     payload = {
         "symbol": "XAUUSD",
         "bid": 2375.1,
         "ask": 2375.4,
         "mid": 2375.25,
-        "tick_ts": 1_765_000_000.0,
-        "snap_ts": 1_765_000_001.0,
+        "tick_ts": now,
+        "snap_ts": now,
     }
     stored = store.update_price_tick(payload)
     assert stored is not None

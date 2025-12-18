@@ -1,13 +1,12 @@
-# Public Viewer (UI_v2) на ПК через Docker + Cloudflare Quick Tunnel
+# Public Viewer (UI_v2) на ПК через Docker + Cloudflare Tunnel (same-origin)
 
-Мета: дати 1 користувачу публічний **read-only** доступ до UI_v2 з інтернету **без VPS**.
+Мета: дати публічний **read-only** доступ до UI_v2 з інтернету **без VPS** через домен `aione-smc.com`.
 
 Архітектура:
 
 - Бекенд запускається **на хості (Windows)**: `python -m app.main` + UI_v2 HTTP/WS.
 - Docker піднімає:
-  - `nginx` (локально слухає `127.0.0.1:8088`) — allowlist + rate-limit + WS proxy.
-  - `cloudflared` — піднімає Quick Tunnel і публікує `http://nginx:80` назовні.
+  - `nginx` (локально слухає `127.0.0.1:80`) — allowlist + rate-limit + WS proxy.
 
 Зовні відкритий **лише tunnel**. Жодних Redis/портів напряму назовні.
 
@@ -15,7 +14,7 @@ TL;DR “TradingView-like live” (жива свічка + live-volume):
 
 - Бекенд: `FXCM_OHLCV_WS_ENABLED=1`, `FXCM_OHLCV_WS_HOST=0.0.0.0`.
 - nginx: має проксити `/fxcm/*` (WS) → `http://host.docker.internal:8082`.
-- Відкрити: `https://<random>.trycloudflare.com/?symbol=xauusd&fxcm_ws=1&fxcm_ws_same_origin=1`.
+- Відкрити: `https://aione-smc.com/?symbol=xauusd&fxcm_ws=1&fxcm_ws_same_origin=1`.
 - Детально: `docs/runbook_tradingview_like_live_public_domain.md`.
 
 ## 1) Запуск бекенду (Windows PowerShell)
@@ -40,7 +39,7 @@ python -m app.main
 - `http://127.0.0.1:8080/`
 - `http://127.0.0.1:8080/smc-viewer/snapshot`
 
-## 2) Запуск публікації (Docker + Quick Tunnel)
+## 2) Запуск nginx (Docker)
 
 ```powershell
 cd deploy\viewer_public
@@ -50,15 +49,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Отримати публічний URL (видається автоматично як `https://*.trycloudflare.com`):
-
-```powershell
-docker logs -f smc_viewer_public_cloudflared
-```
-
-Приклад: `https://<random>.trycloudflare.com/?symbol=xauusd`
-
-Застереження: URL **тимчасовий** і змінюється при рестарті `cloudflared`. Доступ **публічний, без auth**.
+Далі Cloudflare Tunnel (Zero Trust) має проксити `aione-smc.com` → `http://127.0.0.1:80`.
 
 Якщо щойно міняв(ла) `nginx.conf`/`docker-compose.yml`, перезапусти контейнери:
 
@@ -72,16 +63,16 @@ docker compose ps
 
 ### 3.1 Локально через nginx
 
-- Відкрити: `http://127.0.0.1:8088/`
+- Відкрити: `http://127.0.0.1/`
 - Перевірити JSON:
-  - `http://127.0.0.1:8088/smc-viewer/snapshot`
-  - `http://127.0.0.1:8088/smc-viewer/ohlcv?symbol=xauusd&tf=1m&limit=50`
+  - `http://127.0.0.1/smc-viewer/snapshot`
+  - `http://127.0.0.1/smc-viewer/ohlcv?symbol=xauusd&tf=1m&limit=50`
 
 Швидкий smoke через curl:
 
 ```powershell
-curl -I http://127.0.0.1:8088/
-curl http://127.0.0.1:8088/smc-viewer/snapshot?symbol=xauusd
+curl -I http://127.0.0.1/
+curl http://127.0.0.1/smc-viewer/snapshot?symbol=xauusd
 ```
 
 ### 3.2 WebSocket upgrade
@@ -89,7 +80,7 @@ curl http://127.0.0.1:8088/smc-viewer/snapshot?symbol=xauusd
 - Відкрити DevTools → Console і виконати:
 
 ```javascript
-const ws = new WebSocket("ws://127.0.0.1:8088/smc-viewer/stream?symbol=xauusd");
+const ws = new WebSocket("ws://127.0.0.1/smc-viewer/stream?symbol=xauusd");
 ws.onopen = () => console.log("WS open");
 ws.onmessage = (e) => console.log("WS msg", e.data.slice(0, 200));
 ws.onclose = () => console.log("WS close");
@@ -97,12 +88,18 @@ ws.onclose = () => console.log("WS close");
 
 Очікування: `WS open`, далі прилітають повідомлення `snapshot/update`.
 
-### 3.3 Публічний URL
+### 3.3 Публічний домен
 
-URL дає Cloudflare (через ваш tunnel). Відкрий його в браузері — UI_v2 має:
+URL: `https://aione-smc.com/` (або `https://www.aione-smc.com/`). UI_v2 має:
 
 - підтягнути snapshot/ohlcv по same-origin
 - відкрити WS стрім по тому ж домену
+
+Live (FXCM OHLCV/ticks) через same-origin:
+
+- На прод-домені `aione-smc.com` live увімкнений за замовчуванням.
+- Форс-URL (якщо треба явно): `https://aione-smc.com/?symbol=xauusd&tf=1m&fxcm_ws=1&fxcm_ws_same_origin=1`
+- Ручне вимкнення live: `https://aione-smc.com/?fxcm_ws=0`
 
 ## Політики allowlist/rate-limit
 
@@ -135,7 +132,7 @@ Smoke URL:
 - docs/runbook_tradingview_like_live_public_domain.md
 
 - `connection refused` з nginx → перевір, що бекенд слухає `0.0.0.0` (а не `127.0.0.1`) і що UI_v2 реально стартував (HTTP:8080, WS:8081).
-- UI відкрився, але “порожньо”/без стилів → це майже завжди 404 на статику; перевір у Network, що `app.js/styles.css/chart_adapter.js` віддаються через `http://127.0.0.1:8088/`.
+- UI відкрився, але “порожньо”/без стилів → це майже завжди 404 на статику; перевір у Network, що `app.js/styles.css/chart_adapter.js` віддаються через `http://127.0.0.1/`.
 - `/smc-viewer/snapshot` 404 через nginx → allowlist блокує зайві шляхи; перевір точний шлях `/smc-viewer/snapshot` (без слеша в кінці).
-- WS не апгрейдиться → перевір `ws://127.0.0.1:8088/smc-viewer/stream?symbol=xauusd` і що `SMC_VIEWER_WS_ENABLED=1`.
-- Cloudflared не стартує/немає URL → перевір `CF_TUNNEL_TOKEN` у `.env` та логи: `docker compose logs -f cloudflared`.
+- WS не апгрейдиться → перевір `ws://127.0.0.1/smc-viewer/stream?symbol=xauusd` і що `SMC_VIEWER_WS_ENABLED=1`.
+- Якщо на домені 502: зроби 3-командний smoke з `docs/runbook_cloudflare_named_tunnel_windows.md`.

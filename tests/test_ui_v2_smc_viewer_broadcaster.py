@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from UI_v2.schemas import (
+from core.contracts.viewer_state import (
     SmcViewerState,
     UiSmcAssetPayload,
     UiSmcMeta,

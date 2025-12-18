@@ -58,7 +58,7 @@ async def test_requester_publishes_warmup_once_then_rate_limits(
 
     # фіксуємо час
     t0 = 1_700_000_000.0
-    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: t0)
+    monkeypatch.setattr("app.fxcm_warmup_requester.utc_now_ms", lambda: int(t0 * 1000))
     monkeypatch.setattr(
         "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("closed")
     )
@@ -98,7 +98,9 @@ async def test_requester_publishes_warmup_once_then_rate_limits(
     assert len(fake_redis.published) == 1
 
     # пересуваємось за cooldown -> знову publish
-    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: t0 + 901)
+    monkeypatch.setattr(
+        "app.fxcm_warmup_requester.utc_now_ms", lambda: int((t0 + 901) * 1000)
+    )
     await requester._run_once()
     assert len(fake_redis.published) == 2
 
@@ -128,7 +130,7 @@ async def test_requester_publishes_backfill_when_tail_stale(
     )
     fake_store = _FakeStore(df=df)
 
-    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: now_ms / 1000.0)
+    monkeypatch.setattr("app.fxcm_warmup_requester.utc_now_ms", lambda: int(now_ms))
     monkeypatch.setattr(
         "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("open")
     )
@@ -182,7 +184,7 @@ async def test_requester_resets_active_issue_when_state_becomes_ok(
     fake_store = _SequencedStore([None, df_ok, None])
 
     t0 = 1_700_000_000.0
-    monkeypatch.setattr("app.fxcm_warmup_requester.time.time", lambda: t0)
+    monkeypatch.setattr("app.fxcm_warmup_requester.utc_now_ms", lambda: int(t0 * 1000))
     monkeypatch.setattr(
         "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("open")
     )

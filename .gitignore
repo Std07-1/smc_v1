@@ -90,7 +90,6 @@ ruff_report.txt
 TYPING_ROADMAP.md
 .pre-commit-config.yaml
 mypy_report.txt
-.markdownlint.json
 STYLE_GUIDE.md
 .rej
 
@@ -154,7 +153,6 @@ tr4.py
 # Динамічні логи та звіти (не комітити, якщо генеруються під час роботи)
 trade_log.jsonl
 summary_log.jsonl
-stage3_skips.jsonl
 
 # Локальні налаштування редакторів
 .vscode/settings.json

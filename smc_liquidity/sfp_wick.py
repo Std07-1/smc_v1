@@ -14,7 +14,6 @@ from smc_core.smc_types import (
     SmcLiquidityType,
     SmcStructureState,
 )
-from utils.utils import ensure_timestamp_column
 
 from .pools import resolve_role_for_bias
 
@@ -254,19 +253,14 @@ def _prepare_price_frame(snapshot: SmcInput, max_bars: int) -> pd.DataFrame | No
     df = df.copy()
     if max_bars > 0 and len(df) > max_bars:
         df = df.tail(max_bars)
-    df = ensure_timestamp_column(
-        df,
-        drop_duplicates=False,
-        sort=False,
-        min_rows=1,
-        log_prefix="sfp_wick:",
-    )
+    if "open_time" not in df.columns:
+        return None
+    open_time = pd.to_numeric(df["open_time"], errors="coerce")
+    df["timestamp"] = pd.to_datetime(open_time, unit="ms", errors="coerce", utc=True)
+    df = df.dropna(subset=["timestamp"])
     if df.empty:
         return None
-    if "timestamp" not in df.columns:
-        df["timestamp"] = pd.RangeIndex(start=0, stop=len(df), step=1)
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
-    df = df.dropna(subset=["timestamp"])
+    df = df.sort_values("open_time", kind="stable")
     required = {"open", "high", "low", "close"}
     if not required.issubset(df.columns):
         return None

@@ -1,0 +1,86 @@
+# B1: локальні правила меж модулів та allowlist для існуючих utils.py.
+# Формат максимально простий, щоб його легко редагувати без CI.
+
+[scan]
+# Каталоги, які не скануємо (інфраструктура/кеші/артефакти).
+ignore_dirs = [
+  ".git",
+  ".venv",
+  "venv",
+  ".pytest_cache",
+  ".vscode",
+  "datastore",
+  "deploy",
+  "tmp",
+  "__pycache__",
+]
+
+[utils_files]
+# Заборона "нових" utils.py реалізується як allowlist: будь-який utils.py поза списком — помилка.
+allowlist = [
+]
+
+[rails]
+# R3: заборонені рядки (rails). Якщо рядок з'являється в .py файлі — hook падає.
+forbidden_strings = [
+  "fxcm:price_tick",
+  "from UI_v2.schemas import",
+  "import UI_v2.schemas",
+  "from data.fxcm_schema import",
+  "import data.fxcm_schema",
+]
+
+# D3: заборонені імпорт-префікси (AST, тільки реальні імпорти — не строки/коментарі).
+forbidden_import_prefixes = [
+  "utils",
+  "app.utils",
+]
+
+[[import_rules]]
+name = "core_no_upstream"
+# Для файлів у top-level пакеті `core/` забороняємо імпорти інших top-level пакетів репо.
+importer_top_level = "core"
+forbid_top_level = ["app", "config", "data", "UI", "UI_v2", "smc_core", "smc_liquidity", "smc_structure", "smc_zones", "utils", "tests"]
+reason = "core має бути SSOT-шаром без залежностей від інших шарів репо"
+
+[[import_rules]]
+name = "app_no_smc_spread"
+# Wave F2: SMC дозволено тягнути в app лише з app/smc_producer.py.
+importer_top_level = "app"
+forbid_top_level = ["smc_core", "smc_liquidity", "smc_structure", "smc_zones"]
+allow_files = [
+  "app/smc_producer.py",
+]
+reason = "SMC не повинен розповзатися по app/* поза контрольованим продюсером"
+
+[[import_rules]]
+name = "ui_no_smc_spread"
+# Wave F2: UI не має тягнути SMC, окрім контрольованого пас-тру серіалізатора.
+importer_top_level = "UI"
+forbid_top_level = ["smc_core", "smc_liquidity", "smc_structure", "smc_zones"]
+allow_files = [
+  "UI/publish_smc_state.py",
+]
+reason = "UI має бути пас-тру; SMC дозволяємо лише як контрольований серіалізатор"
+
+[[import_rules]]
+name = "data_no_smc"
+# Wave F2: data/ не має залежати від SMC.
+importer_top_level = "data"
+forbid_top_level = ["smc_core", "smc_liquidity", "smc_structure", "smc_zones"]
+reason = "data/ — джерело барів; SMC залежить від data, не навпаки"
+
+[[import_rules]]
+name = "config_no_smc"
+# Wave F2: config/ не має тягнути SMC.
+importer_top_level = "config"
+forbid_top_level = ["smc_core", "smc_liquidity", "smc_structure", "smc_zones"]
+reason = "config/ не повинен залежати від SMC пакетів"
+
+[[import_rules]]
+name = "ui_v2_no_smc"
+# Wave F2: UI_v2 не має залежати від SMC.
+importer_top_level = "UI_v2"
+forbid_top_level = ["smc_core", "smc_liquidity", "smc_structure", "smc_zones"]
+reason = "UI_v2 не повинен тягнути SMC пакетів"
+

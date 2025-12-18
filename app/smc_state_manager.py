@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from config.constants import ASSET_STATE, K_STATS, K_SYMBOL
+from core.serialization import utc_now_iso_z
 
 
 class SmcStateManager:
@@ -38,7 +38,7 @@ class SmcStateManager:
             "smc_hint": None,
             "hints": ["Очікування SMC даних..."],
             K_STATS: {},
-            "last_updated": datetime.utcnow().isoformat(),
+            "last_updated": utc_now_iso_z(),
         }
 
     def update_asset(self, symbol: str, updates: dict[str, Any]) -> None:
@@ -63,7 +63,7 @@ class SmcStateManager:
             merged["hints"] = [str(merged["hints"])]
 
         merged[K_SYMBOL] = sym
-        merged["last_updated"] = datetime.utcnow().isoformat()
+        merged["last_updated"] = utc_now_iso_z()
         self.state[sym] = merged
 
     def get_all_assets(self) -> list[dict[str, Any]]:

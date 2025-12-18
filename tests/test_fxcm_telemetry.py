@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -46,8 +47,17 @@ def test_metrics_snapshot_contains_fxcm_block(monkeypatch: pytest.MonkeyPatch) -
     assert fxcm_block["process_state"] == "STREAM"
     assert fxcm_block["lag_seconds"] == pytest.approx(12.3)
     assert fxcm_block["last_bar_close_ms"] == close_ms
-    assert fxcm_block["last_close_utc"].endswith("Z")
-    assert fxcm_block["next_open_utc"].endswith("Z")
+    assert "Z" not in fxcm_block["last_close_utc"]
+    assert "T" not in fxcm_block["last_close_utc"]
+    assert _parse_utc_dt(fxcm_block["last_close_utc"]) == datetime(
+        2023, 11, 14, 22, 13, 20, tzinfo=UTC
+    )
+
+    assert "Z" not in fxcm_block["next_open_utc"]
+    assert "T" not in fxcm_block["next_open_utc"]
+    assert _parse_utc_dt(fxcm_block["next_open_utc"]) == datetime(
+        2023, 11, 14, 23, 13, 20, tzinfo=UTC
+    )
 
 
 def _minimal_asset() -> dict[str, Any]:
@@ -88,6 +98,31 @@ def _table_to_dict(table: Any) -> dict[str, str]:
     }
 
 
+def _parse_utc_dt(text: str) -> datetime:
+    """Парсить UTC datetime з рядка.
+
+    Приймає:
+    - суфікс `Z` та `+00:00`;
+    - розділювач `T` або пробіл між датою і часом.
+    """
+
+    normalized = text.strip()
+    if not normalized:
+        raise ValueError("Порожній datetime-рядок")
+
+    # Дозволяємо legacy формат з пробілом: "YYYY-MM-DD HH:MM:SSZ"
+    if "T" not in normalized and " " in normalized:
+        normalized = normalized.replace(" ", "T", 1)
+
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+
+    dt = datetime.fromisoformat(normalized)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
 def test_viewer_state_contains_fxcm_block(tmp_path: Any) -> None:
     viewer = SmcExperimentalViewer("xauusd", snapshot_dir=str(tmp_path))
     state = viewer.build_state(
@@ -99,7 +134,9 @@ def test_viewer_state_contains_fxcm_block(tmp_path: Any) -> None:
     assert fxcm_state["market_state"] == "open"
     assert fxcm_state["process_state"] == "stream"
     assert fxcm_state["lag_seconds"] == pytest.approx(4.2)
-    assert fxcm_state["last_bar_close_utc"] == "2023-11-14 22:13:20Z"
+    assert _parse_utc_dt(fxcm_state["last_bar_close_utc"]) == datetime(
+        2023, 11, 14, 22, 13, 20, tzinfo=UTC
+    )
     assert state["meta"]["fxcm"]["market"] == "OPEN"
     assert state["session"] == "NY_METALS"
 

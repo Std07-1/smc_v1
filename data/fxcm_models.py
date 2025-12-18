@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field
+
+from core.serialization import json_loads
 
 __all__ = [
     "FxcmSessionContext",
@@ -127,7 +128,7 @@ def _coerce_payload(raw: str | bytes | Mapping[str, Any]) -> Mapping[str, Any]:
         raw = raw.strip()
         if not raw:
             raise ValueError("Порожній payload")
-        data = json.loads(raw)
+        data = json_loads(raw)
         if not isinstance(data, Mapping):
             raise ValueError("Очікувався JSON-об'єкт")
         return data

@@ -69,14 +69,53 @@ function isPrivateLanIp(hostname) {
     return false;
 }
 
+// Прод-домени: тут за замовчуванням вмикаємо FXCM live по same-origin.
+const isProdDomain = ["aione-smc.com", "www.aione-smc.com"].includes(
+    String(window.location.hostname || "").trim().toLowerCase(),
+);
+
+function parseOptionalBool(raw) {
+    if (raw === null || raw === undefined) {
+        return null;
+    }
+    const s = String(raw).trim().toLowerCase();
+    if (s === "") {
+        return null;
+    }
+    if (s === "1" || s === "true" || s === "yes" || s === "on") {
+        return true;
+    }
+    if (s === "0" || s === "false" || s === "no" || s === "off") {
+        return false;
+    }
+    return null;
+}
+
 function isFxcmWsEnabled() {
-    // FXCM WS міст (8082) — dev інтерфейс; у публічному режимі вимкнений, щоб не було reconnect-циклів.
+    // FXCM live у проді працює через same-origin шлях /fxcm/... (nginx/Cloudflare).
+    // Прямий порт :8082 використовуємо лише локально (dev).
     try {
         const params = new URLSearchParams(window.location.search || "");
-        const flag = (params.get("fxcm_ws") || "").trim().toLowerCase();
-        if (flag === "1" || flag === "true") {
+
+        // Ручний override: fxcm_ws=0 вимикає live навіть у проді.
+        const fxcmWsRaw = params.get("fxcm_ws");
+        const fxcmWs = parseOptionalBool(fxcmWsRaw);
+        if (fxcmWs !== null) {
+            return fxcmWs;
+        }
+
+        // Прод-дефолт: якщо параметр не заданий — вважаємо fxcm_ws увімкненим.
+        if (isProdDomain && fxcmWsRaw === null) {
             return true;
         }
+
+        // Якщо явно задано same-origin флаг — теж вважаємо, що live потрібен.
+        const sameOriginRaw = params.get("fxcm_ws_same_origin");
+        const sameOrigin = parseOptionalBool(sameOriginRaw);
+        if (sameOrigin === true) {
+            return true;
+        }
+
         const host = window.location.hostname;
         return isLocalHostname(host) || isPrivateLanIp(host);
     } catch (_e) {
@@ -89,8 +128,17 @@ function isFxcmWsSameOrigin() {
     // підключаємось до wss://<домен>/fxcm/... замість прямого :8082.
     try {
         const params = new URLSearchParams(window.location.search || "");
-        const flag = (params.get("fxcm_ws_same_origin") || "").trim().toLowerCase();
-        return flag === "1" || flag === "true";
+        const raw = params.get("fxcm_ws_same_origin");
+        const parsed = parseOptionalBool(raw);
+        if (parsed !== null) {
+            return parsed;
+        }
+
+        // Прод-дефолт: якщо параметр не заданий — вважаємо same-origin увімкненим.
+        if (isProdDomain && raw === null) {
+            return true;
+        }
+        return false;
     } catch (_e) {
         return false;
     }
@@ -114,10 +162,26 @@ function isFxcmApplyCompleteEnabled() {
 }
 
 function buildFxcmWsBaseUrl() {
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    if (isFxcmWsSameOrigin()) {
-        return `${proto}//${window.location.host}`;
+    // Явний override для dev/public-режимів, коли FXCM WS піднятий на іншому домені/тунелі.
+    // Приклад: ?fxcm_ws=1&fxcm_ws_base=wss://<your-tunnel>.trycloudflare.com
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        const override = (params.get("fxcm_ws_base") || "").trim();
+        if (override) {
+            return override;
+        }
+    } catch (_e) {
+        // ignore
     }
+
+    if (isFxcmWsSameOrigin()) {
+        // Прод: працюємо строго через same-origin reverse-proxy (/fxcm/*).
+        // Використовуємо базовий WS для viewer_state (той самий origin).
+        return WS_BASE_URL;
+    }
+
+    // Dev: прямий доступ до FXCM WS моста на :8082.
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     return `${proto}//${window.location.hostname}:8082`;
 }
 
@@ -128,6 +192,14 @@ function buildFxcmStatusWsBaseUrl() {
         const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
         if (window.location.protocol === "file:") {
             return "ws://127.0.0.1:8082";
+        }
+
+        // Явний override для dev/public-режимів, коли FXCM WS піднятий на іншому домені/тунелі.
+        // (status теж ведемо через нього, щоб не роз'їжджались джерела даних).
+        const params = new URLSearchParams(window.location.search || "");
+        const override = (params.get("fxcm_ws_base") || "").trim();
+        if (override) {
+            return override;
         }
 
         // Якщо явно ввімкнули same-origin проксі для FXCM — використовуємо його.
@@ -397,6 +469,8 @@ const OHLCV_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 const TICK_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 
 const FXCM_LIVE_STALE_MS = 5000;
+const FXCM_OHLCV_RECONNECT_MAX_ATTEMPTS = 3;
+const FXCM_TICK_RECONNECT_MAX_ATTEMPTS = 3;
 const STATUS_RECONNECT_MAX_ATTEMPTS = 12;
 
 const appState = {
@@ -1942,6 +2016,11 @@ function scheduleTickReconnect(symbolUpper) {
     if (!FXCM_WS_ENABLED) {
         return;
     }
+
+    if (appState.tickReconnectAttempt >= FXCM_TICK_RECONNECT_MAX_ATTEMPTS) {
+        // У проді не молотимо нескінченно, якщо проксі/конектор недоступні.
+        return;
+    }
     const currentSymbol = (appState.currentSymbol || "").toUpperCase();
     if (!symbolUpper || currentSymbol !== symbolUpper) {
         return;
@@ -2061,6 +2140,11 @@ function handleTickWsPayload(payload) {
 
 function scheduleOhlcvReconnect(symbolUpper, tf) {
     if (!FXCM_WS_ENABLED) {
+        return;
+    }
+
+    if (appState.ohlcvReconnectAttempt >= FXCM_OHLCV_RECONNECT_MAX_ATTEMPTS) {
+        // У проді не молотимо нескінченно, якщо проксі/конектор недоступні.
         return;
     }
     const currentSymbol = (appState.currentSymbol || "").toUpperCase();

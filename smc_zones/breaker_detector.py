@@ -19,7 +19,7 @@ from smc_core.smc_types import (
     SmcZone,
     SmcZoneType,
 )
-from utils.utils import safe_float
+from core.serialization import safe_float
 
 logger = logging.getLogger("smc_zones.breaker_detector")
 if not logger.handlers:  # pragma: no cover - ініціалізація логера

@@ -1,5 +1,7 @@
 # FXCM Integration Guide
 
+<!-- markdownlint-disable MD013 -->
+
 > **Призначення:** описати контракт між FXCM конектором (Python 3.7) та головним пайплайном AiOne_t (Python 3.11) і визначити порядок запуску двох процесів.
 
 ## 1. Складові системи
@@ -49,7 +51,7 @@
 - Поле `source` (опційне) описує джерело/режим формування барів (типово: `stream`, також може бути `tick_agg` або `history_s3`).
 - Поля `complete`/`synthetic` (опційні) відокремлюють live/incomplete та/або синтетичні бари. `UnifiedDataStore` у цьому репо зберігає **лише complete** OHLCV; incomplete бари пропускаються.
 - HMAC (`sig`) рахується **лише** по базовому payload `{"symbol","tf","bars"}`. Тобто `source` (та будь-які інші root-поля) не входять у підпис.
-- Для швидкої перевірки “що саме очікує smc_v1” див. `data/fxcm_schema.py` (мінімальна схема) та `tests/test_fxcm_schema_and_ingestor_contract.py` (інваріанти на кшталт skip `complete=false`).
+- Для швидкої перевірки “що саме очікує smc_v1” див. `core/contracts/fxcm_channels.py` (TypedDict контрактів) + `core/contracts/fxcm_validate.py` (soft-validate) та `tests/test_fxcm_schema_and_ingestor_contract.py` (інваріанти на кшталт skip `complete=false`).
 
 Інжестор приводить `symbol`/`tf` до lower-case та викликає `UnifiedDataStore.put_bars`.
 
@@ -176,10 +178,7 @@ SMC може публікувати керуючі команди в канал 
 
 1. `app/main.py` запускає `run_fxcm_ingestor(...)` і `run_fxcm_status_listener(...)` в одному event loop.
 2. `run_fxcm_price_stream_listener` слухає `fxcm:price_tik` і оновлює кеш `UnifiedDataStore.update_price_tick`, щоб Stage1 бачила останній bid/ask/mid між закриттями барів.
-3. `screening_producer`:
-   - Отримує `FxcmFeedState` через `get_fxcm_feed_state()`.
-   - Якщо `market_state="closed"` → `FX_MARKET_CLOSED` сигнал (без помилки).
-   - Якщо `lag_seconds > FXCM_STALE_LAG_SECONDS` → `FX_FEED_STALE`.
+3. Основний цикл `smc_producer` зчитує `FxcmFeedState` (через `UnifiedDataStore.get_fxcm_feed_state()` / `data/fxcm_status_listener.py`) і може зупиняти/помʼякшувати обробку при `market_state="closed"` або надмірному лагу.
 4. `UnifiedDataStore.metrics_snapshot()` містить блок `"fxcm": {...}` та коротку телеметрію `price_stream`.
 5. `UI/publish_full_state` додає ті самі блоки у payload, щоб viewer показував банер стану й live tick-метрики.
 

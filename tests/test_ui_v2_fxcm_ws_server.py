@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from UI_v2.fxcm_ohlcv_ws_server import FxcmOhlcvWsServer
+from UI_v2.fxcm_ohlcv_ws_server import FxcmOhlcvWsServer, _should_gate_fxcm_payload
 
 
 def test_extract_ohlcv_selection_ok() -> None:
@@ -51,3 +51,57 @@ def test_is_status_path_ok() -> None:
 def test_is_status_path_wrong_path() -> None:
     assert FxcmOhlcvWsServer._is_status_path("/fxcm/ohlcv?symbol=XAUUSD&tf=1m") is False
     assert FxcmOhlcvWsServer._is_status_path("/fxcm/ticks?symbol=XAUUSD") is False
+
+
+def test_strict_gate_disabled_never_gates_invalid_payloads() -> None:
+    assert (
+        _should_gate_fxcm_payload(
+            "ohlcv",
+            {"symbol": "XAUUSD", "tf": "1m", "bars": "not-a-list"},
+            strict_enabled=False,
+        )
+        is False
+    )
+    assert (
+        _should_gate_fxcm_payload(
+            "ticks",
+            {"symbol": "XAUUSD"},
+            strict_enabled=False,
+        )
+        is False
+    )
+    assert (
+        _should_gate_fxcm_payload(
+            "status",
+            "not-a-dict",
+            strict_enabled=False,
+        )
+        is False
+    )
+
+
+def test_strict_gate_enabled_gates_invalid_payloads() -> None:
+    assert (
+        _should_gate_fxcm_payload(
+            "ohlcv",
+            {"symbol": "XAUUSD", "tf": "1m", "bars": "not-a-list"},
+            strict_enabled=True,
+        )
+        is True
+    )
+    assert (
+        _should_gate_fxcm_payload(
+            "ticks",
+            {"symbol": "XAUUSD"},
+            strict_enabled=True,
+        )
+        is True
+    )
+    assert (
+        _should_gate_fxcm_payload(
+            "status",
+            "not-a-dict",
+            strict_enabled=True,
+        )
+        is True
+    )

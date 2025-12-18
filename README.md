@@ -122,6 +122,61 @@ pip install -r requirements.txt
 
 ---
 
+## Прод: Cloudflare Tunnel (Windows) → nginx (Docker) → UI_v2 (8080/8081)
+
+Ціль: same-origin доставка під **основним доменом** `https://aione-smc.com` (альтернатива: `https://www.aione-smc.com`), щоб і HTTP, і WS працювали "як TradingView".
+
+1) Запусти UI_v2 локально (бекенд на хості)
+
+```powershell
+$env:UI_V2_ENABLED = "1"
+$env:SMC_VIEWER_HTTP_HOST = "0.0.0.0"
+$env:SMC_VIEWER_HTTP_PORT = "8080"
+$env:SMC_VIEWER_WS_HOST = "0.0.0.0"
+$env:SMC_VIEWER_WS_PORT = "8081"
+$env:SMC_VIEWER_WS_ENABLED = "1"
+
+python -m app.main
+```
+
+2) Запусти nginx (Docker Desktop) як same-origin reverse-proxy на `80`
+
+```powershell
+cd deploy\viewer_public
+docker compose up -d
+docker compose ps
+```
+
+3) Smoke-check локально (щоб не ловити 502 наосліп)
+
+```powershell
+cd ..\..
+.\tools\smoke_same_origin.ps1
+```
+
+4) Cloudflare Zero Trust → Tunnel → Public Hostname
+
+- `aione-smc.com` → `http://127.0.0.1:80`
+- `www.aione-smc.com` → `http://127.0.0.1:80`
+
+Очікування:
+
+- `https://aione-smc.com/` відкриває UI
+- `https://aione-smc.com/smc-viewer/snapshot?symbol=XAUUSD` повертає JSON
+- `wss://aione-smc.com/smc-viewer/stream?symbol=XAUUSD` тримає з'єднання (timeouts виставлені в nginx)
+
+Live (FXCM OHLCV/ticks) через same-origin (prod-дефолт):
+
+- Форс-URL (якщо треба явно): `https://aione-smc.com/?symbol=xauusd&tf=1m&fxcm_ws=1&fxcm_ws_same_origin=1`
+- Ручне вимкнення live: `https://aione-smc.com/?fxcm_ws=0`
+
+Smoke-check live у DevTools:
+
+- Network → WS має з'явитися `wss://aione-smc.com/fxcm/ohlcv?symbol=XAUUSD&tf=1m`
+- У повідомленнях мають прилітати бари, включно з `complete=false` (жива свічка всередині хвилини)
+
+---
+
 ## Тестування
 
 Використовуємо pytest без зовнішніх сервісів (дані мокаються локально):
@@ -129,6 +184,8 @@ pip install -r requirements.txt
 ```powershell
 python -m pytest tests -q
 ```
+
+Audit рейок/SSOT (дефолтно лише production surface): `python tools/audit_repo_report.py` (повний інвентар: `--include-tests --include-tools`).
 
 Таргетні тести:
 

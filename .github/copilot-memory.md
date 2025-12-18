@@ -136,7 +136,7 @@
    обробки на UI-шарі.
 3. Розширити тести: AMD-phase edge cases, кластеризація магнітів, інтеграція з UI bridge.
 
-## SMC_STAGE3_DOCS (2025-11)
+## SMC_STAGE3DOCS (2025-11)
 
 - Stage3 (structure + liquidity + SFP/Wick + AMD) вважається стабілізованим; контракт
    описано в `docs/smc_core_overview.md`, `docs/smc_structure.md`, `docs/smc_liquidity.md`.

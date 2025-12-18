@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import pytest
 
-from UI_v2.schemas import (
+from core.contracts.viewer_state import (
     VIEWER_STATE_SCHEMA_VERSION,
     FxcmMeta,
     SmcViewerState,

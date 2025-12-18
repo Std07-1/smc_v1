@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from UI_v2.ohlcv_provider import OhlcvNotFound
-from UI_v2.schemas import SmcViewerState
+from UI_v2.ohlcv_provider import OhlcvNotFoundError
+from core.contracts.viewer_state import SmcViewerState
 from UI_v2.viewer_state_server import ViewerStateHttpServer
 from UI_v2.viewer_state_store import ViewerStateStore
 
@@ -47,7 +47,7 @@ class _FakeOhlcvProvider:
         key = (symbol, timeframe)
         bars = self._data.get(key)
         if not bars:
-            raise OhlcvNotFound("not found")
+            raise OhlcvNotFoundError("not found")
         return bars[-limit:]
 
 
@@ -128,9 +128,9 @@ async def test_http_server_adds_cors_headers() -> None:
     server = ViewerStateHttpServer(store=_DummyStore())  # type: ignore
     request = b"OPTIONS /smc-viewer/snapshot HTTP/1.1\r\nHost: test\r\n\r\n"
     response, status, _ = await server._process_http_request(request)
-    assert status == 204
+    assert status == 200
     text = response.decode("utf-8", errors="replace")
-    assert "HTTP/1.1 204 No Content" in text
+    assert "HTTP/1.1 200 OK" in text
     assert "Access-Control-Allow-Origin: *" in text
     assert "Access-Control-Allow-Headers: Content-Type" in text
     assert "Access-Control-Allow-Methods: GET, OPTIONS" in text

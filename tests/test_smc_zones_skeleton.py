@@ -13,7 +13,7 @@ def test_smc_zones_skeleton_handles_empty_structure() -> None:
     cfg = SmcCoreConfig()
     frame = pd.DataFrame(
         {
-            "open_time": pd.date_range("2025-01-01", periods=4, freq="T"),
+            "open_time": pd.date_range("2025-01-01", periods=4, freq="min"),
             "open": [1.0, 1.1, 1.2, 1.25],
             "high": [1.1, 1.2, 1.25, 1.3],
             "low": [0.95, 1.0, 1.15, 1.2],

@@ -1,6 +1,6 @@
-# RUNBOOK: TradingView-like live на публічному домені (Cloudflared → nginx Docker)
+# RUNBOOK: TradingView-like live на публічному домені (Cloudflare Tunnel → nginx → UI_v2)
 
-Ціль: на публічному URL (через Cloudflared → nginx Docker) графік працює “як TradingView”:
+Ціль: на публічному домені (через Cloudflare Tunnel → nginx) графік працює “як TradingView”:
 
 - всередині хвилини свічка рухається через `complete=false` (приблизно кожні ~250 мс або рідше через throttling),
 - обсяг “росте” (liveVolume),
@@ -40,10 +40,11 @@ ENV для запуску бекенду:
 - `cd C:\Aione_projects\smc_v1\deploy\viewer_public`
 - `docker compose up -d --force-recreate nginx`
 
-### A3) UI перемикачі
+### A3) UI перемикачі (актуально)
 
-- `?fxcm_ws=1` — вмикає FXCM WS на non-local домені.
-- `?fxcm_ws_same_origin=1` — база WS = `wss://<домен>` (тобто `wss://<домен>/fxcm/...`, а не прямий `:8082`).
+- На прод-домені `aione-smc.com` FXCM live WS **увімкнений за замовчуванням** (same-origin `/fxcm/*`).
+- Форс-режим (якщо треба явно): `fxcm_ws=1&fxcm_ws_same_origin=1`.
+- Ручний стоп: `fxcm_ws=0`.
 
 ---
 
@@ -51,7 +52,11 @@ ENV для запуску бекенду:
 
 Відкрити:
 
-- `https://<домен>/?symbol=xauusd&fxcm_ws=1&fxcm_ws_same_origin=1`
+- `https://aione-smc.com/?symbol=xauusd&tf=1m`
+
+Якщо треба форс/діагностика:
+
+- `https://aione-smc.com/?symbol=xauusd&tf=1m&fxcm_ws=1&fxcm_ws_same_origin=1`
 
 DevTools → Network → WS → відкрити `.../fxcm/ohlcv?...` → Frames:
 
@@ -73,6 +78,10 @@ DevTools → Network → WS → відкрити `.../fxcm/ohlcv?...` → Frames
 - nginx: неправильний `location` або `proxy_pass` (часто проблема зі слешем `/`)
 - немає `Upgrade/Connection: upgrade`
 - бекенд 8082 слухає тільки `127.0.0.1`, а не `0.0.0.0`
+
+Якщо отримуєш 502/Handshake fail на домені — дивись також короткий runbook:
+
+- `docs/runbook_cloudflare_named_tunnel_windows.md`
 
 ### C2) WS підключився, але Frames порожні
 

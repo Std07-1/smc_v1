@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
 
-from UI_v2.ohlcv_provider import OhlcvNotFound, UnifiedStoreOhlcvProvider
+from UI_v2.ohlcv_provider import OhlcvNotFoundError, UnifiedStoreOhlcvProvider
 
 
 class _FakeStore:
@@ -25,7 +25,7 @@ async def test_unified_provider_returns_sorted_bars() -> None:
     df = pd.DataFrame(
         [
             {
-                "close_time": datetime(2025, 1, 1, 0, 2, tzinfo=timezone.utc),
+                "close_time": datetime(2025, 1, 1, 0, 2, tzinfo=UTC),
                 "open": 2.0,
                 "high": 3.0,
                 "low": 1.5,
@@ -33,7 +33,7 @@ async def test_unified_provider_returns_sorted_bars() -> None:
                 "volume": 20,
             },
             {
-                "close_time": datetime(2025, 1, 1, 0, 1, tzinfo=timezone.utc),
+                "close_time": datetime(2025, 1, 1, 0, 1, tzinfo=UTC),
                 "open": 1.0,
                 "high": 2.0,
                 "low": 0.5,
@@ -58,5 +58,5 @@ async def test_unified_provider_raises_when_empty() -> None:
     store = _FakeStore(pd.DataFrame())
     provider = UnifiedStoreOhlcvProvider(store)  # type: ignore
 
-    with pytest.raises(OhlcvNotFound):
+    with pytest.raises(OhlcvNotFoundError):
         await provider.fetch_ohlcv("xauusd", "1m", limit=10)

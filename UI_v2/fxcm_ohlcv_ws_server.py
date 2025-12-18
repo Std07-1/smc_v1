@@ -17,11 +17,24 @@ WS endpoints:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from dataclasses import dataclass
+import os
+import time
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
+
+from core.contracts.fxcm_channels import (
+    FXCM_CH_OHLCV,
+    FXCM_CH_PRICE_TIK,
+    FXCM_CH_STATUS,
+)
+from core.contracts.fxcm_validate import (
+    validate_fxcm_ohlcv_message,
+    validate_fxcm_price_tick_message,
+    validate_fxcm_status_message,
+)
+from core.serialization import json_dumps, json_loads
 
 try:  # pragma: no cover - опційна залежність у runtime
     from redis.asyncio import Redis
@@ -31,11 +44,42 @@ except Exception:  # pragma: no cover
 from websockets.exceptions import ConnectionClosed
 
 try:
-    from websockets.server import WebSocketServerProtocol, serve  # type: ignore[import]
-except ImportError:  # pragma: no cover
-    from websockets.legacy.server import WebSocketServerProtocol, serve
+    from websockets.asyncio.server import ServerConnection as WsConnection, serve
+except Exception:  # pragma: no cover
+    from websockets.legacy.server import WebSocketServerProtocol as WsConnection, serve
 
 logger = logging.getLogger("fxcm_ohlcv_ws")
+
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    raw = os.getenv(name, default)
+    value = str(raw).strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+FXCM_WS_STRICT_VALIDATE_ENABLED = _env_flag("FXCM_WS_STRICT_VALIDATE", "0")
+
+
+def _should_gate_fxcm_payload(
+    kind: str, payload: object, *, strict_enabled: bool
+) -> bool:
+    """Повертає True, якщо payload має бути відсічений у strict-режимі.
+
+    Важливо:
+    - якщо strict вимкнено, ніколи не гейтить (поведінка ідентична soft-validate).
+    - не логує і не модифікує payload.
+    """
+
+    if not strict_enabled:
+        return False
+
+    if kind == "ohlcv":
+        return validate_fxcm_ohlcv_message(payload) is None
+    if kind == "ticks":
+        return validate_fxcm_price_tick_message(payload) is None
+    if kind == "status":
+        return validate_fxcm_status_message(payload) is None
+    return False
 
 
 @dataclass(slots=True)
@@ -43,11 +87,50 @@ class FxcmOhlcvWsServer:
     """WS сервер для live трансляції FXCM OHLCV."""
 
     redis: Redis  # type: ignore[type-arg]
-    channel_name: str = "fxcm:ohlcv"
-    price_tick_channel_name: str = "fxcm:price_tik"
-    status_channel_name: str = "fxcm:status"
+    channel_name: str = FXCM_CH_OHLCV
+    price_tick_channel_name: str = FXCM_CH_PRICE_TIK
+    status_channel_name: str = FXCM_CH_STATUS
     host: str = "127.0.0.1"
     port: int = 8082
+    _soft_validate_last_log_ts: dict[str, float] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _soft_validate_debounce_s: float = 10.0
+
+    def _soft_validate(
+        self, kind: str, payload: dict[str, Any], *, ctx: str = ""
+    ) -> None:
+        """Soft-validate без впливу на протокол.
+
+        Правило хвилі C4.3b': валідація не блокує повідомлення і не змінює outgoing.
+        """
+
+        if kind == "ohlcv":
+            ok = validate_fxcm_ohlcv_message(payload) is not None
+        elif kind == "ticks":
+            ok = validate_fxcm_price_tick_message(payload) is not None
+        elif kind == "status":
+            ok = validate_fxcm_status_message(payload) is not None
+        else:
+            ok = True
+
+        if ok:
+            return
+
+        now = time.monotonic()
+        last = self._soft_validate_last_log_ts.get(kind)
+        if last is not None and (now - last) < self._soft_validate_debounce_s:
+            return
+        self._soft_validate_last_log_ts[kind] = now
+
+        suffix = f" ({ctx})" if ctx else ""
+        logger.warning(
+            "FXCM WS: невалідний payload для %s%s; пропускаю далі (soft-validate).",
+            kind,
+            suffix,
+        )
 
     async def run(self) -> None:
         try:
@@ -71,8 +154,11 @@ class FxcmOhlcvWsServer:
             logger.info("[FXCM OHLCV WS] Server task cancelled")
             raise
 
-    async def _handle_client(self, websocket: WebSocketServerProtocol) -> None:
-        path = websocket.path or ""
+    async def _handle_client(self, websocket: WsConnection) -> None:
+        path = getattr(websocket, "path", None) or ""
+        if not path:
+            request = getattr(websocket, "request", None)
+            path = getattr(request, "path", "") if request is not None else ""
         ohlcv_selection = self._extract_ohlcv_selection(path)
         tick_selection = self._extract_tick_selection(path)
         wants_status = self._is_status_path(path)
@@ -95,7 +181,7 @@ class FxcmOhlcvWsServer:
 
     async def _handle_ohlcv(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: WsConnection,
         *,
         symbol: str,
         tf: str,
@@ -106,7 +192,7 @@ class FxcmOhlcvWsServer:
         await pubsub.subscribe(self.channel_name)
         try:
             while True:
-                if websocket.closed:
+                if getattr(websocket, "close_code", None) is not None:
                     break
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True,
@@ -126,6 +212,8 @@ class FxcmOhlcvWsServer:
                 if msg_symbol != symbol or msg_tf != tf:
                     continue
 
+                self._soft_validate("ohlcv", payload, ctx=f"{msg_symbol} {msg_tf}")
+
                 # Для браузера тримаємо контракт простим.
                 outgoing = {
                     "symbol": msg_symbol,
@@ -136,7 +224,14 @@ class FxcmOhlcvWsServer:
                         else []
                     ),
                 }
-                await websocket.send(json.dumps(outgoing, default=str))
+
+                if _should_gate_fxcm_payload(
+                    "ohlcv",
+                    outgoing,
+                    strict_enabled=FXCM_WS_STRICT_VALIDATE_ENABLED,
+                ):
+                    continue
+                await websocket.send(json_dumps(outgoing))
         except ConnectionClosed:
             logger.debug("[FXCM OHLCV WS] Client disconnected (%s %s)", symbol, tf)
         finally:
@@ -148,7 +243,7 @@ class FxcmOhlcvWsServer:
 
     async def _handle_ticks(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: WsConnection,
         *,
         symbol: str,
     ) -> None:
@@ -158,7 +253,7 @@ class FxcmOhlcvWsServer:
         await pubsub.subscribe(self.price_tick_channel_name)
         try:
             while True:
-                if websocket.closed:
+                if getattr(websocket, "close_code", None) is not None:
                     break
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True,
@@ -175,6 +270,8 @@ class FxcmOhlcvWsServer:
                 if msg_symbol != symbol:
                     continue
 
+                self._soft_validate("ticks", payload, ctx=f"{msg_symbol}")
+
                 outgoing = {
                     "symbol": msg_symbol,
                     "bid": payload.get("bid"),
@@ -183,7 +280,14 @@ class FxcmOhlcvWsServer:
                     "tick_ts": payload.get("tick_ts"),
                     "snap_ts": payload.get("snap_ts"),
                 }
-                await websocket.send(json.dumps(outgoing, default=str))
+
+                if _should_gate_fxcm_payload(
+                    "ticks",
+                    outgoing,
+                    strict_enabled=FXCM_WS_STRICT_VALIDATE_ENABLED,
+                ):
+                    continue
+                await websocket.send(json_dumps(outgoing))
         except ConnectionClosed:
             logger.debug("[FXCM TICKS WS] Client disconnected (%s)", symbol)
         finally:
@@ -193,14 +297,14 @@ class FxcmOhlcvWsServer:
                 pass
             await pubsub.close()
 
-    async def _handle_status(self, websocket: WebSocketServerProtocol) -> None:
+    async def _handle_status(self, websocket: WsConnection) -> None:
         logger.info("[FXCM STATUS WS] Client subscribed")
 
         pubsub = self.redis.pubsub()
         await pubsub.subscribe(self.status_channel_name)
         try:
             while True:
-                if websocket.closed:
+                if getattr(websocket, "close_code", None) is not None:
                     break
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True,
@@ -213,7 +317,16 @@ class FxcmOhlcvWsServer:
                 if payload is None:
                     continue
 
-                await websocket.send(json.dumps(payload, default=str))
+                self._soft_validate("status", payload)
+
+                if _should_gate_fxcm_payload(
+                    "status",
+                    payload,
+                    strict_enabled=FXCM_WS_STRICT_VALIDATE_ENABLED,
+                ):
+                    continue
+
+                await websocket.send(json_dumps(payload))
         except ConnectionClosed:
             logger.debug("[FXCM STATUS WS] Client disconnected")
         finally:
@@ -261,7 +374,7 @@ class FxcmOhlcvWsServer:
         else:
             text = str(data)
         try:
-            obj = json.loads(text)
+            obj = json_loads(text)
         except Exception:
             return None
         return obj if isinstance(obj, dict) else None

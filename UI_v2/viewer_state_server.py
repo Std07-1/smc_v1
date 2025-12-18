@@ -21,7 +21,6 @@ WebSocket-стрім (/smc-viewer/stream) поки не реалізовано; 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import mimetypes
 from collections.abc import Mapping
@@ -33,8 +32,9 @@ from urllib.parse import parse_qs, urlsplit
 
 from prometheus_client import Counter, Histogram
 
+from core.serialization import json_dumps, to_jsonable
 from UI_v2.ohlcv_provider import OhlcvNotFoundError, OhlcvProvider
-from UI_v2.schemas import OhlcvResponse
+from core.contracts.viewer_state import OhlcvResponse
 from UI_v2.viewer_state_store import ViewerStateStore
 
 logger = logging.getLogger("smc_viewer_http")
@@ -430,7 +430,7 @@ class ViewerStateHttpServer:
         if body is None:
             body_bytes = b""
         else:
-            body_bytes = json.dumps(body, default=str).encode("utf-8")
+            body_bytes = json_dumps(to_jsonable(body)).encode("utf-8")
 
         headers = [
             f"HTTP/1.1 {status_code} {reason}",

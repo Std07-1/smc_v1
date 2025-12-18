@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 from typing import Any
 
@@ -24,6 +23,7 @@ from config.config import (
 )
 from UI.experimental_viewer import SmcExperimentalViewer
 from UI.experimental_viewer_extended import SmcExperimentalViewerExtended
+from core.serialization import json_loads
 
 SMC_FEED_CHANNEL = REDIS_CHANNEL_SMC_STATE
 SMC_SNAPSHOT_KEY = REDIS_SNAPSHOT_KEY_SMC
@@ -239,14 +239,14 @@ class ExperimentalViewerConsumer:
             except Exception:
                 return None
             try:
-                payload = json.loads(text)
+                payload = json_loads(text)
                 return payload if isinstance(payload, dict) else None
             except Exception:
                 CLI_LOGGER.debug("Не вдалося розпарсити payload viewer", exc_info=True)
                 return None
         if isinstance(data, str):
             try:
-                payload = json.loads(data)
+                payload = json_loads(data)
                 return payload if isinstance(payload, dict) else None
             except Exception:
                 CLI_LOGGER.debug("Не вдалося розпарсити payload viewer", exc_info=True)
@@ -268,11 +268,24 @@ class ExperimentalViewerConsumer:
         sym = str(payload.get("symbol") or "").strip().lower()
         if not sym or sym != str(symbol or "").strip().lower():
             return None
+
         mid = payload.get("mid")
-        try:
-            return float(mid)
-        except Exception:
+        if mid is None:
             return None
+
+        if isinstance(mid, (int, float)):
+            return float(mid)
+
+        if isinstance(mid, str):
+            mid_str = mid.strip()
+            if not mid_str:
+                return None
+            try:
+                return float(mid_str)
+            except ValueError:
+                return None
+
+        return None
 
 
 def _parse_args() -> argparse.Namespace:

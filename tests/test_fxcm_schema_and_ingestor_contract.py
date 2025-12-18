@@ -12,8 +12,8 @@ import pytest
 
 from data import fxcm_ingestor as fxcm_ingestor, fxcm_status_listener as status_listener
 from data.fxcm_ingestor import _process_payload
-from data.fxcm_models import parse_fxcm_aggregated_status
-from data.fxcm_schema import (
+from core.contracts.fxcm_telemetry import FxcmAggregatedStatus
+from core.contracts.fxcm_validate import (
     validate_fxcm_ohlcv_message,
     validate_fxcm_price_tick_message,
     validate_fxcm_status_message,
@@ -202,9 +202,7 @@ async def test_process_payload_skips_when_market_closed() -> None:
 @pytest.mark.asyncio
 async def test_process_payload_not_blocked_when_ohlcv_down() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
-    status = parse_fxcm_aggregated_status(
-        {"ts": 1, "market": "open", "price": "ok", "ohlcv": "down"}
-    )
+    status = FxcmAggregatedStatus(ts=1.0, market="open", price="ok", ohlcv="down")
     status_listener._apply_status_snapshot(status)
 
     store = _FakeStore()
@@ -279,9 +277,7 @@ async def test_ingestor_keeps_synthetic_complete_true() -> None:
     assert rows == 1
     assert (sym, tf) == ("xauusd", "1m")
     assert store.calls == [("xauusd", "1m", 1)]
-    status = parse_fxcm_aggregated_status(
-        {"ts": 1, "market": "open", "price": "ok", "ohlcv": "down"}
-    )
+    status = FxcmAggregatedStatus(ts=1.0, market="open", price="ok", ohlcv="down")
     status_listener._apply_status_snapshot(status)
 
     store = _FakeStore()
@@ -359,9 +355,7 @@ async def test_ingestor_keeps_synthetic_complete_true() -> None:
     assert sym is None
     assert tf is None
     assert store.calls == [("xauusd", "1m", 1)]
-    status = parse_fxcm_aggregated_status(
-        {"ts": 1, "market": "closed", "price": "ok", "ohlcv": "ok"}
-    )
+    status = FxcmAggregatedStatus(ts=1.0, market="closed", price="ok", ohlcv="ok")
     status_listener._apply_status_snapshot(status)
 
     store = _FakeStore()

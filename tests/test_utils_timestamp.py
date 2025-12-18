@@ -1,39 +1,62 @@
-"""Тести для ensure_timestamp_column та супутніх сценаріїв часу."""
+"""Тести контрактних інваріантів `fxcm:ohlcv`.
+
+SSOT по часу тут — `open_time`/`close_time` у UNIX ms (UTC) на I/O межі.
+Ніяких best-effort "ensure"-функцій для DataFrame.
+"""
 
 from __future__ import annotations
 
-import pandas as pd
-
-from utils.utils import ensure_timestamp_column
+from core.contracts.fxcm_validate import validate_fxcm_ohlcv_message
 
 
-def test_float_timestamp_in_milliseconds_converts_to_datetime() -> None:
-    df = pd.DataFrame(
-        {
-            "timestamp": [1762732800000.0, 1762732860000.25],
-            "open": [1.0, 2.0],
-            "close": [1.1, 2.1],
-        }
-    )
+def test_validate_ohlcv_drops_bars_missing_open_time() -> None:
+    raw = {
+        "symbol": "EURUSD",
+        "tf": "1m",
+        "bars": [
+            {
+                "open_time": 1_700_000_000_000,
+                "close_time": 1_700_000_060_000,
+                "open": 1.0,
+                "high": 1.1,
+                "low": 0.9,
+                "close": 1.05,
+                "volume": 10.0,
+            },
+            {
+                # Некоректний бар: відсутній open_time
+                "close_time": 1_700_000_120_000,
+                "open": 1.0,
+                "high": 1.1,
+                "low": 0.9,
+                "close": 1.05,
+                "volume": 10.0,
+            },
+        ],
+    }
 
-    result = ensure_timestamp_column(df, drop_duplicates=False, sort=False)
+    out = validate_fxcm_ohlcv_message(raw)
+    assert out is not None
+    assert out["symbol"] == "EURUSD"
+    assert out["tf"] == "1m"
+    assert len(out["bars"]) == 1
 
-    assert not result.empty
-    assert pd.api.types.is_datetime64_any_dtype(result["timestamp"])
-    assert result["timestamp"].dt.year.min() >= 2024
 
+def test_validate_ohlcv_returns_none_if_all_bars_invalid() -> None:
+    raw = {
+        "symbol": "EURUSD",
+        "tf": "1m",
+        "bars": [
+            {
+                # Некоректний бар: немає close_time
+                "open_time": 1_700_000_000_000,
+                "open": 1.0,
+                "high": 1.1,
+                "low": 0.9,
+                "close": 1.05,
+                "volume": 10.0,
+            }
+        ],
+    }
 
-def test_seconds_timestamp_series_preserves_order() -> None:
-    df = pd.DataFrame(
-        {
-            "timestamp": [1_762_732_800, 1_762_732_860],
-            "open": [3.0, 4.0],
-            "close": [3.3, 4.4],
-        }
-    )
-
-    result = ensure_timestamp_column(df, drop_duplicates=False, sort=False)
-
-    assert not result.empty
-    assert result["timestamp"].iloc[0] < result["timestamp"].iloc[1]
-    assert result["timestamp"].dt.tz is not None
+    assert validate_fxcm_ohlcv_message(raw) is None

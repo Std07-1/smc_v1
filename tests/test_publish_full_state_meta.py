@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 
-from UI.publish_full_state import publish_full_state
+from core.serialization import json_loads
+from UI.publish_smc_state import publish_smc_state
 
 
 class DummyStateManager:
@@ -56,19 +56,14 @@ async def _run_cycle_meta_case() -> None:
 
     meta_extra = {
         "cycle_seq": 42,
-        "cycle_started_ts": "2025-12-07T12:00:00Z",
-        "cycle_ready_ts": "2025-12-07T12:00:02Z",
+        "cycle_started_ts": "2025-12-07 12:00:00",
+        "cycle_ready_ts": "2025-12-07 12:00:02",
     }
 
-    await publish_full_state(
-        state_manager,
-        cache,
-        redis,  # type: ignore
-        meta_extra=meta_extra,
-    )
+    await publish_smc_state(state_manager, cache, redis, meta_extra=meta_extra)  # type: ignore[arg-type]
 
     assert redis.published_payload is not None
-    payload = json.loads(redis.published_payload)
+    payload = json_loads(redis.published_payload)
     meta = payload["meta"]
     assert meta["seq"] == 42
     assert meta["cycle_seq"] == 42

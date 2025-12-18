@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -16,21 +15,18 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger("smc_viewer_ws")
 
-
 from websockets.exceptions import ConnectionClosed
 
+from core.serialization import json_dumps, json_loads
+
 try:
-    from websockets.server import WebSocketServerProtocol, serve  # type: ignore[import]
-
-    logger.debug("Using websockets.server for WebSocketServerProtocol")
-except ImportError:  # pragma: no cover - сумісність зі старими версіями
-    from websockets.legacy.server import WebSocketServerProtocol, serve
-
-    logger.debug("Using websockets.legacy.server for WebSocketServerProtocol")
+    from websockets.asyncio.server import ServerConnection as WsConnection, serve
+except Exception:  # pragma: no cover - сумісність зі старими версіями
+    from websockets.legacy.server import WebSocketServerProtocol as WsConnection, serve
 
 from prometheus_client import Counter, Gauge
 
-from UI_v2.schemas import SmcViewerState
+from core.contracts.viewer_state import SmcViewerState
 from UI_v2.viewer_state_store import ViewerStateStore
 
 SMC_VIEWER_WS_CONNECTIONS = Gauge(
@@ -83,8 +79,12 @@ class ViewerStateWsServer:
             logger.info("[SMC viewer WS] Server task cancelled")
             raise
 
-    async def _handle_client(self, websocket: WebSocketServerProtocol) -> None:
-        symbol = self._extract_symbol(websocket.path or "")
+    async def _handle_client(self, websocket: Any) -> None:
+        path = getattr(websocket, "path", None) or ""
+        if not path:
+            request = getattr(websocket, "request", None)
+            path = getattr(request, "path", "") if request is not None else ""
+        symbol = self._extract_symbol(path)
         if symbol is None:
             await websocket.close(code=4400, reason="symbol query parameter required")
             return
@@ -107,7 +107,7 @@ class ViewerStateWsServer:
 
     async def _send_initial_state(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: Any,
         symbol: str,
     ) -> None:
         state = await self.store.get_state(symbol)
@@ -117,14 +117,14 @@ class ViewerStateWsServer:
 
     async def _stream_updates(
         self,
-        websocket: WebSocketServerProtocol,
+        websocket: Any,
         symbol: str,
     ) -> None:
         pubsub = self.redis.pubsub()
         await pubsub.subscribe(self.channel_name)
         try:
             while True:
-                if websocket.closed:
+                if getattr(websocket, "close_code", None) is not None:
                     break
                 try:
                     message = await pubsub.get_message(
@@ -192,7 +192,7 @@ class ViewerStateWsServer:
             data = data.decode("utf-8", errors="replace")
         if isinstance(data, str):
             try:
-                data = json.loads(data)
+                data = json_loads(data)
             except Exception:
                 logger.debug("[SMC viewer WS] Failed to parse update", exc_info=True)
                 return None
@@ -210,11 +210,10 @@ class ViewerStateWsServer:
         symbol: str,
         state: SmcViewerState | None,
     ) -> str:
-        return json.dumps(
+        return json_dumps(
             {
                 "type": event_type,
                 "symbol": symbol,
                 "viewer_state": state,
-            },
-            default=str,
+            }
         )

@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any
+
+from core.serialization import json_loads
 
 try:  # pragma: no cover - опційна залежність у runtime
     from redis.asyncio import Redis
 except Exception:  # pragma: no cover
     Redis = Any  # type: ignore[assignment]
 
-from UI_v2.schemas import SmcViewerState
+from core.contracts.viewer_state import SmcViewerState
 
 logger = logging.getLogger("smc_viewer_store")
 
@@ -44,7 +45,7 @@ class ViewerStateStore:
             raw = raw.decode("utf-8", errors="replace")
 
         try:
-            data = json.loads(raw)
+            data = json_loads(raw)
         except Exception:
             logger.warning(
                 "[SMC viewer store] Некоректний JSON у snapshot (%s)",

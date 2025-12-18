@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
 from data.unified_store import UnifiedDataStore
-from UI_v2.schemas import OhlcvBar
+from core.contracts.viewer_state import OhlcvBar
+from core.serialization import safe_float
 
 
 class OhlcvNotFoundError(Exception):
@@ -48,16 +48,6 @@ def _to_millis(value: Any) -> int | None:
     return None
 
 
-def _safe_float(value: Any) -> float | None:
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(result):
-        return None
-    return result
-
-
 @dataclass
 class UnifiedStoreOhlcvProvider:
     """OhlcvProvider на базі UnifiedDataStore."""
@@ -88,11 +78,11 @@ class UnifiedStoreOhlcvProvider:
         bars: list[OhlcvBar] = []
         for record in records:
             time_ms = _to_millis(record.get("close_time") or record.get("open_time"))
-            open_v = _safe_float(record.get("open"))
-            high_v = _safe_float(record.get("high"))
-            low_v = _safe_float(record.get("low"))
-            close_v = _safe_float(record.get("close"))
-            volume_v = _safe_float(record.get("volume")) or 0.0
+            open_v = safe_float(record.get("open"), finite=True)
+            high_v = safe_float(record.get("high"), finite=True)
+            low_v = safe_float(record.get("low"), finite=True)
+            close_v = safe_float(record.get("close"), finite=True)
+            volume_v = safe_float(record.get("volume"), finite=True) or 0.0
             if (
                 time_ms is None
                 or open_v is None

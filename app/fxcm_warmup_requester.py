@@ -12,10 +12,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import math
-import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,6 +32,7 @@ from config.config import (
     SMC_S3_POLL_SEC,
     SMC_S3_REQUESTER_ENABLED,
 )
+from core.serialization import json_dumps, utc_now_ms
 from data.fxcm_status_listener import get_fxcm_feed_state
 from data.unified_store import UnifiedDataStore
 
@@ -85,6 +84,21 @@ def _desired_lookback_bars() -> int:
     return max(1, int(limit))
 
 
+def _bars_for_tf_from_contract(*, tf_ms: int, contract_1m_bars: int) -> int:
+    """Перераховує ціль контракту (в 1m барах) у bars для конкретного TF.
+
+    У контракті ми зберігаємо одну цифру на символ: «еквівалент хвилин / 1m барів».
+    Для TF>1m конвертуємо: bars = ceil(contract_minutes / minutes_per_bar).
+    """
+
+    tf_ms = max(1, int(tf_ms))
+    contract_1m_bars = max(0, int(contract_1m_bars))
+    if contract_1m_bars <= 0:
+        return 0
+    minutes_per_bar = max(1.0, tf_ms / 60_000.0)
+    return max(1, int(math.ceil(contract_1m_bars / minutes_per_bar)))
+
+
 @dataclass(slots=True)
 class FxcmWarmupRequester:
     """Періодичний requester команд warmup/backfill."""
@@ -113,7 +127,7 @@ class FxcmWarmupRequester:
             cooldown_sec=int(self.cooldown_sec),
             stale_k=float(self.stale_k),
             allowed_pairs=int(len(self.allowed_pairs)),
-            started_ts_ms=int(time.time() * 1000.0),
+            started_ts_ms=utc_now_ms(),
         )
 
         logger.info(
@@ -131,7 +145,7 @@ class FxcmWarmupRequester:
     async def _run_once(self) -> None:
         feed = get_fxcm_feed_state()
         fxcm_status = _build_fxcm_status_block(feed)
-        now_ms = int(time.time() * 1000.0)
+        now_ms = utc_now_ms()
 
         _update_s3_runtime_snapshot(
             last_loop_ts_ms=now_ms,
@@ -144,7 +158,18 @@ class FxcmWarmupRequester:
             if not sym or not tf_norm:
                 continue
 
-            min_bars = _desired_lookback_bars()
+            desired_bars = _desired_lookback_bars()
+            contract_1m_bars = int(self.min_history_bars_by_symbol.get(sym, 0) or 0)
+            tf_ms = timeframe_to_ms(tf_norm) or 60_000
+            contract_bars_tf = _bars_for_tf_from_contract(
+                tf_ms=tf_ms,
+                contract_1m_bars=contract_1m_bars,
+            )
+            min_bars = (
+                max(int(desired_bars), int(contract_bars_tf))
+                if contract_bars_tf > 0
+                else int(desired_bars)
+            )
 
             status = await compute_history_status(
                 store=self.store,
@@ -181,7 +206,6 @@ class FxcmWarmupRequester:
             if not self._rate_limit_ok(key=key, now_ms=now_ms):
                 continue
 
-            tf_ms = timeframe_to_ms(tf_norm) or 60_000
             lookback_minutes = _compute_lookback_minutes(
                 tf_ms=tf_ms,
                 min_history_bars=min_bars,
@@ -206,7 +230,7 @@ class FxcmWarmupRequester:
             try:
                 await self.redis.publish(
                     self.commands_channel,
-                    json.dumps(payload, ensure_ascii=False),
+                    json_dumps(payload),
                 )
                 self._last_request_ms[key] = now_ms
 
@@ -260,7 +284,7 @@ class FxcmWarmupRequester:
             self._last_request_ms.pop((sym, tf, cmd_type), None)
 
         _update_s3_runtime_snapshot(
-            last_clear_ts_ms=int(time.time() * 1000.0),
+            last_clear_ts_ms=utc_now_ms(),
             active_issues=int(len(self._last_request_ms)),
         )
 

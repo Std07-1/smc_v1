@@ -9,14 +9,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Mapping
+from json import JSONDecodeError
 from typing import Any
 
 from redis.asyncio import Redis
 
 from app.settings import settings
+from core.serialization import json_loads
 from data.unified_store import UnifiedDataStore
 
 logger = logging.getLogger("fxcm_price_stream")
@@ -80,10 +81,10 @@ async def run_fxcm_price_stream_listener(
                 raw_text = str(raw_data)
             payload_obj: Mapping[str, Any] | None = None
             try:
-                decoded = json.loads(raw_text)
+                decoded = json_loads(raw_text)
                 if isinstance(decoded, Mapping):
                     payload_obj = decoded
-            except json.JSONDecodeError:
+            except JSONDecodeError:
                 logger.debug(
                     "[FXCM_PRICE] Некоректний JSON у повідомленні каналу %s",
                     channel_name,

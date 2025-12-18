@@ -1,4 +1,4 @@
-"""Інтеграційні тести SMC-фіче-флагу в screening_producer."""
+"""Інтеграційні тести SMC-фіче-флагу у smc_producer."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from app.asset_state_manager import AssetStateManager
-from app.screening_producer import process_asset_batch
+from app.smc_producer import process_smc_batch
+from app.smc_state_manager import SmcStateManager
 
 
 class DummyMonitor:
@@ -32,7 +32,7 @@ class DummyStore:
 
     async def get_df(self, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
         rows = limit or 10
-        index = pd.date_range("2024-01-01", periods=rows, freq="T", tz="UTC")
+        index = pd.date_range("2024-01-01", periods=rows, freq="min", tz="UTC")
         return pd.DataFrame(
             {
                 "timestamp": index,
@@ -49,7 +49,7 @@ class DummyStore:
 
 
 def test_smc_hint_added_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.screening_producer as sp
+    import app.smc_producer as sp
 
     monkeypatch.setitem(sp.SMC_RUNTIME_PARAMS, "enabled", True)
 
@@ -58,18 +58,16 @@ def test_smc_hint_added_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(sp, "_build_smc_hint", fake_build_smc_hint, raising=False)
 
-    state_manager = AssetStateManager(["xauusd"])
-    monitor: Any = DummyMonitor()
+    state_manager = SmcStateManager(["xauusd"])
     store: Any = DummyStore()
 
     asyncio.run(
-        process_asset_batch(
-            symbols=["xauusd"],
-            monitor=monitor,
+        process_smc_batch(
+            ["xauusd"],
             store=store,
+            state_manager=state_manager,
             timeframe="1m",
             lookback=10,
-            state_manager=state_manager,
         )
     )
 
@@ -82,35 +80,24 @@ def test_smc_hint_added_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_smc_hint_skipped_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.screening_producer as sp
+    import app.smc_producer as sp
 
     monkeypatch.setitem(sp.SMC_RUNTIME_PARAMS, "enabled", False)
 
-    called = False
-
-    async def fake_build_smc_hint(symbol: str, store: DummyStore) -> dict[str, Any]:
-        nonlocal called
-        called = True
-        return {"direction": "SHORT"}
-
-    monkeypatch.setattr(sp, "_build_smc_hint", fake_build_smc_hint, raising=False)
-
-    state_manager = AssetStateManager(["xauusd"])
-    monitor: Any = DummyMonitor()
+    state_manager = SmcStateManager(["xauusd"])
     store: Any = DummyStore()
 
     asyncio.run(
-        process_asset_batch(
-            symbols=["xauusd"],
-            monitor=monitor,
+        process_smc_batch(
+            ["xauusd"],
             store=store,
+            state_manager=state_manager,
             timeframe="1m",
             lookback=10,
-            state_manager=state_manager,
         )
     )
 
     xau_state = state_manager.state.get("xauusd")
     assert xau_state is not None
-    assert "smc_hint" not in xau_state
-    assert called is False
+    assert xau_state.get("smc_hint") is None
+    assert xau_state.get("signal") == "SMC_PENDING"

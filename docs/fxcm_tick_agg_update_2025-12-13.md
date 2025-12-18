@@ -1,5 +1,7 @@
 # FXCM tick-agg: оновлення контракту (2025-12-13)
 
+<!-- markdownlint-disable MD013 -->
+
 Цей документ фіксує зміни в контракті між зовнішнім FXCM-конектором і `smc_v1`, коли конектор перейшов на агрегацію з тік-стріму (tick-agg) для OHLCV.
 
 ## 1) Що змінилось
@@ -49,6 +51,6 @@
 ## 5) Де в коді це реалізовано
 
 - Інгест та фільтрація `complete=false`: `data/fxcm_ingestor.py`.
-- Soft-валидація повідомлень: `data/fxcm_schema.py`.
+- Soft-валидація повідомлень: `core/contracts/fxcm_validate.py`.
 - Dev стенд для графіка: `UI_v2/web_client/dev_chart_playground.html`, `UI_v2/web_client/chart_demo.js`, `UI_v2/web_client/chart_adapter.js`.
 - Тести контракту/політик: `tests/test_fxcm_schema_and_ingestor_contract.py`.

@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -25,7 +24,9 @@ except Exception:  # pragma: no cover
 
 from prometheus_client import Counter, Histogram
 
-from UI_v2.schemas import (
+from core.contracts import normalize_smc_schema_version
+from core.serialization import json_dumps, json_loads, to_jsonable
+from core.contracts.viewer_state import (
     SmcViewerState,
     UiSmcAssetPayload,
     UiSmcMeta,
@@ -142,6 +143,13 @@ def build_viewer_states_from_payload(
 
     assets = payload.get("assets") or []
     meta_raw = payload.get("meta") or {}
+    if isinstance(meta_raw, dict):
+        schema_raw = meta_raw.get("schema_version")
+        if schema_raw:
+            schema_value = normalize_smc_schema_version(str(schema_raw))
+            meta_raw = dict(meta_raw)
+            meta_raw["schema_version"] = schema_value
+
     meta: UiSmcMeta = meta_raw  # type: ignore[assignment]
     fxcm_block = payload.get("fxcm")  # може бути None або dict
 
@@ -233,7 +241,7 @@ class SmcViewerBroadcaster:
             raw = raw.decode("utf-8", errors="replace")
 
         try:
-            payload: UiSmcStatePayload = json.loads(raw)  # type: ignore[assignment]
+            payload: UiSmcStatePayload = json_loads(raw)  # type: ignore[assignment]
         except Exception:
             logger.warning(
                 "[SMC viewer] Некоректний JSON у SMC snapshot (%s)",
@@ -261,7 +269,7 @@ class SmcViewerBroadcaster:
     async def _save_viewer_snapshot(self) -> None:
         """Зберігає поточний snapshot_by_symbol як один JSON у Redis."""
         try:
-            payload_json = json.dumps(self.snapshot_by_symbol, default=str)
+            payload_json = json_dumps(to_jsonable(self.snapshot_by_symbol))
             await self.redis.set(self.cfg.viewer_snapshot_key, payload_json)
         except Exception:
             SMC_VIEWER_ERRORS_TOTAL.inc()
@@ -311,7 +319,7 @@ class SmcViewerBroadcaster:
 
                     try:
                         payload_raw = data if data is not None else ""
-                        payload: UiSmcStatePayload = json.loads(  # type: ignore[assignment]
+                        payload: UiSmcStatePayload = json_loads(  # type: ignore[assignment]
                             payload_raw
                         )
                     except Exception:
@@ -368,7 +376,7 @@ class SmcViewerBroadcaster:
                     "symbol": symbol,
                     "viewer_state": state,
                 }
-                payload_json = json.dumps(payload, default=str)
+                payload_json = json_dumps(to_jsonable(payload))
                 await self.redis.publish(self.cfg.viewer_state_channel, payload_json)
             except Exception:
                 SMC_VIEWER_ERRORS_TOTAL.inc()

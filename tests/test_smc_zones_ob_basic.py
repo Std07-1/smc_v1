@@ -105,7 +105,9 @@ def test_active_zone_distance_filter_removes_far_orderblocks() -> None:
     assert len(filtered) == 1
     assert filtered[0].zone_id == "near"
     assert distance_meta["filtered_out_by_distance"] == 1
-    assert distance_meta["max_distance_atr"] > 5.0
+    max_distance_atr = distance_meta["max_distance_atr"]
+    assert isinstance(max_distance_atr, (int, float))
+    assert max_distance_atr > 5.0
 
 
 def test_active_zone_distance_filter_skips_when_no_atr() -> None:

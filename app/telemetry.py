@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
+
+from core.serialization import json_dumps
 
 if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгу
     from data.unified_store import UnifiedDataStore
@@ -65,7 +66,7 @@ async def publish_ui_metrics(
 
         if redis_pub is not None:
             try:
-                await redis_pub.publish(channel, json.dumps(snapshot))
+                await redis_pub.publish(channel, json_dumps(snapshot))
             except Exception as exc:  # pragma: no cover - лог тільки для діагностики
                 logger.debug("[Telemetry] ui_metrics publish fail: %s", exc)
 

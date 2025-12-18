@@ -18,7 +18,6 @@ from smc_core.smc_types import (
     SmcStructureState,
     SmcTrend,
 )
-from utils.utils import ensure_timestamp_column
 
 from . import metrics, ote_engine, range_engine, structure_engine, swing_detector
 from .event_history import EVENT_HISTORY
@@ -107,28 +106,15 @@ def _prepare_frame(df: pd.DataFrame | None, max_bars: int) -> pd.DataFrame | Non
     else:
         df = df.copy()
 
-    if "timestamp" not in df.columns:
-        for fallback in ("open_time", "time", "close_time"):
-            if fallback in df.columns:
-                df["timestamp"] = df[fallback]
-                break
-
-    df = ensure_timestamp_column(
-        df,
-        drop_duplicates=False,
-        sort=False,
-        min_rows=1,
-        log_prefix="smc_structure:",
-    )
+    if "open_time" not in df.columns:
+        return None
+    open_time = pd.to_numeric(df["open_time"], errors="coerce")
+    df["timestamp"] = pd.to_datetime(open_time, unit="ms", errors="coerce", utc=True)
+    df = df.dropna(subset=["timestamp"]).copy()
     if df.empty:
         return None
-    if "timestamp" not in df.columns:
-        return df
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-    df = df.dropna(subset=["timestamp"])
-    if df.empty:
-        return None
-    return df
+    df = df.sort_values("open_time", kind="stable")
+    return df.reset_index(drop=True)
 
 
 def _snapshot_bounds(

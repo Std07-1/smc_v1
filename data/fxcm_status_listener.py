@@ -9,23 +9,28 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import json
 import logging
 import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from json import JSONDecodeError
 from typing import Any
 
 from pydantic import ValidationError
 from redis.asyncio import Redis
 
 from app.settings import settings
-from data.fxcm_models import (
+from core.contracts.fxcm_telemetry import (
     FxcmAggregatedStatus,
     FxcmSessionContext,
     parse_fxcm_aggregated_status,
+)
+from core.serialization import (
+    duration_seconds_to_hms,
+    json_loads,
+    utc_ms_to_human_utc,
+    utc_seconds_to_human_utc,
 )
 
 logger = logging.getLogger("fxcm_status_listener")
@@ -105,7 +110,7 @@ class FxcmFeedState:
                 0.0, (time.time() * 1000.0 - self.last_bar_close_ms) / 1000.0
             )
         lag = float(lag_value or 0.0)
-        lag_human = f"{int(lag)}s ({lag:.1f}s)"
+        lag_human = duration_seconds_to_hms(lag)
 
         last_close_utc = _ms_to_utc_iso(self.last_bar_close_ms) or "-"
         next_open_utc = _ms_to_utc_iso(self.next_open_ms) or self.next_open_utc or "-"
@@ -158,9 +163,8 @@ def _ms_to_utc_iso(value: int | float | None) -> str | None:
     if value is None:
         return None
     try:
-        ts = int(float(value)) / 1000.0
-        dt = datetime.fromtimestamp(ts, tz=UTC)
-        return dt.strftime("%Y-%m-%d %H:%M:%S") + "Z"
+        millis = int(float(value))
+        return utc_ms_to_human_utc(millis)
     except Exception:
         return None
 
@@ -169,10 +173,9 @@ def _seconds_to_iso(value: int | float | None) -> str | None:
     if value is None:
         return None
     try:
-        dt = datetime.fromtimestamp(float(value), tz=UTC)
+        return utc_seconds_to_human_utc(float(value))
     except Exception:
         return None
-    return dt.strftime("%Y-%m-%d %H:%M:%S") + "Z"
 
 
 def _coerce_float(value: Any) -> float | None:
@@ -360,10 +363,10 @@ async def run_fxcm_status_listener(
             else:
                 raw_text = str(data_raw)
             try:
-                obj = json.loads(raw_text)
+                obj = json_loads(raw_text)
                 if isinstance(obj, dict):
                     payload = obj
-            except json.JSONDecodeError:
+            except JSONDecodeError:
                 logger.debug(
                     "[FXCM_STATUS] Неможливо розпарсити JSON з каналу %s", channel
                 )

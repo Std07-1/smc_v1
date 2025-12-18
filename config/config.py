@@ -151,7 +151,7 @@ UI_SMC_SNAPSHOT_TTL_SEC: int = 180
 
 # Версія схеми UI payload (для консюмерів/міграцій)
 UI_PAYLOAD_SCHEMA_VERSION: str = "1.2"
-UI_SMC_PAYLOAD_SCHEMA_VERSION: str = "1.2"
+UI_SMC_PAYLOAD_SCHEMA_VERSION: str = "smc_state_v1"
 UI_VIEWER_ALT_SCREEN_ENABLED: bool = True
 UI_VIEWER_SNAPSHOT_DIR: str = "tmp"
 

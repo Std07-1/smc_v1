@@ -1,27 +1,41 @@
-"""Тести для запуску debug viewer в окремому процесі."""
+"""Тести для запуску console debug viewer (best-effort)."""
 
-from app.main import _build_debug_viewer_popen_kwargs
+from __future__ import annotations
 
+import pytest
 
-def test_build_debug_viewer_kwargs_posix() -> None:
-    """На POSIX маємо стартувати в окремій сесії без creationflags."""
-
-    kwargs = _build_debug_viewer_popen_kwargs(platform="posix", creation_flag=0)
-
-    assert kwargs["stdout"] is None
-    assert kwargs["stderr"] is None
-    assert kwargs["stdin"] is None
-    assert kwargs["start_new_session"] is True
-    assert "creationflags" not in kwargs
+import app.main as main
 
 
-def test_build_debug_viewer_kwargs_windows() -> None:
-    """На Windows обов'язково додаємо CREATE_NEW_CONSOLE."""
+def test_debug_viewer_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Без DEBUG_VIEWER_ENABLED запуск не виконується."""
 
-    creation_flag = 0x08000000
-    kwargs = _build_debug_viewer_popen_kwargs(
-        platform="nt", creation_flag=creation_flag
-    )
+    monkeypatch.delenv("DEBUG_VIEWER_ENABLED", raising=False)
 
-    assert kwargs.get("creationflags") == creation_flag
-    assert "start_new_session" not in kwargs
+    called = False
+
+    def _fake_launch() -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(main, "launch_experimental_viewer", _fake_launch)
+
+    main._maybe_launch_debug_viewer()
+    assert called is False
+
+
+def test_debug_viewer_enabled_calls_launcher(monkeypatch: pytest.MonkeyPatch) -> None:
+    """За DEBUG_VIEWER_ENABLED=1 має викликатись launcher."""
+
+    monkeypatch.setenv("DEBUG_VIEWER_ENABLED", "1")
+
+    called = False
+
+    def _fake_launch() -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(main, "launch_experimental_viewer", _fake_launch)
+
+    main._maybe_launch_debug_viewer()
+    assert called is True

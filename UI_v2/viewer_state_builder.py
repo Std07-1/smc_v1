@@ -7,17 +7,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any, cast
 
-from UI_v2.schemas import (
+from core.contracts.viewer_state import (
     VIEWER_STATE_SCHEMA_VERSION,
     FxcmMeta,
+    SmcViewerLiquidity,
     SmcViewerPipelineLocal,
     SmcViewerState,
+    SmcViewerStructure,
+    SmcViewerZones,
     UiSmcAssetPayload,
     UiSmcMeta,
 )
+
+from core.serialization import (
+    coerce_dict,
+    safe_float,
+    safe_int,
+    try_iso_to_human_utc,
+    utc_ms_to_human_utc,
+)
+
+
+class NoSymbolError(ValueError):
+    """Виняток: у payload відсутній `symbol` (контракт viewer_state порушено)."""
+
 
 # Обмеження розмірів списків у viewer_state, щоб state залишався легковаговим.
 MAX_EVENTS: int = 20
@@ -57,18 +72,18 @@ def build_viewer_state(
     """
 
     asset_dict: dict[str, Any] = dict(asset)
-    payload_meta_dict: dict[str, Any] = _as_dict(payload_meta)
+    payload_meta_dict: dict[str, Any] = coerce_dict(payload_meta)
 
-    smc_hint = _as_dict(asset_dict.get("smc_hint"))
-    smc_structure = _as_dict(
+    smc_hint = coerce_dict(asset_dict.get("smc_hint"))
+    smc_structure = coerce_dict(
         asset_dict.get("smc_structure") or smc_hint.get("structure")
     )
-    smc_liquidity = _as_dict(
+    smc_liquidity = coerce_dict(
         asset_dict.get("smc_liquidity") or smc_hint.get("liquidity")
     )
-    smc_zones = _as_dict(asset_dict.get("smc_zones") or smc_hint.get("zones"))
+    smc_zones = coerce_dict(asset_dict.get("smc_zones") or smc_hint.get("zones"))
 
-    stats = _as_dict(asset_dict.get("stats"))
+    stats = coerce_dict(asset_dict.get("stats"))
 
     pipeline_local: SmcViewerPipelineLocal = {}
     if stats:
@@ -109,26 +124,36 @@ def build_viewer_state(
     if fxcm_source is not None:
         meta_snapshot["fxcm"] = fxcm_source
 
-    structure_block = {
-        "trend": smc_structure.get("trend"),
-        "bias": smc_structure.get("bias"),
-        "range_state": smc_structure.get("range_state"),
-        "legs": _simplify_legs(smc_structure.get("legs")),
-        "swings": _simplify_swings(smc_structure.get("swings")),
-        "ranges": _simplify_ranges(smc_structure.get("ranges")),
-        "events": events,
-        "ote_zones": _simplify_otes(smc_structure.get("ote_zones")),
-    }
+    structure_block: SmcViewerStructure = cast(
+        SmcViewerStructure,
+        {
+            "trend": smc_structure.get("trend"),
+            "bias": smc_structure.get("bias"),
+            "range_state": smc_structure.get("range_state"),
+            "legs": _simplify_legs(smc_structure.get("legs")),
+            "swings": _simplify_swings(smc_structure.get("swings")),
+            "ranges": _simplify_ranges(smc_structure.get("ranges")),
+            "events": events,
+            "ote_zones": _simplify_otes(smc_structure.get("ote_zones")),
+        },
+    )
 
-    liquidity_block = {
-        "amd_phase": smc_liquidity.get("amd_phase"),
-        "pools": _simplify_pools(smc_liquidity.get("pools")),
-        # Магніти поки передаємо «як є», без додаткової агрегації.
-        "magnets": smc_liquidity.get("magnets") or [],
-    }
+    liquidity_block: SmcViewerLiquidity = cast(
+        SmcViewerLiquidity,
+        {
+            "amd_phase": smc_liquidity.get("amd_phase"),
+            "pools": _simplify_pools(smc_liquidity.get("pools")),
+            # Магніти поки передаємо «як є», без додаткової агрегації.
+            "magnets": smc_liquidity.get("magnets") or [],
+        },
+    )
+
+    zones_block: SmcViewerZones = cast(SmcViewerZones, {"raw": zones_raw})
 
     symbol_value = asset_dict.get("symbol")
-    symbol_norm = str(symbol_value).upper() if symbol_value else None
+    if symbol_value is None or not str(symbol_value).strip():
+        raise NoSymbolError("NO_SYMBOL")
+    symbol_norm: str = str(symbol_value).upper()
 
     viewer_state: SmcViewerState = {
         "symbol": symbol_norm,
@@ -140,7 +165,7 @@ def build_viewer_state(
         "session": session_value,
         "structure": structure_block,
         "liquidity": liquidity_block,
-        "zones": {"raw": zones_raw},
+        "zones": zones_block,
         "pipeline_local": pipeline_local,
     }
 
@@ -153,38 +178,11 @@ def build_viewer_state(
 # ── Допоміжні функції --------------------------------------------------------
 
 
-def _as_dict(payload: Any) -> dict[str, Any]:
-    if isinstance(payload, dict):
-        return payload
-    return {}
-
-
-def _safe_float(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_int(value: Any) -> int | None:
-    try:
-        if value is None:
-            return None
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _format_utc_from_ms(value: Any) -> str | None:
-    millis = _safe_int(value)
+    millis = safe_int(value)
     if millis is None:
         return None
-    seconds, remainder = divmod(millis, 1000)
-    dt = datetime.fromtimestamp(seconds, tz=UTC)
-    dt = dt.replace(microsecond=remainder * 1000)
-    return dt.isoformat()
+    return utc_ms_to_human_utc(millis)
 
 
 def _simplify_events(events: Any) -> list[dict[str, Any]]:
@@ -206,6 +204,10 @@ def _simplify_events(events: Any) -> list[dict[str, Any]]:
                 normalized_ts = _format_utc_from_ms(time_value)
                 if normalized_ts:
                     time_value = normalized_ts
+            elif isinstance(time_value, str):
+                normalized_text = try_iso_to_human_utc(time_value)
+                if normalized_text:
+                    time_value = normalized_text
             output.append(
                 {
                     "type": event.get("event_type") or event.get("type"),
@@ -244,11 +246,16 @@ def _simplify_swings(swings: Any) -> list[dict[str, Any]]:
     for swing in swings[-MAX_SWINGS:]:
         if not isinstance(swing, dict):
             continue
+        time_value = swing.get("time")
+        if isinstance(time_value, str):
+            normalized_text = try_iso_to_human_utc(time_value)
+            if normalized_text:
+                time_value = normalized_text
         output.append(
             {
                 "kind": swing.get("kind"),
                 "price": swing.get("price"),
-                "time": swing.get("time"),
+                "time": time_value,
             }
         )
     return output
@@ -261,13 +268,23 @@ def _simplify_ranges(ranges: Any) -> list[dict[str, Any]]:
     for rng in ranges[-MAX_RANGES:]:
         if not isinstance(rng, dict):
             continue
+        start_value = rng.get("start_time")
+        end_value = rng.get("end_time")
+        if isinstance(start_value, str):
+            normalized_text = try_iso_to_human_utc(start_value)
+            if normalized_text:
+                start_value = normalized_text
+        if isinstance(end_value, str):
+            normalized_text = try_iso_to_human_utc(end_value)
+            if normalized_text:
+                end_value = normalized_text
         output.append(
             {
                 "high": rng.get("high"),
                 "low": rng.get("low"),
                 "state": rng.get("state"),
-                "start": rng.get("start_time"),
-                "end": rng.get("end_time"),
+                "start": start_value,
+                "end": end_value,
             }
         )
     return output
@@ -356,7 +373,7 @@ def _extract_price(asset: dict[str, Any], stats: dict[str, Any]) -> float | None
         stats.get("last_price"),
     ]
     for candidate in numeric_candidates:
-        price = _safe_float(candidate)
+        price = safe_float(candidate)
         if price is not None:
             return price
     return None

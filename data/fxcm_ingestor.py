@@ -35,15 +35,16 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import json
 import logging
 from collections.abc import Mapping, Sequence
+from json import JSONDecodeError
 from typing import Any
 
 import pandas as pd
 from redis.asyncio import Redis
 
 from app.settings import settings
+from core.serialization import json_dumps, json_loads, safe_int
 from data.fxcm_status_listener import get_fxcm_feed_state, note_fxcm_bar_close
 from data.unified_store import UnifiedDataStore
 
@@ -197,16 +198,6 @@ def _sanitize_bar(bar: Mapping[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _safe_int(value: Any) -> int | None:
-    """Повертає int або None, якщо привести неможливо."""
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _bars_payload_to_df(bars: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
     """Конвертує список барів у DataFrame з очікуваними колонками.
 
@@ -322,9 +313,7 @@ def _verify_hmac_signature(
         return False
 
     try:
-        serialized = json.dumps(
-            payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False
-        ).encode("utf-8")
+        serialized = json_dumps(payload).encode("utf-8")
     except (TypeError, ValueError):
         return False
 
@@ -442,8 +431,8 @@ async def _process_payload(
             pair = (symbol_norm, interval_norm)
             prev_live = _LAST_LIVE_BAR_BY_PAIR.get(pair)
             if prev_live is not None:
-                prev_open = _safe_int(prev_live.get("open_time"))
-                cur_open = _safe_int(sanitized.get("open_time"))
+                prev_open = safe_int(prev_live.get("open_time"))
+                cur_open = safe_int(sanitized.get("open_time"))
 
                 if (
                     prev_open is not None
@@ -598,13 +587,13 @@ async def run_fxcm_ingestor(
 
             try:
                 if isinstance(raw_data, bytes):
-                    payload = json.loads(raw_data.decode("utf-8"))
+                    payload = json_loads(raw_data.decode("utf-8"))
                 elif isinstance(raw_data, str):
-                    payload = json.loads(raw_data)
+                    payload = json_loads(raw_data)
                 else:
                     # Нестандартний тип від Redis — намагаємось привести до str
-                    payload = json.loads(str(raw_data))
-            except json.JSONDecodeError:
+                    payload = json_loads(str(raw_data))
+            except JSONDecodeError:
                 logger.warning(
                     "[FXCM_INGEST] Некоректний JSON у повідомленні з каналу %s",
                     channel,

@@ -197,8 +197,9 @@ class SmcUniverseSymbolCfg(BaseModel):
             raise ValueError("min_history_bars має бути цілим числом")
         if value < 100:
             raise ValueError("min_history_bars має бути не менше 100")
-        if value > 10000:
-            raise ValueError("min_history_bars має бути не більше 10000")
+        # Потрібно для кейсів на кшталт 14 днів 1m історії (~20160 барів).
+        if value > 200000:
+            raise ValueError("min_history_bars має бути не більше 200000")
         return value
 
 

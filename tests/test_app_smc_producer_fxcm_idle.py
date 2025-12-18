@@ -9,14 +9,17 @@ from __future__ import annotations
 import time
 
 from app.smc_producer import _should_run_smc_cycle_by_fxcm_status
+from core.contracts.fxcm_telemetry import FxcmAggregatedStatus
 from data import fxcm_status_listener as status_listener
-from data.fxcm_models import parse_fxcm_aggregated_status
 
 
 def test_smc_cycle_idle_when_market_closed() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
-    status = parse_fxcm_aggregated_status(
-        {"ts": time.time(), "market": "closed", "price": "ok", "ohlcv": "ok"}
+    status = FxcmAggregatedStatus(
+        ts=time.time(),
+        market="closed",
+        price="ok",
+        ohlcv="ok",
     )
     status_listener._apply_status_snapshot(status)
 
@@ -27,8 +30,11 @@ def test_smc_cycle_idle_when_market_closed() -> None:
 
 def test_smc_cycle_runs_when_market_open_ok() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
-    status = parse_fxcm_aggregated_status(
-        {"ts": 1, "market": "open", "price": "ok", "ohlcv": "ok"}
+    status = FxcmAggregatedStatus(
+        ts=1,
+        market="open",
+        price="ok",
+        ohlcv="ok",
     )
     status_listener._apply_status_snapshot(status)
 
@@ -39,8 +45,11 @@ def test_smc_cycle_runs_when_market_open_ok() -> None:
 
 def test_smc_cycle_idle_when_price_not_ok() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
-    status = parse_fxcm_aggregated_status(
-        {"ts": 1, "market": "open", "price": "stale", "ohlcv": "ok"}
+    status = FxcmAggregatedStatus(
+        ts=1,
+        market="open",
+        price="stale",
+        ohlcv="ok",
     )
     status_listener._apply_status_snapshot(status)
 
@@ -51,8 +60,11 @@ def test_smc_cycle_idle_when_price_not_ok() -> None:
 
 def test_smc_cycle_runs_when_ohlcv_not_ok_but_price_ok() -> None:
     status_listener._reset_fxcm_feed_state_for_tests()
-    status = parse_fxcm_aggregated_status(
-        {"ts": 1, "market": "open", "price": "ok", "ohlcv": "lag"}
+    status = FxcmAggregatedStatus(
+        ts=1,
+        market="open",
+        price="ok",
+        ohlcv="lag",
     )
     status_listener._apply_status_snapshot(status)
 

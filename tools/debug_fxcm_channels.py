@@ -5,10 +5,10 @@
 - чи реально приходять повідомлення за короткий проміжок часу.
 
 Запуск (PowerShell):
-  .\.venv\Scripts\python.exe -m tools.debug_fxcm_channels
+    ./.venv/Scripts/python.exe -m tools.debug_fxcm_channels
 
 Опції:
-    .\.venv\Scripts\python.exe -m tools.debug_fxcm_channels --seconds 15
+    ./.venv/Scripts/python.exe -m tools.debug_fxcm_channels --seconds 15
 """
 
 from __future__ import annotations

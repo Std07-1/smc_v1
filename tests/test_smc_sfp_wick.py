@@ -50,9 +50,14 @@ def _structure(
 
 def _snapshot(rows: list[tuple[float, float, float, float]]) -> SmcInput:
     timestamps = pd.date_range("2024-01-01", periods=len(rows), freq="5min")
+    open_time_ms = (timestamps.view("int64") // 1_000_000).astype("int64")
+    # 5m бар: [start_ms, end_ms)
+    close_time_ms = (open_time_ms + 5 * 60 * 1000 - 1).astype("int64")
     frame = pd.DataFrame(
         {
             "timestamp": timestamps,
+            "open_time": open_time_ms,
+            "close_time": close_time_ms,
             "open": [row[0] for row in rows],
             "high": [row[1] for row in rows],
             "low": [row[2] for row in rows],

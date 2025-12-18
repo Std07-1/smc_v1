@@ -1,0 +1,11 @@
+# Каталоги, де markdownlint не додає цінності (артефакти/кеші/експерименти)
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+
+deploy/
+datastore/
+tmp/

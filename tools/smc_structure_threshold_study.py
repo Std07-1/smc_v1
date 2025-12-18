@@ -9,6 +9,8 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
+from core.serialization import safe_float, safe_int
+
 LOOSE_ATR_THRESHOLD = 0.6
 TIGHT_ATR_THRESHOLD = 1.3
 LOOSE_PCT_THRESHOLD = 0.002
@@ -110,34 +112,16 @@ def _collect_from_snapshot(
 
 def _pick_atr(meta: dict[str, Any]) -> float | None:
     for key in ("atr_last", "atr_median"):
-        value = _safe_float(meta.get(key))
+        value = safe_float(meta.get(key))
         if value is not None and value > 0:
             return value
     return None
 
 
-def _safe_float(value: Any) -> float | None:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _safe_int(value: Any) -> int | None:
-    try:
-        if value is None:
-            return None
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _leg_key(leg: dict[str, Any]) -> tuple[int | None, int | None]:
     from_swing = leg.get("from_swing") or {}
     to_swing = leg.get("to_swing") or {}
-    return (_safe_int(from_swing.get("index")), _safe_int(to_swing.get("index")))
+    return (safe_int(from_swing.get("index")), safe_int(to_swing.get("index")))
 
 
 def _map_events(
@@ -163,8 +147,8 @@ def _build_leg_stats(
     from_swing = leg.get("from_swing") or {}
     to_swing = leg.get("to_swing") or {}
 
-    from_price = _safe_float(from_swing.get("price"))
-    to_price = _safe_float(to_swing.get("price"))
+    from_price = safe_float(from_swing.get("price"))
+    to_price = safe_float(to_swing.get("price"))
     amplitude_abs = None
     amplitude_pct = None
     if from_price is not None and to_price is not None:
@@ -196,8 +180,8 @@ def _build_leg_stats(
         "snapshot_start_ts": meta.get("snapshot_start_ts"),
         "snapshot_end_ts": meta.get("snapshot_end_ts"),
         "leg_index": leg_index,
-        "from_index": _safe_int(from_swing.get("index")),
-        "to_index": _safe_int(to_swing.get("index")),
+        "from_index": safe_int(from_swing.get("index")),
+        "to_index": safe_int(to_swing.get("index")),
         "from_kind": from_swing.get("kind"),
         "to_kind": to_swing.get("kind"),
         "label": leg.get("label"),

@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+if TYPE_CHECKING:
+    from smc_core.smc_types import SmcInput, SmcZone
+
 ROOT = Path(__file__).resolve().parents[1]
-import sys
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from smc_core.engine import SmcCoreEngine
-from smc_core.smc_types import SmcInput, SmcZone, SmcZoneType
+def _ensure_root_on_path() -> None:
+    """Додає корінь репозиторію в sys.path для запуску скрипта напряму."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
 
 DATASETS = [
     ("XAUUSD", ROOT / "datastore" / "xauusd_bars_5m_snapshot.jsonl"),
@@ -54,6 +58,8 @@ def _load_frame(path: Path, limit: int) -> pd.DataFrame:
 
 
 def _build_snapshot(symbol: str, frame: pd.DataFrame) -> SmcInput:
+    from smc_core.smc_types import SmcInput
+
     return SmcInput(symbol=symbol, tf_primary="5m", ohlc_by_tf={"5m": frame})
 
 
@@ -70,6 +76,11 @@ def _event_timestamp(zone: SmcZone) -> pd.Timestamp | None:
 
 
 def main() -> None:
+    _ensure_root_on_path()
+
+    from smc_core.engine import SmcCoreEngine
+    from smc_core.smc_types import SmcZoneType
+
     engine = SmcCoreEngine()
     summaries: list[dict[str, Any]] = []
     for symbol, path in DATASETS:
@@ -148,7 +159,11 @@ def main() -> None:
             f"counter={role_counts.get('COUNTERTREND', 0)} neutral={role_counts.get('NEUTRAL', 0)} "
             f"breakers={summary['breaker_zones_total']} fvgs={summary['fvg_zones_total']}"
         )
-    OUTPUT_PATH.write_text(json.dumps(summaries, indent=2))
+
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_PATH.write_text(
+        json.dumps(summaries, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     print(f"Звіт збережено в {OUTPUT_PATH}")
 
 

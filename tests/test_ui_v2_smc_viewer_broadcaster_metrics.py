@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from prometheus_client import REGISTRY
 
-from UI_v2.schemas import UiSmcAssetPayload, UiSmcStatePayload
+from core.contracts.viewer_state import UiSmcAssetPayload, UiSmcStatePayload
 from UI_v2.smc_viewer_broadcaster import _process_smc_payload_with_metrics
 from UI_v2 import smc_viewer_broadcaster as broadcaster_module
 from UI_v2.viewer_state_builder import ViewerStateCache

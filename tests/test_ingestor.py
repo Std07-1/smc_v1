@@ -61,9 +61,24 @@ class FakeStore:
         self.calls.append((symbol, interval, df.copy()))
 
 
+class _FakeFeedState:
+    def __init__(self, market_state: str = "open") -> None:
+        self.market_state = market_state
+        self.price_state = "ok"
+        self.ohlcv_state = "ok"
+
+
 @pytest.fixture(autouse=True)
-def _reset_unexpected_flag() -> None:
+def _reset_unexpected_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     fxcm._UNEXPECTED_SIG_LOGGED = False
+    # Тести в інших модулях можуть "прогріти" live-cache інжестора і зробити
+    # цей файл order-dependent. Скидаємо кеш для ізоляції.
+    if hasattr(fxcm, "_reset_live_cache_for_tests"):
+        fxcm._reset_live_cache_for_tests()
+
+    # Інжестор має status-based gate (market/price). Щоб тест HMAC не залежав
+    # від глобального стану `fxcm:status`, фіксуємо дозволяючий стан локально.
+    monkeypatch.setattr(fxcm, "get_fxcm_feed_state", lambda: _FakeFeedState("open"))
 
 
 @pytest.fixture()
@@ -104,7 +119,7 @@ def _run_process(
     payload: dict[str, Any], *, secret: str | None, algo: str = "sha256", required: bool
 ) -> tuple[FakeStore, int]:
     store = FakeStore()
-    rows, _, _ = asyncio.run(
+    _rows_reported, _, _ = asyncio.run(
         fxcm._process_payload(
             store,  # type: ignore
             payload,
@@ -113,7 +128,10 @@ def _run_process(
             hmac_required=required,
         )
     )
-    return store, rows
+    # T3: rows з процесора більше не гарантує "скільки реально записано".
+    # Для тестів визначаємо rows як кількість рядків, переданих у store.put_bars().
+    rows_written = sum(len(df) for _symbol, _tf, df in store.calls)
+    return store, rows_written
 
 
 def test_unsigned_payload_processed_when_hmac_disabled() -> None:
