@@ -5,19 +5,19 @@ profile:
   name: default
   ram_limit_mb: 1024
   max_symbols_hot: 96
-  hot_ttl_sec: 21600      # 6h
-  warm_ttl_sec: 86400     # 24h
+  hot_ttl_sec: 21600 # 6h
+  warm_ttl_sec: 86400 # 24h
   flush_batch_max: 8
   flush_queue_soft: 200
   flush_queue_hard: 1000
 
 intervals_ttl:
-  "1m": 21600             # 6h
-  "5m": 43200             # 12h
+  "1m": 21600 # 6h
+  "5m": 43200 # 12h
   "15m": 86400
-  "1h": 259200            # 3d
-  "4h": 604800            # 7d
-  "1d": 2592000           # 30d
+  "1h": 259200 # 3d
+  "4h": 604800 # 7d
+  "1d": 2592000 # 30d
 
 write_behind: true
 validate_on_write: true
@@ -57,7 +57,7 @@ trade_updater:
   drift_warn_high: 2.5
   drift_warn_low: 0.5
   pressure_warn: 2.0
-  cycle_histogram_buckets: [0.1,0.25,0.5,1,2,5,10,30,60,120,300]
+  cycle_histogram_buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300]
   auto_interval_scale_enabled: true
   auto_interval_scale_cycles: 3
   auto_interval_scale_factor: 1.3
@@ -78,8 +78,8 @@ trade_updater:
 
 historical_stream:
   enabled: true
-  preload_range: true        # авто-підвантаження діапазону, якщо path не задано
-  path: null                 # не вказуємо файл, хай згенерує снапшот сам
+  preload_range: true # авто-підвантаження діапазону, якщо path не задано
+  path: null # не вказуємо файл, хай згенерує снапшот сам
   symbol: "XAUUSD"
   timeframe: "1m"
 
@@ -92,10 +92,10 @@ historical_stream:
   # end_ts_ms: 1759951200000
 
   # режим програвання
-  realtime: false            # false → миттєво (або керуючись speed/throttle)
-  speed: 0.0                 # 0 → без затримок, 1.0 → realtime
-  throttle_ms: 0             # додаткова пауза між барами (мс)
+  realtime: false # false → миттєво (або керуючись speed/throttle)
+  speed: 0.0 # 0 → без затримок, 1.0 → realtime
+  throttle_ms: 0 # додаткова пауза між барами (мс)
   save_position: true
   pos_ttl_sec: 86400
   local_queue_maxsize: 0
-  max_events_per_sec: 200    # soft-cap, 0 → без ліміту
+  max_events_per_sec: 200 # soft-cap, 0 → без ліміту

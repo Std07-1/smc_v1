@@ -210,7 +210,7 @@ class SmcFxcmContractCfg(BaseModel):
     symbols: list[SmcUniverseSymbolCfg] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _ensure_unique_symbol_tf(self) -> "SmcFxcmContractCfg":
+    def _ensure_unique_symbol_tf(self) -> SmcFxcmContractCfg:
         seen: set[tuple[str, str]] = set()
         for entry in self.symbols:
             for tf in entry.tfs:

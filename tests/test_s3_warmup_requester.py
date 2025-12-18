@@ -83,8 +83,9 @@ async def test_requester_publishes_warmup_once_then_rate_limits(
     assert payload["type"] == "fxcm_warmup"
     assert payload["symbol"] == "XAUUSD"
     assert payload["tf"] == "1m"
-    assert payload["min_history_bars"] == 300
-    assert payload["lookback_bars"] == 300
+    # Контракт може вимагати більше історії, ніж runtime desired-limit.
+    assert payload["min_history_bars"] == 2000
+    assert payload["lookback_bars"] == 2000
     assert isinstance(payload["lookback_minutes"], int)
     assert payload["lookback_minutes"] >= 1
     assert payload["reason"] == "insufficient_history"
@@ -139,7 +140,8 @@ async def test_requester_publishes_backfill_when_tail_stale(
         redis=fake_redis,  # type: ignore[arg-type]
         store=fake_store,  # type: ignore[arg-type]
         allowed_pairs={("xauusd", "1m")},
-        min_history_bars_by_symbol={"xauusd": 2000},
+        # Для stale_tail тесту тримаємо дефолтний desired-limit (300 барів).
+        min_history_bars_by_symbol={"xauusd": 0},
         cooldown_sec=1,
         stale_k=3.0,
     )
@@ -193,7 +195,8 @@ async def test_requester_resets_active_issue_when_state_becomes_ok(
         redis=fake_redis,  # type: ignore[arg-type]
         store=fake_store,  # type: ignore[arg-type]
         allowed_pairs={("xauusd", "1m")},
-        min_history_bars_by_symbol={"xauusd": 2000},
+        # Для тесту reset достатньо desired-limit (300 барів).
+        min_history_bars_by_symbol={"xauusd": 0},
         commands_channel="fxcm:commands",
         poll_sec=60,
         cooldown_sec=900,
