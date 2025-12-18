@@ -243,7 +243,9 @@ SMC_RUNTIME_PARAMS: dict[str, Any] = {
     "enabled": True,
     "tf_primary": "1m",
     "tfs_extra": ("5m", "15m", "1h"),
-    "limit": 300,
+    # Мінімальна історія для старту розрахунку SMC.
+    # На VPS без локальних снапшотів дає змогу стартувати швидше (≈50 хв для 1m).
+    "limit": 50,
     "max_concurrency": 4,
     "log_latency": True,
 }
