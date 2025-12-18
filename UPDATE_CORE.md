@@ -74,3 +74,19 @@
 - `python -m pre_commit run --all-files` → Passed
 - `python tools/audit_repo_report.py` (production surface) → OK (0 findings)
 - `python -m pytest -q` → `220 passed`
+
+## 2025-12-18 — Docs(core): уточнено SSOT-план мультитаймфреймового SMC “без шуму” (3 шари + гейти + explain)
+
+**Що змінено**
+
+- Оновлено “план, якому можна довіряти”: SMC як технічний розбір (без “сигналів”), з 3 шарами рендера (Context 1h/4h, Structure 5m, Execution 1m).
+- Зафіксовано принципи анти-шуму: ролі TF, ліміти об’єктів, `why[]` + `score`, та “чесні гейти” `NO_*` замість фантазій.
+- Розширено опис етапів 0–8: TF-правда/телеметрія/гейти → реальні TF у store → структура/ліквідність/POI → execution → сценарій 4.2/4.3 → UI → QA.
+
+**Де**
+
+- .github/copilot-memory.md
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_smc_core_contracts.py` → passed.

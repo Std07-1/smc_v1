@@ -84,6 +84,27 @@
 
 ---
 
+## 2025-12-18 — Dev: локальна ізоляція (VPS FXCM → local Redis relay) для безпечної розробки
+
+**Що змінено**
+
+- Додано інструмент `tools/redis_fxcm_relay.py`: читає FXCM Pub/Sub з remote Redis (зазвичай через SSH-тунель до VPS) і перепубліковує в local Redis на тих самих каналах.
+- Додано шаблон `.env.local.example` для локального профілю (127.0.0.1 + локальні порти), щоб локальний SMC/UI не писав у VPS Redis і не “змішував” потоки.
+- Hotfix: виправлено синтаксичну помилку в раннері UI_v2 HTTP-сервера (щоб локальний запуск `app.main` знову стартував).
+
+**Де**
+
+- tools/redis_fxcm_relay.py
+- .env.local.example
+- app/main.py
+
+**Тести/перевірка**
+
+- Smoke: імпорт `python -c "import tools.redis_fxcm_relay"` → OK.
+- `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_server.py tests/test_ui_v2_viewer_state_ws_server.py` → passed.
+
+---
+
 ## 2025-12-18 — Docs: матриця deploy-режимів (SSOT) у README
 
 **Що змінено**

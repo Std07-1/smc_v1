@@ -18,58 +18,101 @@
   - **Web/UI** → `UPDATE.md`.
 - Відповідь у чаті дозволена тільки після успішного тесту та запису у відповідний UPDATE.
 
-## План: шлях до “трейдерського” SMC-рендера без шуму (етапами)
+## План: мультитаймфреймова SMC-система “без шуму” (етапами)
 
-### Етап 0 — TF-правда + телеметрія + “чесні” гейти
+**Принцип:** система не “дає сигнали”, а робить технічний розбір і компактно показує його на графіку.
+Відображення = **3 шари** (Context/Structure/Execution) + **ліміти** (N зон/ліній/подій) + **explain** (3–5 причин).
 
-- Ціль: прибрати “ілюзію 5m” і зробити так, щоб система **чесно знала**, по яких TF вона реально працює.
-- Фіксуємо ролі TF: `tf_exec=1m`, `tf_structure=5m`, `tf_context=[1h,4h]`.
-- У кожен снапшот/лог додаємо: `tf_primary`, `tf_exec`, `tf_context`, `bars_used`, `last_ts`, `lag_ms`.
-- Gate: якщо `tf_structure` не має даних у store → UI показує `NO_5M_DATA`, а не малює псевдо-структуру.
-- Acceptance: у логах/снапшотах видно чіткий розподіл TF; немає “5m в теорії, 1m по факту”.
+### Ролі таймфреймів (SSOT)
 
-### Етап 1 — Дані: реально отримати 5m/1h/4h у UnifiedDataStore
+- **Контекст 1h/4h:** де ми на мапі (premium/discount, HTF range, HTF liquidity, HTF POI, AMD/режим дня).
+- **Структура 5m:** що ринок робить (bias, BOS/ChoCH, dealing range, внутрішні/зовнішні рівні).
+- **Execution 1m:** де саме підтвердження (sweep/raid, micro-BOS/ChoCH, retest) — **лише** біля POI/targets.
+- **Завжди:** targets, POI, сценарій 4.2/4.3, explain-блок (“чому”, без “входь тут”).
 
-- Ціль: єдине джерело правди по TF у Data layer (без дублювання логіки в UI).
-- Варіант A (пріоритет): інжестити 1m → агрегувати в 5m/1h/4h у Data.
-- Варіант B: інжестити 1m + окремо 5m/1h (якщо джерело дає).
-- Gate: пропуски/дірки по timestamps → метрика + статус у UI.
-- Acceptance: `get_df(symbol,"5m")`, `"1h"`, `"4h"` повертають повні ряди; quality-check без гепів.
+### Загальні правила (щоб не було шуму)
 
-### Етап 2 — SMC-core “primary=5m”: структура як рішення
+- Кожен TF має свою роль і не лізе в іншу.
+- Малюємо мало, але з поясненням: кожен об’єкт має `why[]` і `score`.
+- Гейти якості: якщо даних нема → не “малюємо фантазії”, а показуємо `NO_STRUCTURE_DATA`/`NO_5M_DATA` і причину.
 
-- Ціль: “куди йдемо і чому” визначається на 5m, а 1m лише підтверджує.
-- Acceptance: на 5m є стабільні BOS/CHOCH, bias, dealing range; UI показує це без шуму.
+### Етап 0 — TF-правда + телеметрія + чесні гейти
 
-### Етап 3 — Liquidity (5m + 1h/4h): мапа “куди тягне”
+- Тема: прибрати “ілюзію 5m”, зафіксувати правду та зробити compute керованим.
+- SSOT: `tf_exec=1m`, `tf_structure=5m`, `tf_context=[1h,4h]`; `tf_primary := tf_structure` (ядро “думає” 5m).
+- Гейт: якщо `tf_structure` неготовий → **compute не викликаємо**, але live-stats/публікація живі.
+- Meta: `tf_plan`, `tf_effective`, `gates`, `history_state`, `age_ms`, `last_ts`, `lag_ms`.
+- Метрики: `cycle_total`, `compute_ms`, `skip_total{reason}`, `ready_pct`, `tf_effective`.
+- Варианти: A) жорсткий гейт (рекомендовано), B) м’який `stale_tail` лише після стабілізації.
+- Acceptance: у UI/логах немає двозначності “5m у теорії, 1m по факту”.
 
-- Ціль: розділити internal/external liquidity і цілі руху.
-- Вихід: `liquidity_targets[]` з `type`, `side`, `level`, `strength`, `tf`, `role(internal/external)`.
-- Acceptance: система може назвати 1–3 найближчі “магніти” на кожному TF.
+### Етап 1 — Дані: реальні 5m/1h/4h у UnifiedDataStore
 
-### Етап 4 — Zones (POI): FVG/OB/Breaker як “де чекати реакцію”
+- Тема: зробити “правду по TF” фізичною (дані існують у store).
+- Ціль: `get_df(symbol,"5m"/"1h"/"4h")` працює так само надійно, як `"1m"`.
+- Як: агрегатор `1m→5m→1h→4h` у Data layer (не в UI й не в Stage1).
+- Контроль: перевірка гепів (крок `open_time` = TF), віддавати `complete=true` для структурних TF.
+- Варианти: A) агрегація з 1m (кращий, SSOT=1m), B) прямий інжест старших TF (ризик “двох правд”).
+- Acceptance: coverage без гепів на контрольному вікні; UI показує `tf_health` для 1m/5m/1h/4h.
 
-- Ціль: POI — це зони з пріоритетом, не “павутина ліній”.
-- Acceptance: на графіку одночасно не більше N зон; кожна зона має причину (`score/explain`).
+### Етап 2 — Структура “primary=5m”: swings → legs → BOS/ChoCH → dealing range
 
-### Етап 5 — Execution на 1m: підтвердження, а не “головний мозок”
+- Тема: “що ринок робить” визначає 5m, не 1m.
+- Як: один стабільний алгоритм свінгів → ноги HH/HL/LH/LL → BOS/ChoCH за правилами (не “по тіні”).
+- Dealing range: останній імпульс + його high/low, premium/discount.
+- Пороговість від ATR (масштаб-інваріантність).
+- Acceptance: BOS/ChoCH не спамлять; bias не скаче при малій волатильності.
 
-- Ціль: 1m дає sweep/raid, micro-BOS/CHOCH біля POI/targets, та entry-hint (без Stage3-рішень).
-- Acceptance: micro BOS/CHOCH на 1m з’являється тільки біля POI/targets.
+### Етап 3 — Liquidity (5m + 1h/4h): internal/external targets
 
-### Етап 6 — Машинний вибір 4.2 vs 4.3 (сценарій)
+- Тема: “куди тягне” і “де паливо”.
+- Вихід: `liquidity_targets[]` з `type/side/level/strength/tf/role(internal|external)` + `why[]`.
+- 5m internal: EQH/EQL, range high/low, локальна swing liquidity.
+- 1h/4h external: HTF swing highs/lows, day/week extremes, session highs/lows.
+- Acceptance: система завжди називає “найближчу зовнішню ціль” і “найближчу внутрішню”.
 
-- Вихід: `scenario={4_2|4_3|unclear}` + `confidence` + `why[]`.
-- Acceptance: у UI є “Поточний сценарій” + 3–5 причин.
+### Етап 4 — Zones (POI): FVG/OB/Breaker + скоринг + active_zones (без шуму)
 
-### Етап 7 — UI без шуму: “3 шари” і ліміти відображення
+- Тема: “де чекати реакцію” — це зони, не лінії.
+- Ціль: максимум 1–3 active POI на сторону; решта — архів.
+- Вихід: `active_poi[]` з `type`, `range`, `filled%`, `score`, `why[]`.
+- Скоринг: confluence (structure + liquidity + premium/discount + displacement).
+- Acceptance: на екрані завжди мало POI; кожен має пояснення “чому він тут”.
 
-- Режими: Context(4h/1h), Structure(5m), Execution(1m).
-- Ліміт: не більше `N_lines`, `N_zones`, `N_events` на екран.
+### Етап 5 — Execution (1m): підтвердження біля POI/targets
 
-### Етап 8 — QA і “ворота якості”
+- Тема: 1m — не “мозок”, а “тригер”.
+- Як: визначити `in_play` (ціна у POI або в радіусі від target) і дозволяти micro-події лише коли `in_play=true`.
+- Вихід: `execution_events[]` (sweep/raid, micro-BOS/ChoCH, retest_ok) з прив’язкою до POI/targets.
+- Acceptance: на 1m подій мало, вони зрозумілі і прив’язані до POI/targets.
 
-- Ціль: кожен етап має метрики/тести й не деградує наступний.
+### Етап 6 — Автовибір 4.2 vs 4.3 (FSM + explain)
+
+- Вихід: `scenario={4_2|4_3|unclear}`, `confidence`, `why[]` (3–5 причин із фактами).
+- FSM (baseline): 4.2 = sweep у premium + rejection + 5m break вниз + retest_fail; 4.3 = break&hold над range high + retest_ok.
+- Acceptance: сценарій не стрибає щохвилини; `unclear` використовується чесно.
+
+### Етап 7 — UI “як на скринах”: 3 шари, ліміти, читабельність
+
+- Ціль: 10–20 об’єктів максимум на екран, без “павутини”.
+- Набір: Context(HTF range + 1–2 HTF POI + 1–2 HTF targets), Structure(dealing range + останній BOS/ChoCH + 1–3 active POI + internal targets), Execution(маркери sweep/micro-BOS/ChoCH/retest_ok).
+- Панель Why: 3–5 булетів (scenario + ключові рівні/POI/targets).
+- Acceptance: символ читається за 5 секунд (“де ми, що робимо, що чекаємо”).
+
+### Етап 8 — QA/ворота якості: щоб не деградувати
+
+- Ціль: кожен етап має метрики, тести, снапшоти, контроль latency.
+- Gate-приклади: гепи/NaN/екстремуми/порожні DF; explain coverage (`why>=3`), coverage POI/targets, p95/p99.
+
+### Залежності (критично)
+
+- Етапи 2–6 не мають сенсу, якщо Етапи 0–1 не завершені (TF-правда + реальні 5m/1h/4h).
+- UI (Етап 7) можна починати рано, але лише як рендер контрактів, не як місце для обчислень.
+
+### Наступний крок (конкретика)
+
+- Добити Етап 0: `tf_health` у meta (has_data/bars/last_ts/lag_ms для 1m/5m/1h/4h) + тести.
+- Перейти до Етапу 1: агрегація `1m→5m→1h→4h` у Data layer з гейтами гепів.
 
 ## Stage1 Cold-start / Warmup
 
