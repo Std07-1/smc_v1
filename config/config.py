@@ -126,8 +126,17 @@ NAMESPACE = _env_namespace(_default_namespace_for_mode(AI_ONE_MODE))
 
 
 def _default_fxcm_channel_prefix(mode: str) -> str:
-    mode_norm = str(mode or "").strip().lower()
-    return "fxcm_local" if mode_norm == "local" else "fxcm"
+    """Повертає дефолтний prefix каналів FXCM-конектора.
+
+    Важливо:
+    - FXCM конектор живе в окремому репо, і в цьому проєкті більшість коду/доків
+        та утиліт орієнтуються на канонічні канали `fxcm:*`.
+    - Якщо потрібно ізолювати dev/локальний конектор, задайте явний
+        `FXCM_CHANNEL_PREFIX=fxcm_local` (або інший prefix) через ENV.
+    """
+
+    _ = str(mode or "").strip().lower()
+    return "fxcm"
 
 
 _FALSE_ENV_VALUES = {"1"}
@@ -366,9 +375,10 @@ SMC_RUNTIME_PARAMS: dict[str, Any] = {
         # Буст confidence при частковому підтвердженні (лише одна з потрібних подій).
         "micro_boost_partial": 0.02,
     },
-    # Мінімальна історія для старту розрахунку SMC.
-    # На VPS без локальних снапшотів дає змогу стартувати швидше (≈50 хв для 1m).
-    "limit": 50,
+    # Мінімальна історія (у барах) для старту SMC + S3 warmup/backfill requester.
+    # Вимога UX: на старті підкачати хоча б ~300 останніх 1m барів
+    # (а для інших TF — еквівалент за часом).
+    "limit": 300,
     "max_concurrency": 4,
     "log_latency": True,
 }

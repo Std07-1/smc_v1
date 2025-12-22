@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import smc_execution
 import smc_liquidity
 import smc_structure
 import smc_zones
 from smc_core.config import SMC_CORE_CONFIG, SmcCoreConfig
-from smc_core.smc_types import SmcHint, SmcInput
+from smc_core.smc_types import SmcHint, SmcInput, SmcSignal
 from smc_core.stage6_scenario import decide_42_43, to_signal_dict
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger("smc_core.engine")
 
 
 class SmcCoreEngine:
@@ -60,7 +60,7 @@ class SmcCoreEngine:
             execution_state = None
 
         # Stage6: машинний розбір 4.2 vs 4.3 (не «сигнал», а класифікація сценарію).
-        signals: list[dict[str, Any]] = []
+        signals: list[SmcSignal] = []
         try:
             primary_frame = snapshot.ohlc_by_tf.get(snapshot.tf_primary)
             if primary_frame is not None:
@@ -74,7 +74,8 @@ class SmcCoreEngine:
                     zones=zones_state,
                     context=snapshot.context,
                 )
-                signals = [to_signal_dict(decision)]
+                # to_signal_dict повертає dict — приводимо до SmcSignal для статичної перевірки типів
+                signals = [cast(SmcSignal, to_signal_dict(decision))]
         except Exception as exc:
             # Stage6 — soft-fail: не ламаємо підказку.
             LOGGER.debug(

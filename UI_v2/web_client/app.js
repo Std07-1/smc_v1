@@ -888,8 +888,8 @@ const OHLCV_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 const TICK_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
 
 const FXCM_LIVE_STALE_MS = 5000;
-const FXCM_OHLCV_RECONNECT_MAX_ATTEMPTS = 3;
-const FXCM_TICK_RECONNECT_MAX_ATTEMPTS = 3;
+const FXCM_OHLCV_RECONNECT_MAX_ATTEMPTS = 12;
+const FXCM_TICK_RECONNECT_MAX_ATTEMPTS = 12;
 const STATUS_RECONNECT_MAX_ATTEMPTS = 12;
 
 const appState = {
@@ -1702,8 +1702,13 @@ async function fetchOhlcv(symbol, timeframe = appState.currentTimeframe || OHLCV
     const lowerSymbol = symbol.toLowerCase();
     // Replay cursor (опційно): якщо йде offline replay, бари повинні "доростати"
     // разом з курсором, без lookahead.
-    const replayCursorMs = Number(appState.replay?.lastCursorMs);
-    const cursorSuffix = Number.isFinite(replayCursorMs) ? `&to_ms=${encodeURIComponent(String(Math.floor(replayCursorMs)))}` : "";
+    const replayCursorRaw = appState.replay?.lastCursorMs;
+    const replayCursorMs = (typeof replayCursorRaw === "number" && Number.isFinite(replayCursorRaw))
+        ? Math.floor(replayCursorRaw)
+        : null;
+    const cursorSuffix = replayCursorMs !== null
+        ? `&to_ms=${encodeURIComponent(String(replayCursorMs))}`
+        : "";
 
     const url = `${HTTP_BASE_URL}/smc-viewer/ohlcv` +
         `?symbol=${encodeURIComponent(lowerSymbol)}` +

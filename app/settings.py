@@ -20,14 +20,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.env import select_env_file
-from config.config import (
-    DATASTORE_BASE_DIR as CFG_DATASTORE_BASE_DIR,
-    FXCM_OHLCV_CHANNEL,
-    FXCM_PRICE_TICK_CHANNEL,
-    FXCM_STATUS_CHANNEL,
-    NAMESPACE as CFG_NAMESPACE,
-)
+from app.env import select_env_file_with_trace
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_DATASTORE_CFG = _PROJECT_ROOT / "config" / "datastore.yaml"
@@ -35,8 +28,19 @@ logger = logging.getLogger("app.settings")
 if not logger.handlers:
     logger.addHandler(logging.NullHandler())
 
-_ENV_FILE = select_env_file(_PROJECT_ROOT)
+_ENV_SELECTION = select_env_file_with_trace(_PROJECT_ROOT)
+_ENV_FILE = _ENV_SELECTION.path
 load_dotenv(_ENV_FILE)
+
+# Важливо: імпортуємо config.config ПІСЛЯ load_dotenv, щоб значення з профілю
+# (`.env.local`/`.env.prod`) реально впливали на namespace/канали.
+from config.config import (  # noqa: E402
+    DATASTORE_BASE_DIR as CFG_DATASTORE_BASE_DIR,
+    FXCM_OHLCV_CHANNEL,
+    FXCM_PRICE_TICK_CHANNEL,
+    FXCM_STATUS_CHANNEL,
+    NAMESPACE as CFG_NAMESPACE,
+)
 
 
 class Settings(BaseSettings):

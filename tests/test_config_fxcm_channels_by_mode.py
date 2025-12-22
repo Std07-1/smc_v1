@@ -1,6 +1,9 @@
-"""Тести профілювання FXCM каналів через `AI_ONE_MODE`.
+"""Тести профілювання FXCM каналів.
 
-Мета: локальний запуск має слухати `fxcm_local:*`, щоб не впливати на прод-конектор.
+FXCM конектор живе в окремому репо, тому в цьому проєкті дефолтні канали
+вважаються канонічними `fxcm:*` незалежно від `AI_ONE_MODE`.
+
+Ізоляція локального/dev конектора робиться явним `FXCM_CHANNEL_PREFIX`.
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ def _reload_config():
     return importlib.reload(cfg)
 
 
-def test_fxcm_channels_default_to_local_prefix(monkeypatch) -> None:
+def test_fxcm_channels_default_to_fxcm_prefix_in_local_mode(monkeypatch) -> None:
     monkeypatch.setenv("AI_ONE_MODE", "local")
     monkeypatch.delenv("FXCM_CHANNEL_PREFIX", raising=False)
     monkeypatch.delenv("FXCM_OHLCV_CHANNEL", raising=False)
@@ -24,10 +27,10 @@ def test_fxcm_channels_default_to_local_prefix(monkeypatch) -> None:
 
     cfg = _reload_config()
 
-    assert cfg.FXCM_OHLCV_CHANNEL == "fxcm_local:ohlcv"
-    assert cfg.FXCM_PRICE_TICK_CHANNEL == "fxcm_local:price_tik"
-    assert cfg.FXCM_STATUS_CHANNEL == "fxcm_local:status"
-    assert cfg.FXCM_COMMANDS_CHANNEL == "fxcm_local:commands"
+    assert cfg.FXCM_OHLCV_CHANNEL == "fxcm:ohlcv"
+    assert cfg.FXCM_PRICE_TICK_CHANNEL == "fxcm:price_tik"
+    assert cfg.FXCM_STATUS_CHANNEL == "fxcm:status"
+    assert cfg.FXCM_COMMANDS_CHANNEL == "fxcm:commands"
 
 
 def test_fxcm_channels_default_to_prod_prefix(monkeypatch) -> None:

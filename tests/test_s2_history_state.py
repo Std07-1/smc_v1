@@ -109,3 +109,163 @@ async def test_compute_history_status_reads_tail_and_counts() -> None:
     assert status.bars_count == 1
     assert status.last_open_time_ms is not None
     assert status.state in {"ok", "unknown"}
+    assert status.gaps_count == 0
+    assert status.max_gap_ms is None
+    assert status.non_monotonic_count == 0
+
+
+async def test_compute_history_status_marks_gappy_tail_when_internal_gaps_exist() -> (
+    None
+):
+    now_ms = 1_700_000_000_000
+    # Симулюємо пропуск 1 бара: крок 2*60_000.
+    base = now_ms - (5 * 60_000)
+    df = pd.DataFrame(
+        [
+            {
+                "open_time": (base + 0 * 120_000) / 1000.0,
+                "close_time": (base + 0 * 120_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 1 * 120_000) / 1000.0,
+                "close_time": (base + 1 * 120_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 2 * 120_000) / 1000.0,
+                "close_time": (base + 2 * 120_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+        ]
+    )
+    store = _FakeStore(df)
+    status = await compute_history_status(
+        store=store,
+        symbol="xauusd",
+        timeframe="1m",
+        min_history_bars=3,
+        stale_k=3.0,
+        now_ms=now_ms,
+    )
+    assert status.state == "gappy_tail"
+    assert status.needs_backfill is True
+    assert status.gaps_count >= 1
+    assert isinstance(status.max_gap_ms, int)
+    assert status.non_monotonic_count == 0
+
+
+async def test_compute_history_status_marks_non_monotonic_tail_when_bars_go_backwards() -> (
+    None
+):
+    now_ms = 1_700_000_000_000
+    # Важливо: тримаємо last_open_time в межах stale_k*tf (3х1m),
+    # щоб кейс "бар позаду" не маскувався станом stale_tail.
+    base = now_ms - (2 * 60_000)
+    # Третій бар "позаду" (open_time менше попереднього) -> non_monotonic_tail.
+    df = pd.DataFrame(
+        [
+            {
+                "open_time": (base + 0 * 60_000) / 1000.0,
+                "close_time": (base + 0 * 60_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 2 * 60_000) / 1000.0,
+                "close_time": (base + 2 * 60_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 1 * 60_000) / 1000.0,
+                "close_time": (base + 1 * 60_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+        ]
+    )
+    store = _FakeStore(df)
+    status = await compute_history_status(
+        store=store,
+        symbol="xauusd",
+        timeframe="1m",
+        min_history_bars=3,
+        stale_k=3.0,
+        now_ms=now_ms,
+    )
+    assert status.state == "non_monotonic_tail"
+    assert status.needs_backfill is True
+    assert status.non_monotonic_count >= 1
+
+
+async def test_compute_history_status_does_not_mark_non_monotonic_when_open_time_duplicates_exist() -> (
+    None
+):
+    now_ms = 1_700_000_000_000
+    base = now_ms - (1 * 60_000)
+    # Дублікати open_time не вважаємо "баром позаду".
+    df = pd.DataFrame(
+        [
+            {
+                "open_time": (base + 0 * 60_000) / 1000.0,
+                "close_time": (base + 0 * 60_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 0 * 60_000) / 1000.0,
+                "close_time": (base + 0 * 60_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 1 * 60_000) / 1000.0,
+                "close_time": (base + 1 * 60_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+        ]
+    )
+    store = _FakeStore(df)
+    status = await compute_history_status(
+        store=store,
+        symbol="xauusd",
+        timeframe="1m",
+        min_history_bars=3,
+        stale_k=3.0,
+        now_ms=now_ms,
+    )
+    assert status.state == "ok"
+    assert status.non_monotonic_count == 0
+    assert status.gaps_count == 0

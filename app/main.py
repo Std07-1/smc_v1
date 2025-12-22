@@ -11,49 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from redis.asyncio import Redis
 
-from app.env import select_env_file
-from app.fxcm_warmup_requester import build_requester_from_config
-from app.runtime import (
-    _build_allowed_pairs,
-    _build_contract_min_history_bars,
-    bootstrap,
-    create_redis_client,
-    launch_experimental_viewer,
-    noop_healthcheck,
-    start_fxcm_tasks,
-)
-from app.settings import settings
-from app.smc_producer import smc_producer
-from app.smc_state_manager import SmcStateManager
-from app.telemetry import publish_ui_metrics
-from config.config import (
-    AI_ONE_MODE,
-    FAST_SYMBOLS_TTL_MANUAL,
-    FXCM_FAST_SYMBOLS,
-    NAMESPACE,
-    REDIS_CHANNEL_SMC_STATE,
-    REDIS_CHANNEL_SMC_VIEWER_EXTENDED,
-    REDIS_SNAPSHOT_KEY_SMC,
-    REDIS_SNAPSHOT_KEY_SMC_VIEWER,
-    SCREENING_LOOKBACK,
-    SMC_REFRESH_INTERVAL,
-)
-from data.unified_store import UnifiedDataStore
-from UI_v2.fxcm_ohlcv_ws_server import FxcmOhlcvWsServer
-from UI_v2.ohlcv_provider import OhlcvProvider, UnifiedStoreOhlcvProvider
-from UI_v2.smc_viewer_broadcaster import (
-    SmcViewerBroadcaster,
-    SmcViewerBroadcasterConfig,
-)
-from UI_v2.viewer_state_server import ViewerStateHttpServer
-from UI_v2.viewer_state_store import ViewerStateStore
-from UI_v2.viewer_state_ws_server import ViewerStateWsServer
+from app.env import select_env_file_with_trace
 
 logger = logging.getLogger("app.main")
 if not logger.handlers:
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
     logger.addHandler(logging.StreamHandler())
     # Під pytest caplog навішує handler на root logger; щоб він бачив записи,
     # вмикаємо propagate лише у тестовому середовищі.
@@ -100,8 +63,108 @@ def _silence_expected_websocket_handshake_noise() -> None:
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(select_env_file(_PROJECT_ROOT))
+_ENV_SELECTION = select_env_file_with_trace(_PROJECT_ROOT)
+load_dotenv(_ENV_SELECTION.path)
+
+
+def _log_startup_profile() -> None:
+    """Логує ланцюжок конфігурації при запуску.
+
+    Мета: швидко бачити, який env-файл підхопили, які канали/namespace активні,
+    і чи немає очевидних конфіг-помилок.
+    """
+
+    try:
+        src = str(_ENV_SELECTION.source)
+        path = str(_ENV_SELECTION.path)
+        exists = bool(_ENV_SELECTION.exists)
+        ref = getattr(_ENV_SELECTION, "ref", None)
+        logger.info("[BOOT] env-файл: %s (source=%s, exists=%s)", path, src, exists)
+        logger.info(
+            "[BOOT] env: AI_ONE_ENV_FILE(process)=%s AI_ONE_ENV_FILE(ref)=%s AI_ONE_MODE=%s AI_ONE_NAMESPACE=%s FXCM_CHANNEL_PREFIX=%s",
+            os.getenv("AI_ONE_ENV_FILE"),
+            ref,
+            os.getenv("AI_ONE_MODE"),
+            os.getenv("AI_ONE_NAMESPACE"),
+            os.getenv("FXCM_CHANNEL_PREFIX"),
+        )
+    except Exception:
+        logger.warning("[BOOT] Не вдалося залогувати env-трасу", exc_info=True)
+
+
+# Важливо: імпортуємо залежні від ENV модулі ПІСЛЯ load_dotenv.
+from redis.asyncio import Redis  # noqa: E402
+
+from app.fxcm_warmup_requester import build_requester_from_config  # noqa: E402
+from app.runtime import (  # noqa: E402
+    _build_allowed_pairs,
+    _build_contract_min_history_bars,
+    bootstrap,
+    create_redis_client,
+    launch_experimental_viewer,
+    noop_healthcheck,
+    start_fxcm_tasks,
+)
+from app.settings import settings  # noqa: E402
+from app.smc_producer import smc_producer  # noqa: E402
+from app.smc_state_manager import SmcStateManager  # noqa: E402
+from app.telemetry import publish_ui_metrics  # noqa: E402
+from config.config import (  # noqa: E402
+    AI_ONE_MODE,
+    FAST_SYMBOLS_TTL_MANUAL,
+    FXCM_COMMANDS_CHANNEL,
+    FXCM_FAST_SYMBOLS,
+    FXCM_OHLCV_CHANNEL,
+    FXCM_PRICE_TICK_CHANNEL,
+    FXCM_STATUS_CHANNEL,
+    NAMESPACE,
+    REDIS_CHANNEL_SMC_STATE,
+    REDIS_CHANNEL_SMC_VIEWER_EXTENDED,
+    REDIS_SNAPSHOT_KEY_SMC,
+    REDIS_SNAPSHOT_KEY_SMC_VIEWER,
+    SCREENING_LOOKBACK,
+    SMC_REFRESH_INTERVAL,
+)
+from data.unified_store import UnifiedDataStore  # noqa: E402
+from UI_v2.fxcm_ohlcv_ws_server import FxcmOhlcvWsServer  # noqa: E402
+from UI_v2.ohlcv_provider import OhlcvProvider, UnifiedStoreOhlcvProvider  # noqa: E402
+from UI_v2.smc_viewer_broadcaster import (  # noqa: E402
+    SmcViewerBroadcaster,
+    SmcViewerBroadcasterConfig,
+)
+from UI_v2.viewer_state_server import ViewerStateHttpServer  # noqa: E402
+from UI_v2.viewer_state_store import ViewerStateStore  # noqa: E402
+from UI_v2.viewer_state_ws_server import ViewerStateWsServer  # noqa: E402
+
+
+def _log_channels_summary() -> None:
+    try:
+        logger.info("[BOOT] namespace: %s", str(NAMESPACE))
+        logger.info(
+            "[BOOT] FXCM канали: ohlcv=%s price_tik=%s status=%s commands=%s",
+            str(FXCM_OHLCV_CHANNEL),
+            str(FXCM_PRICE_TICK_CHANNEL),
+            str(FXCM_STATUS_CHANNEL),
+            str(FXCM_COMMANDS_CHANNEL),
+        )
+        logger.info(
+            "[BOOT] Redis: host=%s port=%s",
+            str(getattr(settings, "redis_host", "?")),
+            str(getattr(settings, "redis_port", "?")),
+        )
+        if bool(getattr(settings, "fxcm_hmac_required", True)) and not getattr(
+            settings, "fxcm_hmac_secret", None
+        ):
+            logger.warning(
+                "[BOOT] FXCM_HMAC_REQUIRED увімкнено, але FXCM_HMAC_SECRET порожній"
+            )
+    except Exception:
+        logger.warning("[BOOT] Не вдалося залогувати summary каналів", exc_info=True)
+
+
 _silence_expected_websocket_handshake_noise()
+_log_startup_profile()
+_log_channels_summary()
 
 _FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
@@ -221,6 +284,7 @@ async def run_pipeline() -> None:
     tasks: list[asyncio.Task[Any]] = []
     fxcm_tasks: list[asyncio.Task[Any]] = []
     redis_conn: Redis | None = None
+    datastore: UnifiedDataStore | None = None
     try:
         datastore, cfg = await bootstrap()
         redis_conn, source = create_redis_client(decode_responses=True)
@@ -294,6 +358,23 @@ async def run_pipeline() -> None:
         for task in tasks + fxcm_tasks:
             if isinstance(task, asyncio.Task) and not task.done():
                 task.cancel()
+        # ВАЖЛИВО: щоб не втрачати хвіст історії при рестарті,
+        # примусово зупиняємо maintenance loop (він робить фінальний drain write-behind).
+        if datastore is not None:
+            try:
+                await datastore.stop_maintenance()
+                logger.info(
+                    "[SMC] UnifiedDataStore maintenance loop зупинено (flush виконано)"
+                )
+            except Exception:
+                logger.warning(
+                    "[SMC] Не вдалося коректно зупинити maintenance loop", exc_info=True
+                )
+        if redis_conn is not None:
+            try:
+                await redis_conn.close()
+            except Exception:
+                pass
         logger.info("[SMC] run_pipeline завершено")
 
 
@@ -432,55 +513,52 @@ async def _run_ui_v2_http_server(
 
     retry_delay_sec = 5.0
     backoff_sec = 1.0
-    try:
-        while True:
-            redis = Redis(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                decode_responses=False,
+    while True:
+        redis = Redis(
+            host=settings.redis_host,
+            port=settings.redis_port,
+            decode_responses=False,
+        )
+        try:
+            store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
+            server = ViewerStateHttpServer(
+                store=store,
+                ohlcv_provider=ohlcv_provider,
+                host=host,
+                port=port,
             )
+            await server.run()
+            return
+        except asyncio.CancelledError:
+            logger.info("[UI_v2] HTTP server task cancelled")
+            raise
+        except OSError as exc:
+            if _is_address_in_use_error(exc):
+                logger.error(
+                    "[UI_v2] HTTP server не зміг забіндитись на %s:%d (порт зайнятий). "
+                    "Повторю спробу через %.0fс. "
+                    "(Підказка: змініть ENV SMC_VIEWER_HTTP_PORT або зупиніть процес, що слухає цей порт.)",
+                    host,
+                    port,
+                    retry_delay_sec,
+                )
+                await asyncio.sleep(retry_delay_sec)
+                retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
+                continue
+            raise
+        except Exception:
+            logger.warning(
+                "[UI_v2] HTTP server: помилка/Redis недоступний. Повтор через %.1f с.",
+                backoff_sec,
+                exc_info=True,
+            )
+            await asyncio.sleep(backoff_sec)
+            backoff_sec = min(backoff_sec * 2.0, 60.0)
+        finally:
             try:
-                store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
-                server = ViewerStateHttpServer(
-                    store=store,
-                    ohlcv_provider=ohlcv_provider,
-                    host=host,
-                    port=port,
-                )
-                await server.run()
-                return
-            except asyncio.CancelledError:
-                logger.info("[UI_v2] HTTP server task cancelled")
-                raise
-            except OSError as exc:
-                if _is_address_in_use_error(exc):
-                    logger.error(
-                        "[UI_v2] HTTP server не зміг забіндитись на %s:%d (порт зайнятий). "
-                        "Повторю спробу через %.0fс. "
-                        "(Підказка: змініть ENV SMC_VIEWER_HTTP_PORT або зупиніть процес, що слухає цей порт.)",
-                        host,
-                        port,
-                        retry_delay_sec,
-                    )
-                    await asyncio.sleep(retry_delay_sec)
-                    retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
-                    continue
-                raise
+                await redis.close()
             except Exception:
-                logger.warning(
-                    "[UI_v2] HTTP server: помилка/Redis недоступний. Повтор через %.1f с.",
-                    backoff_sec,
-                    exc_info=True,
-                )
-                await asyncio.sleep(backoff_sec)
-                backoff_sec = min(backoff_sec * 2.0, 60.0)
-            finally:
-                try:
-                    await redis.close()
-                except Exception:
-                    pass
-    finally:
-        return
+                pass
 
 
 async def _run_ui_v2_ws_server(
@@ -490,56 +568,53 @@ async def _run_ui_v2_ws_server(
 
     retry_delay_sec = 5.0
     backoff_sec = 1.0
-    try:
-        while True:
-            redis = Redis(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                decode_responses=False,
+    while True:
+        redis = Redis(
+            host=settings.redis_host,
+            port=settings.redis_port,
+            decode_responses=False,
+        )
+        try:
+            store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
+            server = ViewerStateWsServer(
+                store=store,
+                redis=redis,
+                channel_name=channel,
+                host=host,
+                port=port,
             )
+            await server.run()
+            return
+        except asyncio.CancelledError:
+            logger.info("[UI_v2] WS server task cancelled")
+            raise
+        except OSError as exc:
+            if _is_address_in_use_error(exc):
+                logger.error(
+                    "[UI_v2] WS server не зміг забіндитись на %s:%d (порт зайнятий). "
+                    "Повторю спробу через %.0fс. "
+                    "(Підказка: змініть ENV SMC_VIEWER_WS_PORT або зупиніть процес, що слухає цей порт.)",
+                    host,
+                    port,
+                    retry_delay_sec,
+                )
+                await asyncio.sleep(retry_delay_sec)
+                retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
+                continue
+            raise
+        except Exception:
+            logger.warning(
+                "[UI_v2] WS server: помилка/Redis недоступний. Повтор через %.1f с.",
+                backoff_sec,
+                exc_info=True,
+            )
+            await asyncio.sleep(backoff_sec)
+            backoff_sec = min(backoff_sec * 2.0, 60.0)
+        finally:
             try:
-                store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)
-                server = ViewerStateWsServer(
-                    store=store,
-                    redis=redis,
-                    channel_name=channel,
-                    host=host,
-                    port=port,
-                )
-                await server.run()
-                return
-            except asyncio.CancelledError:
-                logger.info("[UI_v2] WS server task cancelled")
-                raise
-            except OSError as exc:
-                if _is_address_in_use_error(exc):
-                    logger.error(
-                        "[UI_v2] WS server не зміг забіндитись на %s:%d (порт зайнятий). "
-                        "Повторю спробу через %.0fс. "
-                        "(Підказка: змініть ENV SMC_VIEWER_WS_PORT або зупиніть процес, що слухає цей порт.)",
-                        host,
-                        port,
-                        retry_delay_sec,
-                    )
-                    await asyncio.sleep(retry_delay_sec)
-                    retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
-                    continue
-                raise
+                await redis.close()
             except Exception:
-                logger.warning(
-                    "[UI_v2] WS server: помилка/Redis недоступний. Повтор через %.1f с.",
-                    backoff_sec,
-                    exc_info=True,
-                )
-                await asyncio.sleep(backoff_sec)
-                backoff_sec = min(backoff_sec * 2.0, 60.0)
-            finally:
-                try:
-                    await redis.close()
-                except Exception:
-                    pass
-    finally:
-        return
+                pass
 
 
 async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
@@ -547,54 +622,51 @@ async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
 
     retry_delay_sec = 5.0
     backoff_sec = 1.0
-    try:
-        while True:
-            redis = Redis(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                decode_responses=False,
+    while True:
+        redis = Redis(
+            host=settings.redis_host,
+            port=settings.redis_port,
+            decode_responses=False,
+        )
+        try:
+            server = FxcmOhlcvWsServer(
+                redis=redis,
+                channel_name=settings.fxcm_ohlcv_channel,
+                host=host,
+                port=port,
             )
+            await server.run()
+            return
+        except asyncio.CancelledError:
+            logger.info("[UI_v2] FXCM OHLCV WS server task cancelled")
+            raise
+        except OSError as exc:
+            if _is_address_in_use_error(exc):
+                logger.error(
+                    "[UI_v2] FXCM OHLCV WS server не зміг забіндитись на %s:%d (порт зайнятий). "
+                    "Повторю спробу через %.0fс. "
+                    "(Підказка: змініть ENV FXCM_OHLCV_WS_PORT або зупиніть процес, що слухає цей порт.)",
+                    host,
+                    port,
+                    retry_delay_sec,
+                )
+                await asyncio.sleep(retry_delay_sec)
+                retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
+                continue
+            raise
+        except Exception:
+            logger.warning(
+                "[UI_v2] FXCM OHLCV WS server: помилка/Redis недоступний. Повтор через %.1f с.",
+                backoff_sec,
+                exc_info=True,
+            )
+            await asyncio.sleep(backoff_sec)
+            backoff_sec = min(backoff_sec * 2.0, 60.0)
+        finally:
             try:
-                server = FxcmOhlcvWsServer(
-                    redis=redis,
-                    channel_name=settings.fxcm_ohlcv_channel,
-                    host=host,
-                    port=port,
-                )
-                await server.run()
-                return
-            except asyncio.CancelledError:
-                logger.info("[UI_v2] FXCM OHLCV WS server task cancelled")
-                raise
-            except OSError as exc:
-                if _is_address_in_use_error(exc):
-                    logger.error(
-                        "[UI_v2] FXCM OHLCV WS server не зміг забіндитись на %s:%d (порт зайнятий). "
-                        "Повторю спробу через %.0fс. "
-                        "(Підказка: змініть ENV FXCM_OHLCV_WS_PORT або зупиніть процес, що слухає цей порт.)",
-                        host,
-                        port,
-                        retry_delay_sec,
-                    )
-                    await asyncio.sleep(retry_delay_sec)
-                    retry_delay_sec = min(retry_delay_sec * 1.5, 30.0)
-                    continue
-                raise
+                await redis.close()
             except Exception:
-                logger.warning(
-                    "[UI_v2] FXCM OHLCV WS server: помилка/Redis недоступний. Повтор через %.1f с.",
-                    backoff_sec,
-                    exc_info=True,
-                )
-                await asyncio.sleep(backoff_sec)
-                backoff_sec = min(backoff_sec * 2.0, 60.0)
-            finally:
-                try:
-                    await redis.close()
-                except Exception:
-                    pass
-    finally:
-        return
+                pass
 
 
 if __name__ == "__main__":

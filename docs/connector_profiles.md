@@ -23,6 +23,7 @@
     - `prod` → `ai_one`
 
 Рекомендація:
+
 - у `.env.local` завжди тримати `AI_ONE_NAMESPACE=ai_one_local` (для додаткової страховки).
 
 ## 3) Ізоляція каналів FXCM-конектора (щоб локалка не слухала/писала prod)
@@ -30,22 +31,26 @@
 Цей репо **не підключається до FXCM напряму**. Він читає OHLCV/price/status з Redis Pub/Sub, які публікує окремий FXCM-конектор.
 
 Канали FXCM задаються через префікс:
+
 - `FXCM_CHANNEL_PREFIX=fxcm` (prod)
 - `FXCM_CHANNEL_PREFIX=fxcm_local` (local)
 
 З цього префікса формуються канали:
+
 - OHLCV: `{prefix}:ohlcv`
 - price tick: `{prefix}:price_tik`
 - status: `{prefix}:status`
 - commands: `{prefix}:commands`
 
 Отже, щоб локальний запуск не чіпав прод-конектор:
+
 - у `.env.local` ставимо `FXCM_CHANNEL_PREFIX=fxcm_local`
 - FXCM-конектор локально теж має публікувати в `fxcm_local:*`
 
 ## 4) Що треба налаштувати у FXCM-конекторі (сценарій A: локальний конектор)
 
 У репо конектора має бути узгоджено:
+
 - Pub/Sub publish:
   - OHLCV → `fxcm_local:ohlcv`
   - price tick → `fxcm_local:price_tik`
@@ -54,6 +59,7 @@
   - commands → `fxcm_local:commands`
 
 Якщо конектор має власні `ENV`, зазвичай достатньо одного параметра на його стороні:
+
 - `FXCM_CHANNEL_PREFIX=fxcm_local`
 
 Або еквівалентні явні назви каналів (якщо у конекторі немає префікса).
@@ -70,6 +76,7 @@
 Не кладіть PEM-блоки та багаторядкові сертифікати в `.env`/`.env.local`/`.env.prod`.
 
 Правильно:
+
 - зберігати сертифікат у файлі
 - в ENV зберігати тільки шлях: наприклад `CF_TUNNEL_CERT_PATH=...`
 

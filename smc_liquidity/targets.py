@@ -197,6 +197,13 @@ def _internal_candidates_from_magnets(
                 pass
             pt = getattr(p, "last_time", None)
             if isinstance(pt, pd.Timestamp):
+                try:
+                    if pt.tzinfo is None:
+                        pt = pt.tz_localize("UTC")
+                    else:
+                        pt = pt.tz_convert("UTC")
+                except Exception:
+                    pass
                 if last_time is None or pt > last_time:
                     last_time = pt
 
@@ -205,7 +212,7 @@ def _internal_candidates_from_magnets(
         freshness = 0.0
         if last_time is not None and frame is not None and "timestamp" in frame.columns:
             try:
-                ts = pd.to_datetime(frame["timestamp"], utc=False, errors="coerce")
+                ts = pd.to_datetime(frame["timestamp"], utc=True, errors="coerce")
                 if not ts.isna().all():
                     # Скільки барів пройшло з моменту останнього торкання.
                     age = int((ts <= last_time).sum())

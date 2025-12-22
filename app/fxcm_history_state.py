@@ -47,6 +47,25 @@ class HistoryStatus:
     state: str  # ok|insufficient|stale_tail|unknown
     needs_warmup: bool
     needs_backfill: bool
+    gaps_count: int
+    max_gap_ms: int | None
+    non_monotonic_count: int
+
+
+def _series_epoch_to_ms(values: list[Any]) -> list[int]:
+    """Нормалізує список epoch-значень у мілісекунди.
+
+    Оптимізовано під короткі tail-вікна (типово 300). Якщо значення вже в мс,
+    залишаємо як є; якщо у секундах — множимо на 1000.
+    """
+
+    out: list[int] = []
+    for v in values:
+        ms = _epoch_to_ms(v)
+        if ms is None:
+            continue
+        out.append(int(ms))
+    return out
 
 
 def timeframe_to_ms(timeframe: str) -> int | None:
@@ -226,6 +245,46 @@ async def compute_history_status(
         row = df.iloc[-1]
         last_open_time_ms = _epoch_to_ms(row.get("open_time") or row.get("close_time"))
 
+    gaps_count = 0
+    max_gap_ms: int | None = None
+    non_monotonic_count = 0
+    if (
+        df is not None
+        and not df.empty
+        and "open_time" in df.columns
+        and bars_count >= 2
+    ):
+        try:
+            # Працюємо по tail-вікну, яке вже обмежене limit=min_history_bars.
+            tail_values = list(df["open_time"].tolist())
+            open_times_ms = _series_epoch_to_ms(tail_values)
+            if len(open_times_ms) >= 2:
+                # Вважаємо gap-ом будь-який крок, що суттєво більший за tf.
+                # 1.5x — щоб ігнорувати дрібні дрейфи/неточності.
+                gap_threshold = int(float(tf_ms) * 1.5)
+                prev = int(open_times_ms[0])
+                for cur in open_times_ms[1:]:
+                    cur_i = int(cur)
+                    delta = cur_i - prev
+
+                    # "Бар позаду" / не-монотонність: лише коли час іде назад.
+                    # Дублікати (delta==0) тут не рахуємо, щоб не фолс-позитивити
+                    # на тестових/штучних серіях або при повторній видачі одного бару.
+                    if delta < 0:
+                        non_monotonic_count += 1
+                    # Gap рахуємо лише для позитивних кроків.
+                    elif delta > gap_threshold:
+                        gaps_count += 1
+                        if max_gap_ms is None or delta > max_gap_ms:
+                            max_gap_ms = int(delta)
+
+                    prev = cur_i
+        except Exception:
+            # S2 — діагностика, не повинна ламати пайплайн.
+            gaps_count = 0
+            max_gap_ms = None
+            non_monotonic_count = 0
+
     s2 = classify_history(
         now_ms=now_ms_val,
         bars_count=bars_count,
@@ -235,15 +294,33 @@ async def compute_history_status(
         stale_k=stale_k,
     )
 
+    state = s2.state
+    needs_warmup = s2.needs_warmup
+    needs_backfill = s2.needs_backfill
+
+    # Якщо хвіст свіжий, але tail має не-монотонність або пропуски — це теж проблема.
+    # Пріоритети: insufficient/stale_tail > non_monotonic_tail > gappy_tail.
+    if state == "ok" and int(non_monotonic_count) > 0:
+        state = "non_monotonic_tail"
+        needs_warmup = False
+        needs_backfill = True
+    elif state == "ok" and int(gaps_count) > 0:
+        state = "gappy_tail"
+        needs_warmup = False
+        needs_backfill = True
+
     return HistoryStatus(
         symbol=sym,
         timeframe=tf,
         bars_count=bars_count,
         last_open_time_ms=last_open_time_ms,
         age_ms=s2.age_ms,
-        state=s2.state,
-        needs_warmup=s2.needs_warmup,
-        needs_backfill=s2.needs_backfill,
+        state=state,
+        needs_warmup=needs_warmup,
+        needs_backfill=needs_backfill,
+        gaps_count=int(gaps_count),
+        max_gap_ms=max_gap_ms,
+        non_monotonic_count=int(non_monotonic_count),
     )
 
 

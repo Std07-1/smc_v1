@@ -210,6 +210,15 @@ class FxcmWarmupRequester:
                 now_ms=now_ms,
             )
 
+            # Політика на вихідні/закритий ринок:
+            # - якщо мінімум історії вже є, не засмічуємо конектор backfill/warmup;
+            # - якщо історії не вистачає (cold-start), warmup все одно дозволяємо.
+            if (fxcm_status.get("market") == "closed") and (
+                status.state != "insufficient"
+            ):
+                self._clear_active_issue(sym=sym, tf=tf_norm)
+                continue
+
             # Якщо мінімум для роботи є, але контрактна ціль більша — просимо
             # підтягнути історію у фоні (rate-limited).
             if status.state == "ok":
@@ -241,7 +250,11 @@ class FxcmWarmupRequester:
                         cmd_type = "fxcm_warmup"
                     else:
                         cmd_type = "fxcm_backfill"
-                    reason = "stale_tail"
+                    # Причина може бути stale_tail або gappy_tail або non_monotonic_tail.
+                    if status.state in {"gappy_tail", "non_monotonic_tail"}:
+                        reason = str(status.state)
+                    else:
+                        reason = "stale_tail"
                     request_bars = int(desired_bars)
 
             if not cmd_type:
@@ -268,6 +281,11 @@ class FxcmWarmupRequester:
                     "history_state": status.state,
                     "bars_count": status.bars_count,
                     "last_open_time_ms": status.last_open_time_ms,
+                    "gaps_count": int(getattr(status, "gaps_count", 0) or 0),
+                    "max_gap_ms": getattr(status, "max_gap_ms", None),
+                    "non_monotonic_count": int(
+                        getattr(status, "non_monotonic_count", 0) or 0
+                    ),
                 },
                 "fxcm_status": fxcm_status,
             }

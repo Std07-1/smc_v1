@@ -31,19 +31,20 @@ def test_case_h_touch_outcomes_long_vs_short_basic() -> None:
     base = _Row(
         dt=_dt_from_ms(2_000),
         symbol="XAUUSD",
-        kind="zone",
-        compute_kind="close",
+        tf="1m",
+        entity="zone",
         event="touched",
+        id="z1",
         type="OB",
         role="PRIMARY",
         direction="LONG",
-        zone_id="z1",
-        pool_id=None,
-        score=None,
-        ctx={"atr_last": 5.0},
+        price_min=99.0,
+        price_max=101.0,
+        level=None,
+        ctx={"atr_last": 5.0, "compute_kind": "close"},
     )
 
-    rows = [base, replace(base, direction="SHORT", zone_id="z2")]
+    rows = [base, replace(base, direction="SHORT", id="z2")]
 
     headers, data = _report_touch_outcome_by_direction(
         rows,
@@ -61,11 +62,15 @@ def test_case_h_touch_outcomes_long_vs_short_basic() -> None:
 
     by_dir = {(r[headers.index("direction")], r[headers.index("k")]): r for r in data}
 
-    long_row = by_dir[("LONG", 1)]
-    short_row = by_dir[("SHORT", 1)]
+    long_row = by_dir[("LONG", "1")]
+    short_row = by_dir[("SHORT", "1")]
 
     # LONG: favorable = max_high - ref_close = 107 - 100 = 7 >= 5 => reversal hit
-    assert float(long_row[headers.index("reversal_rate")]) == 1.0
+    long_rev = str(long_row[headers.index("reversal_rate")])
+    assert long_rev.endswith("%")
+    assert float(long_rev.rstrip("%")) == 100.0
 
     # SHORT: favorable = ref_close - min_low = 100 - 95 = 5 >= 5 => reversal hit
-    assert float(short_row[headers.index("reversal_rate")]) == 1.0
+    short_rev = str(short_row[headers.index("reversal_rate")])
+    assert short_rev.endswith("%")
+    assert float(short_rev.rstrip("%")) == 100.0

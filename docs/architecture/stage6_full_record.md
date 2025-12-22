@@ -7,6 +7,7 @@
 Мета: щоб після відкату або міграції можна було відтворити логіку, методологію тюнінгу, критерії успіху та інструменти перевірки.
 
 Дотичний документ (UI/рендер/офлайн-відтворення візуалізації):
+
 - `docs/architecture/smc_context_stage6_ui_v2_playbook.md`
 
 ---
@@ -20,6 +21,7 @@ Stage6 — це детермінований «технічний розбір»
   - **4.3**: break / accept / hold (закріплення за swept‑рівнем + підтверджуючі факти).
 
 Stage6 НЕ є:
+
 - торговим сигналом;
 - входом у позицію;
 - ризик‑менеджментом;
@@ -56,6 +58,7 @@ Stage6 НЕ є:
 - Це бізнес-рейки UX, не керуються через ENV.
 
 Поточні значення (SSOT):
+
 - `ttl_sec=180`
 - `confirm_bars=2`
 - `switch_delta=0.08`
@@ -72,6 +75,7 @@ Stage6 НЕ є:
 Нижче — стислий, але повний опис того, як ми прийшли до «успішного» варіанту.
 
 Джерела істини по змінах:
+
 - `docs/architecture/migration_log.md` (S6 / S6.1 / S6.2)
 - `UPDATE_CORE.md` (Stage6 чесний UNCLEAR + SCORE_DELTA)
 
@@ -81,6 +85,7 @@ Stage6 НЕ є:
 Це руйнує довіру трейдера і робить будь-яку стабілізацію (anti-flip) небезпечною: stable починає «липнути» до випадкового напрямку.
 
 Тому Stage6 отримав:
+
 - **чесний UNCLEAR**
 - **пояснюваність** (why + unclear_reason)
 - **стабілізацію поза core** з можливістю повернення у UNCLEAR (decay) і з можливістю жорсткої інвалідації.
@@ -88,6 +93,7 @@ Stage6 НЕ є:
 ### 3.2 S6 (2025-12-21): UNCLEAR reasons + SCORE_DELTA + gate структури
 
 Зміни:
+
 - `telemetry.unclear_reason` для прозорості:
   - hard-gates (приклади): `NO_LAST_PRICE`, `NO_HTF_FRAMES`, `ATR_UNAVAILABLE`, `NO_STRUCTURE`.
   - soft-gates: `LOW_SCORE` та `CONFLICT`.
@@ -95,19 +101,23 @@ Stage6 НЕ є:
 - Додано гейт `NO_STRUCTURE` (якщо факти структури недостатні).
 
 Навіщо:
+
 - Прибрати «вигадані» 4.2/4.3 там, де даних/фактів замало або скоринг майже рівний.
 
 Тест-гейт:
+
 - `pytest tests/test_smc_stage6_scenario.py`.
 
 ### 3.3 S6.1 (2025-12-21): асиметричний anti-flip + hard_invalidation
 
 Проблема:
+
 - Симетричний anti-flip з TTL інколи або:
   - пропускав «погані фліпи» 4_3→4_2 (шум), або
   - блокував справжню інвалідацію (коли вже є hard-факти).
 
 Рішення:
+
 - Додано hard_invalidation (override TTL/confirm/delta) у `SmcStateManager`.
 - Зроблено асиметрію:
   - `4_2 → 4_3` може пробити TTL при `hold_above_up` або strong micro-confirm.
@@ -115,18 +125,22 @@ Stage6 НЕ є:
     при BOS_DOWN після sweep без `failed_hold_up` — швидка інвалідація у `UNCLEAR`.
 
 Чому це дає «довіру»:
+
 - Ми дозволяємо зміну stable тільки коли є причинно‑наслідковий доказ, а не просто шумний raw.
 
 Тест-гейт:
+
 - `pytest tests/test_smc_stage6_hysteresis.py`.
 
 ### 3.4 S6.2 (2025-12-21): анти-конфліктні факти + QA лічильники
 
 Проблеми:
+
 - Після sweep могли одночасно зʼявлятися сигнали `BOS_UP` і `BOS_DOWN` (chop), і це псувало скоринг.
 - Подвійний bias у скорингу (HTF bias і додатковий HTF‑Lite bias як окремий внесок) множив `UNCLEAR(CONFLICT)` і робив картину «параноїдальною».
 
 Рішення:
+
 - P0b: якщо після sweep одночасно є BOS_UP і BOS_DOWN → `events_after_sweep.chop=true` і не додаємо обидва внески.
 - P0c: HTF‑Lite bias не додається як окремий скоринговий факт, якщо вже є контекстний bias.
 - Узгодження рівнів:
@@ -135,6 +149,7 @@ Stage6 НЕ є:
 - QA: додаємо лічильники `hard_invalidation_count` та `flip_pairs_by_reason`.
 
 Тест-гейт:
+
 - `pytest tests/test_smc_stage6_scenario.py` (є кейси для P0b/P0c).
 
 ---
@@ -148,12 +163,14 @@ Stage6 має дві площини тестування:
 Файл: `tests/test_smc_stage6_scenario.py`.
 
 Покриває (приклади з тестів):
+
 - 4_2 continuation / rejection після sweep з BOS_DOWN.
 - 4_3 break/hold після sweep з підтвердженням.
 - P0c: "HTF‑Lite bias" не має бути окремим скоринговим фактом, якщо є контекстний bias.
 - P0b: chop‑випадок (BOS_UP і BOS_DOWN після sweep) має маркуватися і не має ламати скоринг.
 
 Запуск:
+
 - `; & "C:/Aione_projects/smc_v1/.venv/Scripts/python.exe" -m pytest -q tests/test_smc_stage6_scenario.py`
 
 ### 4.2 Юніт-тести стабілізації (stable рішення)
@@ -161,6 +178,7 @@ Stage6 має дві площини тестування:
 Файл: `tests/test_smc_stage6_hysteresis.py`.
 
 Покриває:
+
 - confirm_bars: без підтвердження — не фліпаємо;
 - ttl_sec: блокування фліпа до завершення TTL;
 - UNCLEAR: не затирає stable одразу;
@@ -169,6 +187,7 @@ Stage6 має дві площини тестування:
 - hard_invalidation: дозволяє обхід TTL при `hold_above_up` / `micro_confirm` і інвалідацію при `bos_down_no_failed_hold`.
 
 Запуск:
+
 - `; & "C:/Aione_projects/smc_v1/.venv/Scripts/python.exe" -m pytest -q tests/test_smc_stage6_hysteresis.py`
 
 ---
@@ -183,6 +202,7 @@ Stage6 має дві площини тестування:
 Скрипт: `tools/qa_stage6_scenario_stats.py`.
 
 Що робить:
+
 - бере 5m snapshot як primary;
 - автоматично підтягує 1m/1h/4h снапшоти того ж символа з `datastore/`;
 - проганяє SMC-core на останніх `--steps` кроках;
@@ -194,6 +214,7 @@ Stage6 має дві площини тестування:
   - опційний пост‑фактум outcome (TP/SL у ATR на 1m горизонті).
 
 Чому це не "бектест":
+
 - outcome тут — не стратегія, а sanity-check: чи direction хоча б не протирічить руху в середньому.
 
 ### 5.2 Як ми запускали (PowerShell)
@@ -203,11 +224,13 @@ Stage6 має дві площини тестування:
 - `; & "C:/Aione_projects/smc_v1/.venv/Scripts/python.exe" -m tools.qa_stage6_scenario_stats --path datastore/xauusd_bars_5m_snapshot.jsonl --steps 120 --warmup 220 --horizon-bars 60 --tp-atr 1.0 --sl-atr 1.0 --out reports/stage6_stats_xauusd_h60_v6_2.md --exemplars 12`
 
 Альтернативно (довший горизонт):
+
 - `; & "C:/Aione_projects/smc_v1/.venv/Scripts/python.exe" -m tools.qa_stage6_scenario_stats --path datastore/xauusd_bars_5m_snapshot.jsonl --steps 500 --horizon-bars 120 --tp-atr 1.0 --sl-atr 1.0 --out reports/stage6_stats_xauusd_h120.md`
 
 ### 5.3 Як ми інтерпретували метрики
 
 Ми дивилися на:
+
 - **raw UNCLEAR rate**: високий raw UNCLEAR — нормальний (чесність > частота).
 - **stable UNCLEAR rate**: не має бути 0% "за будь‑яку ціну"; але й не має бути 80% (тоді stable не дає користі).
 - **flips**: критично, щоб flips були рідкі та пояснювані.
@@ -231,6 +254,7 @@ Stage6 має дві площини тестування:
 ### 6.1 Приклад: `reports/stage6_stats_xauusd_h60_v6_2.md`
 
 Факти з репорту:
+
 - кроків: 120
 - raw: `{'4_2': 31, '4_3': 39, 'UNCLEAR': 50}`
 - stable: `{'4_2': 71, 'UNCLEAR': 10, '4_3': 39}`
@@ -240,6 +264,7 @@ Stage6 має дві площини тестування:
 - unclear_reason_counts: `{'LOW_SCORE': 46, 'CONFLICT': 14}`
 
 Інтерпретація:
+
 - raw чесно часто UNCLEAR (це нормально для noisy ділянок).
 - stable зменшує UNCLEAR, але не зводить його до нуля.
 - flips небагато, причини контрольовані (`confirm`, `decay_unclear`).
@@ -247,6 +272,7 @@ Stage6 має дві площини тестування:
 ### 6.2 Приклад: `reports/stage6_stats_xauusd_h120.md`
 
 Факти з репорту:
+
 - кроків: 500
 - raw: `{'4_3': 234, '4_2': 87, 'UNCLEAR': 179}`
 - stable: `{'4_3': 500}`
@@ -255,6 +281,7 @@ Stage6 має дві площини тестування:
 - stable UNCLEAR rate: 0.00%
 
 Важлива примітка:
+
 - stable=100% одного сценарію може бути нормою на конкретній ділянці, але це також "червоний прапорець" для перевірки:
   - чи не занадто липкий anti-flip;
   - чи не зависокий TTL;
@@ -269,41 +296,51 @@ Stage6 має дві площини тестування:
 ### 7.1 «Confident lie» (майже рівний скоринг)
 
 Симптом:
+
 - 4_2 і 4_3 близькі за score, але алгоритм вибирає один.
 
 Рішення:
+
 - SCORE_DELTA → `UNCLEAR(CONFLICT)`.
 
 ### 7.2 «Chop після sweep» (BOS в обидва боки)
 
 Симптом:
+
 - одночасно `BOS_UP` і `BOS_DOWN` після sweep.
 
 Рішення:
+
 - P0b: маркуємо як chop і не додаємо обидва внески у скоринг.
 
 ### 7.3 Подвійний HTF bias
 
 Симптом:
+
 - множиться `UNCLEAR(CONFLICT)` і "дивні" why.
 
 Рішення:
+
 - P0c: не додавати HTF‑Lite bias як окремий скоринговий факт при наявному контекстному bias.
 
 ### 7.4 Stable «липне» і не повертається в нейтраль
 
 Симптом:
+
 - raw стає UNCLEAR довго, а stable тримає старий сценарій без сигналу, що це вже "неактуально".
 
 Рішення:
+
 - decay_to_unclear_after=N (у SmcStateManager), щоб повертати stable у UNCLEAR після N підряд UNCLEAR.
 
 ### 7.5 Потрібно швидко пробивати TTL при справжній інвалідації
 
 Симптом:
+
 - TTL блокує switch навіть коли є hard-факт.
 
 Рішення:
+
 - hard_invalidation (override TTL/confirm/delta) з причинами `hold_above_up`, `micro_confirm`, `bos_down_no_failed_hold`.
 
 ---
@@ -311,15 +348,19 @@ Stage6 має дві площини тестування:
 ## 8) Практичний чеклист відтворення Stage6 після відкату
 
 1) Переконатися, що Stage6 у core повертає `unclear_reason`/`score`/`why`.
+
 - Запустити `pytest tests/test_smc_stage6_scenario.py`.
 
 2) Переконатися, що anti-flip працює як задумано.
+
 - Запустити `pytest tests/test_smc_stage6_hysteresis.py`.
 
 3) Прогнати QA на 5m snapshot із підтягнутими 1m/1h/4h.
+
 - Запустити `tools/qa_stage6_scenario_stats.py` з `--exemplars 12`.
 
 4) Перевірити UI-рендер і зрозумілість stable/raw/pending.
+
 - Дивись `docs/architecture/smc_context_stage6_ui_v2_playbook.md`.
 
 ---

@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-from UI_v2.ohlcv_provider import OhlcvNotFoundError
 from core.contracts.viewer_state import SmcViewerState
+from UI_v2.ohlcv_provider import OhlcvNotFoundError
 from UI_v2.viewer_state_server import ViewerStateHttpServer
 from UI_v2.viewer_state_store import ViewerStateStore
 
@@ -42,7 +42,12 @@ class _FakeOhlcvProvider:
         self._data = data
 
     async def fetch_ohlcv(
-        self, symbol: str, timeframe: str, limit: int
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+        *,
+        to_ms: int | None = None,
     ) -> list[dict[str, Any]]:
         key = (symbol, timeframe)
         bars = self._data.get(key)

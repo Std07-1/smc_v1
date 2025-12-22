@@ -12,6 +12,8 @@
   - wide_zone_rate(span_atr)
     - span_atr_vs_outcomes(touched/mitigated)
     - preview_vs_close_delta (frame-based: preview vs close по primary_close_ms)
+    - lifetime_histogram_by_type (по removed/lifetime_bars)
+    - active_count_distribution (frame-based: скільки об'єктів одночасно active)
 
 Це офлайн-інструмент: він не залежить від Redis чи UI.
 """
@@ -59,6 +61,17 @@ class _Frame:
     zone_overlap_n_active: int
     zone_overlap_total_pairs: int
     zone_overlap_pairs_iou_ge: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _ZoneBounds:
+    price_min: float
+    price_max: float
+    type: str | None
+    direction: str | None
+    role: str | None
+    created_dt: datetime
+    created_primary_close_ms: int | None
 
 
 def _safe_float(v: Any) -> float | None:
@@ -262,6 +275,172 @@ def _load_frames(*, frames_dir: Path, symbol_filter: str | None) -> list[_Frame]
             continue
 
     return frames
+
+
+def _collect_zone_bounds(rows: list[_Row]) -> dict[str, _ZoneBounds]:
+    bounds_by_id: dict[str, _ZoneBounds] = {}
+    for r in rows:
+        if r.entity != "zone" or r.event != "created":
+            continue
+        if r.price_min is None or r.price_max is None:
+            continue
+        lo = float(min(r.price_min, r.price_max))
+        hi = float(max(r.price_min, r.price_max))
+        if not (hi > lo):
+            continue
+
+        primary_close_ms: int | None = None
+        raw_ms = r.ctx.get("primary_close_ms")
+        if raw_ms is not None:
+            try:
+                primary_close_ms = int(raw_ms)
+            except Exception:
+                primary_close_ms = None
+
+        bounds_by_id[r.id] = _ZoneBounds(
+            price_min=lo,
+            price_max=hi,
+            type=r.type,
+            direction=r.direction,
+            role=r.role,
+            created_dt=r.dt,
+            created_primary_close_ms=primary_close_ms,
+        )
+
+    return bounds_by_id
+
+
+def _interval_iou(a_min: float, a_max: float, b_min: float, b_max: float) -> float:
+    inter = min(a_max, b_max) - max(a_min, b_min)
+    if inter <= 0.0:
+        return 0.0
+    union = (a_max - a_min) + (b_max - b_min) - inter
+    if union <= 0.0:
+        return 0.0
+    return float(inter / union)
+
+
+def _compute_zone_overlap_for_frames(
+    *,
+    frames: list[_Frame],
+    rows: list[_Row],
+    thresholds: tuple[str, ...] = ("0.2", "0.4", "0.6"),
+    examples_max: int = 200,
+) -> tuple[list[_Frame], list[dict[str, Any]]]:
+    """Офлайн-обчислення overlap між активними зонами у frames.
+
+    Важливо: це не змінює логіку детектора. Це лише репортинг.
+    """
+
+    zone_bounds = _collect_zone_bounds(rows)
+    thr_f = [float(x) for x in thresholds]
+
+    out_frames: list[_Frame] = []
+    examples: list[dict[str, Any]] = []
+
+    for fr in frames:
+        active_zone_ids = sorted(fr.active_ids.get("zone", set()))
+        # Якщо frames взагалі не мають активних зон — нічого рахувати.
+        if not active_zone_ids:
+            out_frames.append(fr)
+            continue
+
+        intervals: list[tuple[float, float, str]] = []
+        missing_bounds = 0
+        for zid in active_zone_ids:
+            zb = zone_bounds.get(zid)
+            if zb is None:
+                missing_bounds += 1
+                continue
+            intervals.append((zb.price_min, zb.price_max, zid))
+
+        # Якщо не змогли знайти межі — залишаємо як є.
+        if len(intervals) < 2:
+            if fr.zone_overlap_n_active == 0 and fr.zone_overlap_total_pairs == 0:
+                # Мінімально заповнюємо n_active, щоб було видно, що active є, але меж нема.
+                out_frames.append(
+                    _Frame(
+                        dt=fr.dt,
+                        symbol=fr.symbol,
+                        tf=fr.tf,
+                        kind=fr.kind,
+                        primary_close_ms=fr.primary_close_ms,
+                        bar_complete=fr.bar_complete,
+                        active_ids=fr.active_ids,
+                        zone_overlap_n_active=int(len(intervals)),
+                        zone_overlap_total_pairs=0,
+                        zone_overlap_pairs_iou_ge={k: 0 for k in thresholds},
+                    )
+                )
+            else:
+                out_frames.append(fr)
+            continue
+
+        intervals.sort(key=lambda x: (x[0], x[1], x[2]))
+        counts = {k: 0 for k in thresholds}
+        max_iou = 0.0
+        max_pair: tuple[str, str] | None = None
+
+        # Sweep line: порівнюємо лише ті інтервали, які потенційно перетинаються.
+        for i in range(len(intervals)):
+            a_min, a_max, a_id = intervals[i]
+            j = i + 1
+            while j < len(intervals):
+                b_min, b_max, b_id = intervals[j]
+                if b_min >= a_max:
+                    break
+                iou = _interval_iou(a_min, a_max, b_min, b_max)
+                if iou > 0.0:
+                    if iou > max_iou:
+                        max_iou = iou
+                        max_pair = (a_id, b_id)
+                    for thr_s, thr in zip(thresholds, thr_f, strict=True):
+                        if iou >= thr:
+                            counts[thr_s] = int(counts.get(thr_s, 0)) + 1
+                j += 1
+
+        n_active = int(len(intervals))
+        total_pairs = int(n_active * (n_active - 1) // 2)
+
+        # Якщо в frames вже є overlap-дані (в майбутньому), не перетираємо їх.
+        should_fill = fr.zone_overlap_n_active == 0 and fr.zone_overlap_total_pairs == 0
+        if should_fill:
+            out_frames.append(
+                _Frame(
+                    dt=fr.dt,
+                    symbol=fr.symbol,
+                    tf=fr.tf,
+                    kind=fr.kind,
+                    primary_close_ms=fr.primary_close_ms,
+                    bar_complete=fr.bar_complete,
+                    active_ids=fr.active_ids,
+                    zone_overlap_n_active=n_active,
+                    zone_overlap_total_pairs=total_pairs,
+                    zone_overlap_pairs_iou_ge=counts,
+                )
+            )
+        else:
+            out_frames.append(fr)
+
+        if len(examples) < int(examples_max):
+            ex = {
+                "dt_utc": fr.dt.isoformat().replace("+00:00", "Z"),
+                "symbol": fr.symbol,
+                "tf": fr.tf,
+                "kind": fr.kind,
+                "primary_close_ms": str(fr.primary_close_ms),
+                "n_active": str(n_active),
+                "total_pairs": str(total_pairs),
+                "max_iou": f"{max_iou:.4f}",
+                "max_pair_a": max_pair[0] if max_pair else "-",
+                "max_pair_b": max_pair[1] if max_pair else "-",
+                "missing_bounds": str(missing_bounds),
+            }
+            for k in thresholds:
+                ex[f"pairs_iou_ge_{k}"] = str(int(counts.get(k, 0)))
+            examples.append(ex)
+
+    return out_frames, examples
 
 
 def _md_table(headers: list[str], data: list[list[str]]) -> str:
@@ -1003,6 +1182,54 @@ def _dt_to_ms(dt: datetime) -> int:
         return 0
 
 
+def _tf_to_ms(tf: str) -> int | None:
+    s = str(tf or "").strip().lower()
+    if not s:
+        return None
+    n_s = ""
+    unit = ""
+    for ch in s:
+        if ch.isdigit():
+            if unit:
+                return None
+            n_s += ch
+        else:
+            unit += ch
+    if not n_s or not unit:
+        return None
+    try:
+        n = int(n_s)
+    except Exception:
+        return None
+    if n <= 0:
+        return None
+
+    unit = unit.strip()
+    if unit == "m":
+        return int(n * 60_000)
+    if unit == "h":
+        return int(n * 3_600_000)
+    if unit == "d":
+        return int(n * 86_400_000)
+    return None
+
+
+def _fmt_dt_utc(dt: datetime) -> str:
+    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _maybe_int(v: Any) -> int | None:
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except Exception:
+        try:
+            return int(float(v))
+        except Exception:
+            return None
+
+
 def _load_ohlcv_bars(
     path: Path,
 ) -> tuple[list[int], list[float], list[float], list[float]]:
@@ -1392,6 +1619,295 @@ def _report_missed_touch_rate(
     return headers, data
 
 
+def _collect_case_b_removed_then_late_touch_examples(
+    rows: list[_Row], *, max_items: int = 200
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        if r.event != "touched" or not bool(r.ctx.get("late")):
+            continue
+
+        removed_ms = _maybe_int(r.ctx.get("removed_ms"))
+        if removed_ms is None:
+            continue
+        dt_remove = datetime.fromtimestamp(float(removed_ms) / 1000.0, tz=UTC)
+
+        touch_primary_close_ms = _maybe_int(r.ctx.get("primary_close_ms"))
+        tf_ms = _tf_to_ms(r.tf)
+        bars_to_touch: int | None = None
+        if touch_primary_close_ms is not None and tf_ms:
+            try:
+                bars_to_touch = max(
+                    0, int((touch_primary_close_ms - removed_ms) // tf_ms)
+                )
+            except Exception:
+                bars_to_touch = None
+
+        items.append(
+            {
+                "entity": r.entity,
+                "id": r.id,
+                "symbol": r.symbol,
+                "tf": r.tf,
+                "dt_remove_utc": _fmt_dt_utc(dt_remove),
+                "dt_touch_utc": _fmt_dt_utc(r.dt),
+                "primary_close_ms": (
+                    str(touch_primary_close_ms)
+                    if touch_primary_close_ms is not None
+                    else "-"
+                ),
+                "bars_to_touch": (
+                    str(bars_to_touch) if bars_to_touch is not None else "-"
+                ),
+                "removed_reason": str(r.ctx.get("removed_reason") or "-"),
+                "removed_reason_sub": str(r.ctx.get("removed_reason_sub") or "-"),
+                "touch_type": str(r.ctx.get("touch_type") or "-"),
+            }
+        )
+
+    def _key(x: dict[str, Any]) -> tuple[float, str]:
+        b_raw = x.get("bars_to_touch")
+        b_s = str(b_raw) if b_raw is not None else "-1"
+        try:
+            bb = float(b_s)
+        except Exception:
+            bb = -1.0
+        # Більше bars_to_touch — вище; tie-break: dt_touch desc
+        return (bb, str(x.get("dt_touch_utc") or ""))
+
+    items = sorted(items, key=_key, reverse=True)
+    return items[: int(max_items)]
+
+
+def _collect_case_c_short_lifetime_examples(
+    rows: list[_Row], *, lifetime_le: int = 1, max_items: int = 200
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if r.event != "removed":
+            continue
+        lb = r.ctx.get("lifetime_bars")
+        try:
+            life = int(lb) if lb is not None else None
+        except Exception:
+            continue
+        if life is None or life > int(lifetime_le):
+            continue
+
+        pc_ms = _maybe_int(r.ctx.get("primary_close_ms"))
+        out.append(
+            {
+                "entity": r.entity,
+                "id": r.id,
+                "symbol": r.symbol,
+                "tf": r.tf,
+                "dt_removed_utc": _fmt_dt_utc(r.dt),
+                "primary_close_ms": str(pc_ms) if pc_ms is not None else "-",
+                "type": str(r.type or "-"),
+                "lifetime_bars": str(life),
+                "reason": str(r.ctx.get("reason") or "-"),
+                "reason_sub": str(r.ctx.get("reason_sub") or "-"),
+                "compute_kind": str(r.ctx.get("compute_kind") or "-"),
+            }
+        )
+
+    out = sorted(
+        out,
+        key=lambda x: (
+            int(x.get("lifetime_bars") or 999999),
+            str(x.get("dt_removed_utc") or ""),
+        ),
+    )
+    return out[: int(max_items)]
+
+
+def _collect_case_d_widest_zone_examples(
+    rows: list[_Row], *, max_items: int = 200
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if r.entity != "zone" or r.event != "created":
+            continue
+        if r.price_min is None or r.price_max is None:
+            continue
+        atr = _safe_float(r.ctx.get("atr_last"))
+        if atr is None or atr <= 0.0:
+            continue
+        span = float(abs(float(r.price_max) - float(r.price_min)))
+        span_atr = float(span / float(atr))
+        pc_ms = _maybe_int(r.ctx.get("primary_close_ms"))
+        out.append(
+            {
+                "id": r.id,
+                "symbol": r.symbol,
+                "tf": r.tf,
+                "dt_created_utc": _fmt_dt_utc(r.dt),
+                "primary_close_ms": str(pc_ms) if pc_ms is not None else "-",
+                "type": str(r.type or "-"),
+                "direction": str(r.direction or "-"),
+                "role": str(r.role or "-"),
+                "price_min": _fmt_float(r.price_min, nd=3),
+                "price_max": _fmt_float(r.price_max, nd=3),
+                "atr_last": _fmt_float(atr, nd=4),
+                "span_atr": f"{span_atr:.3f}",
+                "compute_kind": str(r.ctx.get("compute_kind") or "-"),
+            }
+        )
+
+    out = sorted(out, key=lambda x: -float(x.get("span_atr") or 0.0))
+    return out[: int(max_items)]
+
+
+def _collect_case_f_missed_touch_examples(
+    rows: list[_Row],
+    *,
+    close_ms: list[int],
+    lows: list[float],
+    highs: list[float],
+    max_items: int = 200,
+) -> list[dict[str, Any]]:
+    if not close_ms:
+        return []
+
+    # eps з ctx
+    eps = 0.0
+    for r in rows:
+        v = r.ctx.get("touch_epsilon")
+        if v is None:
+            continue
+        try:
+            eps = float(v)
+            break
+        except Exception:
+            continue
+    eps = max(0.0, float(eps or 0.0))
+
+    touched_ms_by_id: dict[str, list[int]] = defaultdict(list)
+    open_created: dict[str, int] = {}
+    open_bounds: dict[str, tuple[float, float]] = {}
+    open_meta: dict[str, dict[str, Any]] = {}
+
+    for r in rows:
+        if r.entity != "zone" or r.event != "touched":
+            continue
+        touched_ms_by_id[str(r.id)].append(_dt_to_ms(r.dt))
+    for _zid, ts in touched_ms_by_id.items():
+        ts.sort()
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if r.entity != "zone":
+            continue
+
+        if r.event == "created":
+            if r.price_min is None or r.price_max is None:
+                continue
+            lo = min(float(r.price_min), float(r.price_max))
+            hi = max(float(r.price_min), float(r.price_max))
+            open_created[str(r.id)] = _dt_to_ms(r.dt)
+            open_bounds[str(r.id)] = (lo, hi)
+            open_meta[str(r.id)] = {
+                "symbol": r.symbol,
+                "tf": r.tf,
+                "type": str(r.type or "-"),
+                "direction": str(r.direction or "-"),
+                "role": str(r.role or "-"),
+                "compute_kind": str(r.ctx.get("compute_kind") or "-"),
+            }
+            continue
+
+        if r.event != "removed":
+            continue
+
+        zid = str(r.id)
+        created = open_created.pop(zid, None)
+        bounds = open_bounds.pop(zid, None)
+        meta = open_meta.pop(zid, None) or {}
+        if created is None or bounds is None:
+            continue
+        removed = _dt_to_ms(r.dt)
+        if removed <= created:
+            continue
+
+        # Вікно барів
+        left = bisect.bisect_right(close_ms, int(created))
+        right = bisect.bisect_right(close_ms, int(removed))
+        if right <= left:
+            continue
+
+        lo, hi = bounds
+        loe, hie = (lo - eps), (hi + eps)
+
+        should_touch = False
+        first_touch_ms: int | None = None
+        for i in range(left, right):
+            if lows[i] <= hie and highs[i] >= loe:
+                should_touch = True
+                first_touch_ms = int(close_ms[i])
+                break
+        if not should_touch:
+            continue
+
+        # Journal touch у (created, removed]
+        ts = touched_ms_by_id.get(zid) or []
+        has_touch = False
+        if ts:
+            i0 = bisect.bisect_right(ts, int(created))
+            if i0 < len(ts) and int(ts[i0]) <= int(removed):
+                has_touch = True
+
+        if has_touch:
+            continue
+
+        out.append(
+            {
+                "id": zid,
+                "symbol": str(meta.get("symbol") or "-"),
+                "tf": str(meta.get("tf") or "-"),
+                "type": str(meta.get("type") or "-"),
+                "direction": str(meta.get("direction") or "-"),
+                "role": str(meta.get("role") or "-"),
+                "compute_kind": str(meta.get("compute_kind") or "-"),
+                "dt_created_utc": _fmt_dt_utc(
+                    datetime.fromtimestamp(created / 1000.0, tz=UTC)
+                ),
+                "dt_removed_utc": _fmt_dt_utc(r.dt),
+                "first_touch_close_ms": (
+                    str(first_touch_ms) if first_touch_ms is not None else "-"
+                ),
+                "price_min": _fmt_float(lo, nd=3),
+                "price_max": _fmt_float(hi, nd=3),
+                "touch_epsilon": _fmt_float(eps, nd=6),
+            }
+        )
+
+    out = sorted(
+        out,
+        key=lambda x: (
+            str(x.get("tf") or ""),
+            str(x.get("first_touch_close_ms") or ""),
+        ),
+    )
+    return out[: int(max_items)]
+
+
+def _write_audit_todo_md(path: Path, items: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    headers = [
+        "case",
+        "dt_utc",
+        "symbol",
+        "tf",
+        "primary_close_ms",
+        "entity",
+        "id",
+        "note",
+    ]
+    rows_md = [[str(it.get(h, "-")) for h in headers] for it in items]
+    out = ["# audit_todo\n", _md_table(headers, rows_md), ""]
+    path.write_text("\n".join(out), encoding="utf-8")
+
+
 def _report_quality_matrix(rows: list[_Row]) -> tuple[list[str], list[list[str]]]:
     """Quality matrix для lifecycle.
 
@@ -1636,6 +2152,197 @@ def _report_short_lifetime_share_by_type(
     return headers, data
 
 
+def _report_lifetime_histogram_by_type(
+    rows: list[_Row],
+    *,
+    thresholds: tuple[int, ...] = (1, 2),
+) -> tuple[list[str], list[list[str]]]:
+    """Гістограма lifetime_bars для removed подій по type.
+
+    Прохід 1: базова валідація шуму.
+    Особливо цікавить частка lifetime<=1/<=2 бари, але також корисно мати грубі
+    бін-и, щоб бачити, де зосереджений "churn".
+
+    Ключ: (entity, compute_kind, type).
+    Джерело: removed події з ctx.lifetime_bars.
+    """
+
+    thr = tuple(sorted({int(t) for t in thresholds if int(t) >= 0}))
+    if not thr:
+        thr = (1, 2)
+
+    # Бін-и (включно):
+    # 0, 1, 2, 3-5, 6-10, 11-20, 21-50, 51+
+    bin_defs: list[tuple[str, int | None, int | None]] = [
+        ("0", 0, 0),
+        ("1", 1, 1),
+        ("2", 2, 2),
+        ("3_5", 3, 5),
+        ("6_10", 6, 10),
+        ("11_20", 11, 20),
+        ("21_50", 21, 50),
+        ("51_plus", 51, None),
+    ]
+
+    def _bin_name(lb: int) -> str:
+        for name, lo, hi in bin_defs:
+            if lo is None:
+                continue
+            if hi is None:
+                if lb >= lo:
+                    return name
+            else:
+                if lo <= lb <= hi:
+                    return name
+        return "51_plus"
+
+    removed_with_life: dict[tuple[str, str, str], int] = defaultdict(int)
+    le_counts: dict[tuple[str, str, str, int], int] = defaultdict(int)
+    bins: dict[tuple[str, str, str, str], int] = defaultdict(int)
+    lifetimes: dict[tuple[str, str, str], list[float]] = defaultdict(list)
+
+    for r in rows:
+        if r.event != "removed":
+            continue
+        lb_any = r.ctx.get("lifetime_bars")
+        if lb_any is None:
+            continue
+        try:
+            lb = int(lb_any)
+        except Exception:
+            continue
+        if lb < 0:
+            continue
+
+        compute_kind = str(r.ctx.get("compute_kind") or "-")
+        typ = str(r.type or "-")
+        key = (str(r.entity), compute_kind, typ)
+
+        removed_with_life[key] += 1
+        lifetimes[key].append(float(lb))
+
+        for t in thr:
+            if lb <= t:
+                le_counts[(key[0], key[1], key[2], int(t))] += 1
+
+        bins[(key[0], key[1], key[2], _bin_name(lb))] += 1
+
+    headers = [
+        "entity",
+        "compute_kind",
+        "type",
+        "removed_with_lifetime",
+    ]
+    for t in thr:
+        headers.extend([f"lifetime_le_{t}", f"share_le_{t}"])
+    headers.extend(
+        [
+            "lifetime_p50_bars",
+            "lifetime_p90_bars",
+            "lifetime_p99_bars",
+        ]
+    )
+    for name, _, _ in bin_defs:
+        headers.extend([f"bin_{name}", f"share_{name}"])
+
+    data: list[list[str]] = []
+    for entity, compute_kind, typ in sorted(
+        removed_with_life.keys(),
+        key=lambda k: (-removed_with_life.get(k, 0), k[0], k[1], k[2]),
+    ):
+        den = int(removed_with_life.get((entity, compute_kind, typ), 0))
+        p50 = _percentile(lifetimes.get((entity, compute_kind, typ), []), 0.50)
+        p90 = _percentile(lifetimes.get((entity, compute_kind, typ), []), 0.90)
+        p99 = _percentile(lifetimes.get((entity, compute_kind, typ), []), 0.99)
+
+        row: list[str] = [entity, compute_kind, typ, str(den)]
+        for t in thr:
+            le = int(le_counts.get((entity, compute_kind, typ, int(t)), 0))
+            row.extend([str(le), _fmt_pct(le, den)])
+        row.extend(
+            [
+                _fmt_float(p50, nd=1),
+                _fmt_float(p90, nd=1),
+                _fmt_float(p99, nd=1),
+            ]
+        )
+
+        for name, _, _ in bin_defs:
+            n = int(bins.get((entity, compute_kind, typ, name), 0))
+            row.extend([str(n), _fmt_pct(n, den)])
+
+        data.append(row)
+
+    return headers, data
+
+
+def _report_active_count_distribution(
+    frames: list[_Frame],
+) -> tuple[list[str], list[list[str]]]:
+    """Розподіл кількості active об'єктів у кадрі (одночасно).
+
+    Прохід 1: базова валідація шуму.
+
+    Рахуємо по ключу (kind, entity):
+    - n_frames
+    - mean/p50/p90/p99/max для active_count
+    """
+
+    # key=(kind, entity)
+    series: dict[tuple[str, str], list[float]] = defaultdict(list)
+
+    for fr in frames:
+        kind = str(fr.kind or "-")
+        for entity, ids in (fr.active_ids or {}).items():
+            try:
+                series[(kind, str(entity))].append(float(len(ids)))
+            except Exception:
+                continue
+
+    headers = [
+        "kind",
+        "entity",
+        "n_frames",
+        "active_mean",
+        "active_p50",
+        "active_p90",
+        "active_p99",
+        "active_max",
+    ]
+
+    data: list[list[str]] = []
+    for (kind, entity), vals in sorted(
+        series.items(),
+        key=lambda x: (
+            -max(x[1]) if x[1] else 0.0,
+            -len(x[1]),
+            x[0][0],
+            x[0][1],
+        ),
+    ):
+        if not vals:
+            continue
+        p50 = _percentile(vals, 0.50)
+        p90 = _percentile(vals, 0.90)
+        p99 = _percentile(vals, 0.99)
+        mean = _mean(vals)
+        mx = float(max(vals))
+        data.append(
+            [
+                kind,
+                entity,
+                str(len(vals)),
+                _fmt_float(mean, nd=2),
+                _fmt_float(p50, nd=1),
+                _fmt_float(p90, nd=1),
+                _fmt_float(p99, nd=1),
+                _fmt_float(mx, nd=1),
+            ]
+        )
+
+    return headers, data
+
+
 def _report_flicker_short_lived_by_type(
     rows: list[_Row], *, reason_sub: str = "flicker_short_lived"
 ) -> tuple[list[str], list[list[str]]]:
@@ -1734,6 +2441,15 @@ def main() -> int:
     )
     ap.add_argument("--symbol", default="", help="Фільтр по symbol (наприклад XAUUSD)")
     ap.add_argument(
+        "--run-dir",
+        default="",
+        help=(
+            "(Опційно) Папка run-а (наприклад reports/smc_journal_p0_run4). "
+            "Якщо задано — звіт буде записано в report_<SYMBOL>.md у цю папку, "
+            "а CSV (якщо не задано --csv-dir) теж будуть збережені туди."
+        ),
+    )
+    ap.add_argument(
         "--csv-dir",
         default="",
         help="(Опційно) Папка, куди зберегти CSV-таблиці.",
@@ -1742,9 +2458,19 @@ def main() -> int:
 
     base_dir = Path(str(args.dir).strip())
     symbol_filter = str(args.symbol or "").strip().upper() or None
+    run_dir = (
+        Path(str(getattr(args, "run_dir", "") or "").strip())
+        if str(getattr(args, "run_dir", "") or "").strip()
+        else None
+    )
+    if run_dir is not None:
+        run_dir.mkdir(parents=True, exist_ok=True)
+
     csv_dir = (
         Path(str(args.csv_dir).strip()) if str(args.csv_dir or "").strip() else None
     )
+    if csv_dir is None and run_dir is not None:
+        csv_dir = run_dir
 
     frames_dir_raw = str(args.frames_dir or "").strip()
     if frames_dir_raw:
@@ -1763,6 +2489,7 @@ def main() -> int:
     rows.sort(key=lambda r: (r.dt, r.entity, r.event, r.id))
 
     parts: list[str] = []
+    audit_items: list[dict[str, str]] = []
     parts.append("# SMC Journal Report\n")
     parts.append(f"Подій: {len(rows)}")
     if symbol_filter:
@@ -1802,12 +2529,105 @@ def main() -> int:
     if csv_dir is not None:
         _write_csv(csv_dir / "evicted_then_touched_rate_by_reason_sub.csv", h, d)
 
+    # Case B: top-N прикладів removed -> late_touch
+    case_b = _collect_case_b_removed_then_late_touch_examples(rows, max_items=200)
+    parts.append("\n## case_B_removed_then_late_touch_examples\n")
+    if case_b:
+        headers = [
+            "dt_touch_utc",
+            "symbol",
+            "tf",
+            "entity",
+            "id",
+            "primary_close_ms",
+            "dt_remove_utc",
+            "bars_to_touch",
+            "removed_reason_sub",
+            "removed_reason",
+            "touch_type",
+        ]
+        parts.append(
+            _md_table(
+                headers, [[str(x.get(hh, "-")) for hh in headers] for x in case_b[:50]]
+            )
+        )
+        if csv_dir is not None:
+            _write_csv(
+                csv_dir / "case_b_removed_then_late_touch_examples.csv",
+                headers,
+                [[str(x.get(hh, "-")) for hh in headers] for x in case_b],
+            )
+        for x in case_b[:30]:
+            audit_items.append(
+                {
+                    "case": "B",
+                    "dt_utc": str(x.get("dt_touch_utc") or "-"),
+                    "symbol": str(x.get("symbol") or "-"),
+                    "tf": str(x.get("tf") or "-"),
+                    "primary_close_ms": str(x.get("primary_close_ms") or "-"),
+                    "entity": str(x.get("entity") or "-"),
+                    "id": str(x.get("id") or "-"),
+                    "note": (
+                        f"late_touch; bars_to_touch={x.get('bars_to_touch','-')}; "
+                        f"removed_reason_sub={x.get('removed_reason_sub','-')}"
+                    ),
+                }
+            )
+    else:
+        parts.append("(нема late_touch із removed_ms у ctx)\n")
+
     # wide_zone_rate(span_atr)
     h, d = _report_wide_zone_rate(rows)
     parts.append("\n## wide_zone_rate(span_atr)\n")
     parts.append(_md_table(h, d))
     if csv_dir is not None:
         _write_csv(csv_dir / "wide_zone_rate.csv", h, d)
+
+    # Case D: top-N найширших зон (span_atr)
+    case_d = _collect_case_d_widest_zone_examples(rows, max_items=200)
+    parts.append("\n## case_D_widest_zone_examples\n")
+    if case_d:
+        headers = [
+            "dt_created_utc",
+            "symbol",
+            "tf",
+            "id",
+            "primary_close_ms",
+            "type",
+            "direction",
+            "role",
+            "price_min",
+            "price_max",
+            "atr_last",
+            "span_atr",
+            "compute_kind",
+        ]
+        parts.append(
+            _md_table(
+                headers, [[str(x.get(hh, "-")) for hh in headers] for x in case_d[:50]]
+            )
+        )
+        if csv_dir is not None:
+            _write_csv(
+                csv_dir / "case_d_widest_zone_examples.csv",
+                headers,
+                [[str(x.get(hh, "-")) for hh in headers] for x in case_d],
+            )
+        for x in case_d[:30]:
+            audit_items.append(
+                {
+                    "case": "D",
+                    "dt_utc": str(x.get("dt_created_utc") or "-"),
+                    "symbol": str(x.get("symbol") or "-"),
+                    "tf": str(x.get("tf") or "-"),
+                    "primary_close_ms": str(x.get("primary_close_ms") or "-"),
+                    "entity": "zone",
+                    "id": str(x.get("id") or "-"),
+                    "note": f"widest_zone; span_atr={x.get('span_atr','-')}",
+                }
+            )
+    else:
+        parts.append("(нема zone.created з price_min/price_max та atr_last)\n")
 
     # span_atr_vs_outcomes (touched/mitigated)
     h, d = _report_span_atr_vs_outcomes(rows)
@@ -1819,6 +2639,26 @@ def main() -> int:
     # preview_vs_close_delta (frame-based)
     frames = _load_frames(frames_dir=frames_dir, symbol_filter=symbol_filter)
 
+    # case E: overlap між активними зонами (офлайн з journal+frames)
+    # (не змінює логіку детектора; лише зацементовує метрику для аудиту)
+    frames, zone_overlap_examples = _compute_zone_overlap_for_frames(
+        frames=frames,
+        rows=rows,
+        thresholds=("0.2", "0.4", "0.6"),
+    )
+
+    # active_count_distribution (frame-based)
+    h, d = _report_active_count_distribution(frames)
+    parts.append("\n## active_count_distribution\n")
+    if d:
+        parts.append(_md_table(h, d))
+    else:
+        parts.append(
+            "(нема frames або active_ids; переконайся, що replay пише frames у <journal_dir>/frames)"
+        )
+    if csv_dir is not None:
+        _write_csv(csv_dir / "active_count_distribution.csv", h, d)
+
     # zone_overlap_matrix_active (case E, frame-based)
     h, d = _report_zone_overlap_matrix_active(frames)
     parts.append("\n## zone_overlap_matrix_active\n")
@@ -1826,10 +2666,68 @@ def main() -> int:
         parts.append(_md_table(h, d))
     else:
         parts.append(
-            "(нема даних у frames; переконайся, що replay пише frames і що в lifecycle_journal.build_frame_record є zone_overlap_active)"
+            "(нема даних у frames; переконайся, що replay пише frames у <journal_dir>/frames)"
         )
     if csv_dir is not None:
         _write_csv(csv_dir / "zone_overlap_matrix_active.csv", h, d)
+
+    # zone_overlap_examples (top frames)
+    parts.append("\n## zone_overlap_examples\n")
+    if zone_overlap_examples:
+        # Показуємо найінформативніші фрейми: max_iou desc, потім pairs_iou_ge_0.4 desc.
+        zone_overlap_examples_sorted = sorted(
+            zone_overlap_examples,
+            key=lambda x: (
+                -float(x.get("max_iou") or 0.0),
+                -int(x.get("pairs_iou_ge_0.4") or 0),
+                -int(x.get("total_pairs") or 0),
+                str(x.get("dt_utc") or ""),
+            ),
+        )
+        headers = [
+            "dt_utc",
+            "symbol",
+            "tf",
+            "kind",
+            "primary_close_ms",
+            "n_active",
+            "total_pairs",
+            "pairs_iou_ge_0.4",
+            "max_iou",
+            "max_pair_a",
+            "max_pair_b",
+            "missing_bounds",
+        ]
+        data = [
+            [str(x.get(hh, "-")) for hh in headers]
+            for x in zone_overlap_examples_sorted[:50]
+        ]
+        parts.append(_md_table(headers, data))
+        if csv_dir is not None:
+            _write_csv(
+                csv_dir / "zone_overlap_examples.csv",
+                headers,
+                [
+                    [str(x.get(hh, "-")) for hh in headers]
+                    for x in zone_overlap_examples_sorted
+                ],
+            )
+
+        for x in zone_overlap_examples_sorted[:30]:
+            audit_items.append(
+                {
+                    "case": "E",
+                    "dt_utc": str(x.get("dt_utc") or "-"),
+                    "symbol": str(x.get("symbol") or "-"),
+                    "tf": str(x.get("tf") or "-"),
+                    "primary_close_ms": str(x.get("primary_close_ms") or "-"),
+                    "entity": "zone_pair",
+                    "id": f"{x.get('max_pair_a','-')} | {x.get('max_pair_b','-')}",
+                    "note": f"overlap; max_iou={x.get('max_iou','-')}; pairs_iou_ge_0.4={x.get('pairs_iou_ge_0.4','-')}",
+                }
+            )
+    else:
+        parts.append("(нема frames або не вдалося зіставити межі зон з journal)")
 
     # preview_vs_close_summary
     h, d = _report_preview_vs_close_summary(frames)
@@ -1887,6 +2785,70 @@ def main() -> int:
             if csv_dir is not None:
                 _write_csv(csv_dir / "missed_touch_rate_offline.csv", h, d)
 
+            # Case F: top-N конкретних FN missed_touch (offline)
+            case_f = _collect_case_f_missed_touch_examples(
+                rows,
+                close_ms=close_ms,
+                lows=lows,
+                highs=highs,
+                max_items=200,
+            )
+            parts.append("\n## case_F_missed_touch_examples(offline)\n")
+            if case_f:
+                headers = [
+                    "symbol",
+                    "tf",
+                    "id",
+                    "type",
+                    "direction",
+                    "role",
+                    "dt_created_utc",
+                    "dt_removed_utc",
+                    "first_touch_close_ms",
+                    "price_min",
+                    "price_max",
+                    "touch_epsilon",
+                    "compute_kind",
+                ]
+                parts.append(
+                    _md_table(
+                        headers,
+                        [[str(x.get(hh, "-")) for hh in headers] for x in case_f[:50]],
+                    )
+                )
+                if csv_dir is not None:
+                    _write_csv(
+                        csv_dir / "case_f_missed_touch_examples_offline.csv",
+                        headers,
+                        [[str(x.get(hh, "-")) for hh in headers] for x in case_f],
+                    )
+                for x in case_f[:30]:
+                    ft = str(x.get("first_touch_close_ms") or "-")
+                    dt_utc = "-"
+                    try:
+                        if ft != "-":
+                            dt_utc = _fmt_dt_utc(
+                                datetime.fromtimestamp(int(ft) / 1000.0, tz=UTC)
+                            )
+                    except Exception:
+                        dt_utc = "-"
+                    audit_items.append(
+                        {
+                            "case": "F",
+                            "dt_utc": dt_utc,
+                            "symbol": str(x.get("symbol") or "-"),
+                            "tf": str(x.get("tf") or "-"),
+                            "primary_close_ms": ft,
+                            "entity": "zone",
+                            "id": str(x.get("id") or "-"),
+                            "note": "missed_touch_offline (should_touch але в journal touch нема)",
+                        }
+                    )
+            else:
+                parts.append(
+                    "(нема FN прикладів за поточними правилами offline-аудиту)\n"
+                )
+
             # Case H: outcomes для touched (LONG vs SHORT)
             try:
                 x_atr = float(getattr(args, "outcome_x_atr", 1.0))
@@ -1926,6 +2888,18 @@ def main() -> int:
     if csv_dir is not None:
         _write_csv(csv_dir / "quality_matrix.csv", h, d)
 
+    # lifetime_histogram_by_type (removed lifetime)
+    h, d = _report_lifetime_histogram_by_type(rows, thresholds=(1, 2))
+    parts.append("\n## lifetime_histogram_by_type\n")
+    if d:
+        parts.append(_md_table(h, d[:200]))
+        if len(d) > 200:
+            parts.append(f"\n(показано 200/{len(d)} рядків; повний розріз у CSV)\n")
+    else:
+        parts.append("(нема removed з lifetime_bars у ctx)\n")
+    if csv_dir is not None:
+        _write_csv(csv_dir / "lifetime_histogram_by_type.csv", h, d)
+
     # pool_wickcluster_reason_sub_top
     h, d = _report_pool_wickcluster_reason_sub_top(rows, top_k=15)
     parts.append("\n## pool_wickcluster_reason_sub_top\n")
@@ -1948,6 +2922,50 @@ def main() -> int:
     if csv_dir is not None:
         _write_csv(csv_dir / "short_lifetime_share_by_type.csv", h, d)
 
+    # Case C: top-N конкретних removed з lifetime_bars<=1
+    case_c = _collect_case_c_short_lifetime_examples(rows, lifetime_le=1, max_items=200)
+    parts.append("\n## case_C_short_lifetime_examples(lifetime_bars<=1)\n")
+    if case_c:
+        headers = [
+            "dt_removed_utc",
+            "symbol",
+            "tf",
+            "entity",
+            "id",
+            "primary_close_ms",
+            "type",
+            "lifetime_bars",
+            "reason_sub",
+            "reason",
+            "compute_kind",
+        ]
+        parts.append(
+            _md_table(
+                headers, [[str(x.get(hh, "-")) for hh in headers] for x in case_c[:50]]
+            )
+        )
+        if csv_dir is not None:
+            _write_csv(
+                csv_dir / "case_c_short_lifetime_examples.csv",
+                headers,
+                [[str(x.get(hh, "-")) for hh in headers] for x in case_c],
+            )
+        for x in case_c[:30]:
+            audit_items.append(
+                {
+                    "case": "C",
+                    "dt_utc": str(x.get("dt_removed_utc") or "-"),
+                    "symbol": str(x.get("symbol") or "-"),
+                    "tf": str(x.get("tf") or "-"),
+                    "primary_close_ms": str(x.get("primary_close_ms") or "-"),
+                    "entity": str(x.get("entity") or "-"),
+                    "id": str(x.get("id") or "-"),
+                    "note": f"short_lifetime<=1; reason_sub={x.get('reason_sub','-')}",
+                }
+            )
+    else:
+        parts.append("(нема removed з lifetime_bars<=1)\n")
+
     # flicker_short_lived_by_type (case C)
     h, d = _report_flicker_short_lived_by_type(rows)
     parts.append("\n## flicker_short_lived_by_type\n")
@@ -1962,6 +2980,26 @@ def main() -> int:
 
     out = "\n".join(parts) + "\n"
     sys.stdout.write(out)
+    if run_dir is not None:
+        report_name = f"report_{symbol_filter or 'ALL'}.md"
+        (run_dir / report_name).write_text(out, encoding="utf-8")
+
+    # audit_todo.md: конкретні приклади для replay (symbol/tf/primary_close_ms + id)
+    todo_dir = run_dir or csv_dir
+    if todo_dir is not None and audit_items:
+        try:
+            audit_items_sorted = sorted(
+                audit_items,
+                key=lambda x: (
+                    str(x.get("case") or ""),
+                    str(x.get("symbol") or ""),
+                    str(x.get("tf") or ""),
+                    str(x.get("dt_utc") or ""),
+                ),
+            )
+            _write_audit_todo_md(todo_dir / "audit_todo.md", audit_items_sorted)
+        except Exception:
+            pass
     return 0
 
 
