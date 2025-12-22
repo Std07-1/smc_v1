@@ -54,6 +54,8 @@
 
 ### Етап 2 — `smc_structure` _(статус: готовий до freeze, очікує фінальних QA)_
 
+- **Передумова (дані TF):** у Data layer (`UnifiedDataStore`) є SSOT-матеріалізація `1m→5m→1h→4h` (закрито 2025-12-19).
+
 - Каталог `smc_structure/` з:
   - `swing_detector.py` — 3-свічний патерн.
   - `structure_engine.py` — HH/HL/LH/LL, тренд, BOS/CHOCH.

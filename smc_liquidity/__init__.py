@@ -16,8 +16,10 @@ from .pools import (
     add_range_and_session_pools,
     add_trend_pools,
     build_eq_pools_from_swings,
+    throttle_pools,
 )
 from .sfp_wick import detect_sfp_and_wicks
+from .targets import build_liquidity_targets
 
 
 def compute_liquidity_state(
@@ -39,14 +41,29 @@ def compute_liquidity_state(
             },
         )
 
+    ctx = snapshot.context or {}
+    compute_kind = str(
+        ctx.get("smc_compute_kind") or ctx.get("compute_kind") or ""
+    ).lower()
+
     pools = build_eq_pools_from_swings(structure, cfg)
     add_trend_pools(pools, structure)
     add_range_and_session_pools(pools, structure, snapshot)
-    sfp_pools, sfp_events, wick_clusters = detect_sfp_and_wicks(
-        snapshot, structure, cfg
-    )
+
+    # Preview ≠ truth: на preview за замовчуванням не додаємо шумні SFP/WICK_CLUSTER.
+    # Це керується лише контекстом smc_compute_kind=preview (live не зачіпаємо).
+    if compute_kind == "preview" and not bool(
+        cfg.liquidity_preview_include_sfp_and_wicks
+    ):
+        sfp_pools, sfp_events, wick_clusters = [], [], []
+    else:
+        sfp_pools, sfp_events, wick_clusters = detect_sfp_and_wicks(
+            snapshot, structure, cfg
+        )
     if sfp_pools:
         pools.extend(sfp_pools)
+
+    pools = throttle_pools(pools, cfg=cfg)
     magnets = build_magnets_from_pools_and_range(pools, structure, snapshot, cfg)
 
     meta = {
@@ -56,6 +73,7 @@ def compute_liquidity_state(
         "pool_count": len(pools),
         "magnet_count": len(magnets),
         "bias": structure.bias,
+        "smc_compute_kind": compute_kind or None,
         "sfp_events": sfp_events,
         "wick_clusters": wick_clusters,
     }
@@ -66,6 +84,17 @@ def compute_liquidity_state(
         amd_phase=SmcAmdPhase.NEUTRAL,
         meta=meta,
     )
+
+    targets = build_liquidity_targets(
+        snapshot_ohlc_by_tf=snapshot.ohlc_by_tf,
+        tf_primary=snapshot.tf_primary,
+        magnets=magnets,
+        context=snapshot.context,
+        cfg=cfg,
+    )
+    if targets:
+        liquidity_state.meta["liquidity_targets"] = targets
+
     phase, reason = derive_amd_phase(structure, liquidity_state, cfg)
     liquidity_state.amd_phase = phase
     liquidity_state.meta["amd_reason"] = reason

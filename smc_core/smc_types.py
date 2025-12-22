@@ -77,6 +77,14 @@ class SmcSignalType(Enum):
     NONE = auto()
 
 
+SmcExecutionEventType = Literal[
+    "SWEEP",
+    "MICRO_BOS",
+    "MICRO_CHOCH",
+    "RETEST_OK",
+]
+
+
 @dataclass(slots=True)
 class SmcPoi:
     """Точка інтересу/діапазон з поясненнями для входу/SL."""
@@ -267,6 +275,37 @@ class SmcZonesState:
 
 
 @dataclass(slots=True)
+class SmcExecutionEvent:
+    """Мікро-подія execution (Stage5, 1m).
+
+    Принцип: 1m не є «мозком» — подія формується лише коли ціна in_play
+    (в POI або близько до target). Це зменшує шум і псевдо-сигнали.
+    """
+
+    event_type: SmcExecutionEventType
+    direction: Literal["LONG", "SHORT"]
+    time: pd.Timestamp
+    price: float
+    level: float | None = None
+    ref: Literal["POI", "TARGET", "UNKNOWN"] = "UNKNOWN"
+    poi_zone_id: str | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SmcExecutionState:
+    """Зведення execution (Stage5).
+
+    Поля:
+    - execution_events: малий список micro-подій, придатний для UI/логів;
+    - meta: діагностика гейтінгу (in_play, радіуси, джерела targets).
+    """
+
+    execution_events: list[SmcExecutionEvent] = field(default_factory=list)
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class SmcHint:
     """Фінальний результат роботи SMC движка."""
 
@@ -274,6 +313,7 @@ class SmcHint:
     liquidity: SmcLiquidityState | None = None
     zones: SmcZonesState | None = None
     signals: list[SmcSignal] = field(default_factory=list)
+    execution: SmcExecutionState | None = None
     meta: dict[str, Any] = field(default_factory=dict)
 
 

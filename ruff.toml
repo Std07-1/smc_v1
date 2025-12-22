@@ -38,10 +38,12 @@ ignore = [
 [lint.isort]
 known-first-party = [
   "app",
+  "core",
   "config",
   "data",
   "UI",
   "smc_core",
+  "smc_execution",
   "smc_structure",
   "smc_liquidity",
   "smc_zones",

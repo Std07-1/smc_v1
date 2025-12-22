@@ -1,17 +1,21 @@
 # SMC Liquidity Layer • Етап 3
 
-**Статус:** план затверджено, реалізація в роботі (після freeze Етапу 2).
+**Статус:** реалізовано та інтегровано (freeze). Оновлення тільки хвилями з тестами.
 
 ## 1. Мета та результат
 
 - Побудувати MAJOR-liquidty шар над `tf_primary = 5m` (еталон XAUUSD) з опорою на готову структуру (`SmcStructureState`) і сесійні мітки (Tokyo/London/NY).
-- На вході: OHLCV-бари, swings/legs/BOS/CHOCH/bias/range_state/OTE, session tags з FXCM datastore.
+- Побудувати MAJOR-liquidty шар над `tf_primary = 5m` (еталон XAUUSD) з опорою на готову структуру (`SmcStructureState`) і сесійний контекст (ASIA/LONDON/NY).
+- На вході: OHLCV-бари, swings/legs/BOS/CHOCH/bias/range_state/OTE, сесійний контекст з `SmcInput.context` (власні обчислення SMC з OHLCV, UTC-вікна).
 - На виході: `SmcHint.liquidity` заповнюється інстансом `SmcLiquidityState`, який містить:
   - `pools`: усі рівні EQH/EQL/TLQ/SLQ/RANGE_EXTREME/WICK_CLUSTER з роллю (PRIMARY/COUNTERTREND/NEUTRAL), strength 0..100, n_touches, first/last_time, source_swings, meta.
   - `magnets`: 1–3 ключові області (price_min/max/center, liq_type=RANGE_EXTREME|POOL_CLUSTER, role, перелік pools).
   - `amd_phase`: ACCUMULATION / MANIPULATION / DISTRIBUTION / UNKNOWN.
   - `meta`: symbol, primary_tf, bar_count, pool_count, magnet_count, bias, `sfp_events`, `wick_clusters`, службові прапори.
+  - `meta.liquidity_targets`: список цілей ліквідності `internal/external` (не ламає базові dataclass-и; додається тільки в `meta`).
 - Призначення: показати, де «лежать стопи/ліквідність», стиснути їх у зрозумілі магніти та дати грубий режим AMD без втручання у Stage3 ризик-логіку.
+
+Додатково для Stage2/UI: `smc_core.liquidity_bridge.build_liquidity_hint()` віддає найближчі цілі як `smc_liq_nearest_internal` / `smc_liq_nearest_external` (за наявності `ref_price` і `meta.liquidity_targets`).
 
 ## 2. Обсяг і модулі `smc_liquidity`
 
@@ -47,9 +51,14 @@
 ## 4. Межі Етапу 3
 
 - **Робимо:** лише `smc_liquidity` пакет, оновлення типів, інтеграцію в `SmcCoreEngine`, відображення в snapshot/debug-viewer, тестове покриття.
-- **Не робимо:** OrderBlock/Breaker/FVG (Етап 4), SmcSignal/entry правила (Етап 5), Stage2/Stage3 ризик-зміни, складну session-FSM. Сесійні дані дозволені тільки як довідкова `meta` (мітки сесій/кластерів).
+- **Не робимо:** OrderBlock/Breaker/FVG (Етап 4), SmcSignal/entry правила (Етап 5), Stage2/Stage3 ризик-зміни, складну session-FSM.
 
-## 5. Підетапи (PLAN)
+Примітка по сесіях:
+
+- Сесійний контекст (ASIA/LONDON/NY) — SSOT у `SmcInput.context` (обчислення SMC з OHLCV), далі прокидується у `SmcHint.meta`.
+- Liquidity використовує цей контекст тільки як довідкові рівні/кандидати (session pools + session-based external targets), без окремої FSM.
+
+## 5. Підетапи (DONE)
 
 1. **Каркас + типи** — вирівняти `SmcLiquidity*` dataclass та документацію (`smc_core_overview.md`, цей файл).
 2. **Wick-кластери та RANGE_EXTREME** — знайти хвостові конгломерати, побудувати RANGE_EXTREME рівні, додати у pools із роллю vs bias.

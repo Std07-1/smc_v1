@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any
 
 __all__ = [
     "SymbolInfo",
+    "AI_ONE_MODE",
     "NAMESPACE",
     "DATASTORE_BASE_DIR",
     "DEPTH_SEMAPHORE",
@@ -20,6 +22,8 @@ __all__ = [
     "FAST_SYMBOLS_TTL_MANUAL",
     "FXCM_FAST_SYMBOLS",
     "FXCM_STALE_LAG_SECONDS",
+    "FXCM_COMMANDS_CHANNEL",
+    "FXCM_OHLCV_CHANNEL",
     "FXCM_PRICE_TICK_CHANNEL",
     "FXCM_STATUS_CHANNEL",
     "PRICE_TICK_STALE_SECONDS",
@@ -61,7 +65,70 @@ __all__ = [
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATASTORE_BASE_DIR = str(_PROJECT_ROOT / "datastore")
-NAMESPACE = "ai_one"
+
+
+def _env_run_mode(default: str = "prod") -> str:
+    """Повертає режим запуску: `prod` або `local`.
+
+    Використовується як простий перемикач профілю, щоб:
+    - локальний запуск не чіпав прод Redis;
+    - дефолтні ключі/канали/namespace були передбачувані.
+
+    Пріоритети:
+    - якщо `AI_ONE_MODE` задано → беремо його;
+    - інакше → `prod`.
+    """
+
+    raw = os.getenv("AI_ONE_MODE")
+    if raw is None:
+        return default
+    value = str(raw).strip().lower()
+    if value in {"local", "dev"}:
+        return "local"
+    if value in {"prod", "production"}:
+        return "prod"
+    return default
+
+
+AI_ONE_MODE: str = _env_run_mode("local")  # За замовчуванням локальний режим
+
+
+def _default_namespace_for_mode(mode: str) -> str:
+    mode_norm = str(mode or "").strip().lower()
+    if mode_norm == "local":
+        return "ai_one_local"
+    return "ai_one"
+
+
+def _env_namespace(default: str = "ai_one") -> str:
+    """Повертає namespace для Redis ключів/каналів.
+
+    Важливо: це інфраструктурний параметр.
+    Використовується для ізоляції локальних/dev запусків від прод Redis.
+    """
+
+    raw = os.getenv("AI_ONE_NAMESPACE")
+    if raw is None:
+        return default
+    value = str(raw).strip()
+    return value or default
+
+
+def _env_str(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = str(raw).strip()
+    return value or default
+
+
+NAMESPACE = _env_namespace(_default_namespace_for_mode(AI_ONE_MODE))
+
+
+def _default_fxcm_channel_prefix(mode: str) -> str:
+    mode_norm = str(mode or "").strip().lower()
+    return "fxcm_local" if mode_norm == "local" else "fxcm"
+
 
 _FALSE_ENV_VALUES = {"1"}
 
@@ -139,7 +206,15 @@ ADMIN_COMMANDS_CHANNEL: str = f"{NAMESPACE}:admin:commands"
 
 #: Канал команд для FXCM-конектора (S3 warmup/backfill requester -> connector subscriber)
 #: Важливо: цей канал НЕ має namespace `ai_one:*`, бо конектор живе в окремому репо.
-FXCM_COMMANDS_CHANNEL: str = "fxcm:commands"
+_FXCM_CHANNEL_PREFIX: str = _env_str(
+    "FXCM_CHANNEL_PREFIX",
+    _default_fxcm_channel_prefix(AI_ONE_MODE),
+)
+
+FXCM_COMMANDS_CHANNEL: str = _env_str(
+    "FXCM_COMMANDS_CHANNEL",
+    f"{_FXCM_CHANNEL_PREFIX}:commands",
+)
 
 #: Ключі для агрегованих статистик у Redis
 STATS_CORE_KEY: str = f"{NAMESPACE}:stats:core"
@@ -184,11 +259,22 @@ FXCM_FAST_SYMBOLS = [
 ]
 
 #: Канал живих bid/ask/mid тиков від FXCM конектора
-FXCM_PRICE_TICK_CHANNEL = "fxcm:price_tik"
+FXCM_OHLCV_CHANNEL: str = _env_str(
+    "FXCM_OHLCV_CHANNEL",
+    f"{_FXCM_CHANNEL_PREFIX}:ohlcv",
+)
+
+FXCM_PRICE_TICK_CHANNEL: str = _env_str(
+    "FXCM_PRICE_TICK_CHANNEL",
+    f"{_FXCM_CHANNEL_PREFIX}:price_tik",
+)
 
 FXCM_STALE_LAG_SECONDS = 120
 # Канал агрегованого статусу конектора FXCM (process/market/price/ohlcv/session)
-FXCM_STATUS_CHANNEL = "fxcm:status"
+FXCM_STATUS_CHANNEL: str = _env_str(
+    "FXCM_STATUS_CHANNEL",
+    f"{_FXCM_CHANNEL_PREFIX}:status",
+)
 # Скільки секунд mid вважається «свіжим» для UI/алгоритмів
 PRICE_TICK_STALE_SECONDS = 15
 # Коли вважати снапшот повністю протухлим і видаляти його з кешу
@@ -238,11 +324,48 @@ PROM_HTTP_PORT = 9108
 # SMC snapshot / backtest режим (CLI-утиліти)
 SMC_BACKTEST_ENABLED: bool = False
 
+# SSOT TF-план для SMC (Stage0: TF-правда).
+# - tf_exec: TF для «виконавчого» шару/живих метрик (не обов'язково primary для compute).
+# - tf_structure: головний TF для структури/ліквідності/зон (tf_primary для SMC-core).
+# - tf_context: HTF-контекст, який підтягуємо як додаткові фрейми (best-effort).
+SMC_TF_PLAN: dict[str, Any] = {
+    "tf_exec": "1m",
+    "tf_structure": "5m",
+    "tf_context": ("1h", "4h"),
+}
+
 # Робочі параметри SmcCore у Stage1 → UI
 SMC_RUNTIME_PARAMS: dict[str, Any] = {
     "enabled": True,
-    "tf_primary": "1m",
-    "tfs_extra": ("5m", "15m", "1h"),
+    # TF-правда: compute відбувається на tf_structure (5m).
+    "tf_primary": str(SMC_TF_PLAN["tf_structure"]),
+    # Підтягуємо exec + HTF контекст + TF для UI/огляду.
+    "tfs_extra": (
+        str(SMC_TF_PLAN["tf_exec"]),
+        *tuple(SMC_TF_PLAN["tf_context"]),
+    ),
+    # Stage6: анти-фліп/гістерезис живе поза SMC-core (в SmcStateManager).
+    # Ці значення — бізнес-рейки UX, не керуємо через ENV.
+    "stage6": {
+        # Мінімальна пауза між змінами stable-сценарію.
+        "ttl_sec": 180,
+        # Скільки послідовних циклів новий сценарій має триматися.
+        "confirm_bars": 2,
+        # Наскільки нова впевненість має бути вищою за stable, щоб дозволити switch.
+        # (confidence у Stage6 нормалізований у діапазон ~0.50..0.95)
+        "switch_delta": 0.08,
+        # Micro-events (Stage5 execution) — лише як підтвердження, НІКОЛИ не як вибір 4_2/4_3.
+        # Працює тільки коли execution.meta.in_play=True, distance<=dmax та події в межах TTL.
+        "micro_confirm_enabled": True,
+        # TTL для актуальності micro-подій (сек).
+        "micro_ttl_sec": 90,
+        # Максимальна відстань до POI/target у ATR-одиницях (рахуємо від execution.meta.in_play_ref).
+        "micro_dmax_atr": 0.80,
+        # Буст confidence при повному підтвердженні (набір подій для конкретного raw сценарію).
+        "micro_boost": 0.05,
+        # Буст confidence при частковому підтвердженні (лише одна з потрібних подій).
+        "micro_boost_partial": 0.02,
+    },
     # Мінімальна історія для старту розрахунку SMC.
     # На VPS без локальних снапшотів дає змогу стартувати швидше (≈50 хв для 1m).
     "limit": 50,

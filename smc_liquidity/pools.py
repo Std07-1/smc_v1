@@ -213,9 +213,12 @@ def _add_session_pools(
 ) -> None:
     ctx = snapshot.context or {}
     ref_ts = _structure_ref_ts(structure)
+    low_val = ctx.get("smc_session_low")
+    high_val = ctx.get("smc_session_high")
+    session_tag = ctx.get("smc_session_tag") or ctx.get("session_tag")
     levels = [
-        (ctx.get("pdl"), SmcLiquidityType.SESSION_LOW, "LOW"),
-        (ctx.get("pdh"), SmcLiquidityType.SESSION_HIGH, "HIGH"),
+        (low_val, SmcLiquidityType.SESSION_LOW, "LOW"),
+        (high_val, SmcLiquidityType.SESSION_HIGH, "HIGH"),
     ]
     for value, liq_type, side in levels:
         if value is None:
@@ -236,7 +239,8 @@ def _add_session_pools(
                 meta={
                     "source": "session",
                     "side": side,
-                    "key": "pdl" if side == "LOW" else "pdh",
+                    "key": "smc_session_low" if side == "LOW" else "smc_session_high",
+                    "session_tag": session_tag,
                 },
             )
         )
@@ -298,3 +302,176 @@ def resolve_role_for_bias(
             if side == "LOW":
                 return "COUNTERTREND"
     return "NEUTRAL"
+
+
+def throttle_pools(
+    pools: list[SmcLiquidityPool], *, cfg: SmcCoreConfig
+) -> list[SmcLiquidityPool]:
+    """Приборкує шум у pools: кластеризація рівнів + top-K + загальний cap.
+
+    Це QA/UI-орієнтований «фільтр подачі», не продакшн-сигнал.
+    Алгоритм детермінований:
+    - групуємо по (liq_type, role, side);
+    - всередині групи кластеризуємо за ціною з допуском cfg.eq_tolerance_pct;
+    - лишаємо top-K за strength/n_touches;
+    - застосовуємо загальний cap cfg.liquidity_pools_max_total.
+    """
+
+    if not pools:
+        return []
+
+    tolerance = max(cfg.eq_tolerance_pct, 0.001)
+
+    # 1) Кластеризація в межах групи.
+    grouped: dict[tuple[str, str, str], list[SmcLiquidityPool]] = {}
+    for p in pools:
+        side = _pool_side(p)
+        key = (str(getattr(p.liq_type, "name", str(p.liq_type))), str(p.role), side)
+        grouped.setdefault(key, []).append(p)
+
+    clustered: list[SmcLiquidityPool] = []
+    for (_typ, _role, _side), items in grouped.items():
+        clustered.extend(_cluster_pools_by_level(items, tolerance_pct=tolerance))
+
+    # 2) Top-K пер типу/групи.
+    capped: list[SmcLiquidityPool] = []
+    grouped2: dict[tuple[str, str, str], list[SmcLiquidityPool]] = {}
+    for p in clustered:
+        side = _pool_side(p)
+        key = (str(getattr(p.liq_type, "name", str(p.liq_type))), str(p.role), side)
+        grouped2.setdefault(key, []).append(p)
+
+    for (typ, _role, side), items in grouped2.items():
+        k = _topk_for_group(typ=typ, side=side, cfg=cfg)
+        items_sorted = sorted(
+            items,
+            key=lambda p: (float(getattr(p, "strength", 0.0) or 0.0), int(p.n_touches)),
+            reverse=True,
+        )
+        if k > 0:
+            items_sorted = items_sorted[:k]
+        capped.extend(items_sorted)
+
+    # 3) Загальний cap (зберігаємо важливі типи першими).
+    max_total = int(cfg.liquidity_pools_max_total or 0)
+    if max_total > 0 and len(capped) > max_total:
+        priority = {
+            "RANGE_EXTREME": 100,
+            "SESSION_HIGH": 90,
+            "SESSION_LOW": 90,
+            "TLQ": 80,
+            "SLQ": 80,
+            "EQH": 50,
+            "EQL": 50,
+            "SFP": 30,
+            "WICK_CLUSTER": 25,
+        }
+
+        def _score(p: SmcLiquidityPool) -> tuple[int, float, int]:
+            typ = str(getattr(p.liq_type, "name", str(p.liq_type)))
+            pr = int(priority.get(typ, 10))
+            strength = float(getattr(p, "strength", 0.0) or 0.0)
+            return (pr, strength, int(p.n_touches))
+
+        capped = sorted(capped, key=_score, reverse=True)[:max_total]
+
+    return capped
+
+
+def _topk_for_group(*, typ: str, side: str, cfg: SmcCoreConfig) -> int:
+    typ_u = str(typ).upper()
+    if typ_u in ("EQH", "EQL"):
+        return int(cfg.liquidity_eq_topk_per_side)
+    if typ_u == "WICK_CLUSTER":
+        return int(cfg.liquidity_wick_cluster_topk_per_side)
+    if typ_u == "SFP":
+        return int(cfg.liquidity_sfp_topk_per_side)
+    return int(cfg.liquidity_other_topk_per_group)
+
+
+def _pool_side(pool: SmcLiquidityPool) -> str:
+    """Визначає сторону рівня для групування (HIGH/LOW/UNKNOWN)."""
+
+    try:
+        meta_side = str((pool.meta or {}).get("side") or "").upper()
+    except Exception:
+        meta_side = ""
+    if meta_side in {"HIGH", "LOW"}:
+        return meta_side
+
+    try:
+        typ = str(getattr(pool.liq_type, "name", str(pool.liq_type))).upper()
+    except Exception:
+        typ = ""
+    if typ in {"EQH", "SESSION_HIGH"}:
+        return "HIGH"
+    if typ in {"EQL", "SESSION_LOW"}:
+        return "LOW"
+    if typ in {"TLQ", "RANGE_EXTREME", "SFP", "WICK_CLUSTER"}:
+        # Для RANGE_EXTREME/SFP/WICK_CLUSTER зазвичай є meta[side]. Якщо нема — UNKNOWN.
+        return "UNKNOWN"
+    if typ == "SLQ":
+        return "HIGH"
+    return "UNKNOWN"
+
+
+def _cluster_pools_by_level(
+    pools: list[SmcLiquidityPool], *, tolerance_pct: float
+) -> list[SmcLiquidityPool]:
+    if not pools:
+        return []
+
+    items = sorted(pools, key=lambda p: float(p.level))
+    clusters: list[list[SmcLiquidityPool]] = []
+    for p in items:
+        matched = False
+        for cluster in clusters:
+            ref = float(sum(c.level for c in cluster) / max(len(cluster), 1))
+            if _within_tolerance(float(p.level), ref, float(tolerance_pct)):
+                cluster.append(p)
+                matched = True
+                break
+        if not matched:
+            clusters.append([p])
+
+    out: list[SmcLiquidityPool] = []
+    for cluster in clusters:
+        if len(cluster) == 1:
+            out.append(cluster[0])
+            continue
+
+        strength_sum = float(
+            sum(float(getattr(p, "strength", 0.0) or 0.0) for p in cluster)
+        )
+        touches_sum = int(sum(int(getattr(p, "n_touches", 0) or 0) for p in cluster))
+        # Вибираємо repr з найвищою strength; рівень — середній.
+        repr_pool = max(
+            cluster,
+            key=lambda p: (float(getattr(p, "strength", 0.0) or 0.0), int(p.n_touches)),
+        )
+        level_avg = float(sum(float(p.level) for p in cluster) / len(cluster))
+        first_time = min(
+            (p.first_time for p in cluster if p.first_time is not None), default=None
+        )
+        last_time = max(
+            (p.last_time for p in cluster if p.last_time is not None), default=None
+        )
+
+        meta = dict(repr_pool.meta or {})
+        meta["throttled"] = True
+        meta["throttled_cluster_size"] = int(len(cluster))
+        out.append(
+            SmcLiquidityPool(
+                level=level_avg,
+                liq_type=repr_pool.liq_type,
+                strength=strength_sum,
+                n_touches=touches_sum if touches_sum > 0 else int(repr_pool.n_touches),
+                first_time=first_time,
+                last_time=last_time,
+                role=repr_pool.role,
+                source_swings=list(repr_pool.source_swings or []),
+                meta=meta,
+            )
+        )
+
+    return out

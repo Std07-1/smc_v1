@@ -59,8 +59,6 @@ if not logger.handlers:  # guard від подвійного підключен�
     logger.addHandler(logging.StreamHandler())
     logger.propagate = False
 
-FXCM_OHLCV_CHANNEL = "fxcm:ohlcv"
-
 
 class _NoopCounter:
     def labels(self, *args: Any, **kwargs: Any) -> _NoopCounter:
@@ -520,7 +518,7 @@ async def run_fxcm_ingestor(
     *,
     redis_host: str | None = None,
     redis_port: int | None = None,
-    channel: str = FXCM_OHLCV_CHANNEL,
+    channel: str | None = None,
     log_every_n: int = 50,
     hmac_secret: str | None = None,
     hmac_algo: str = "sha256",
@@ -541,6 +539,9 @@ async def run_fxcm_ingestor(
     """
     host = redis_host or settings.redis_host
     port = redis_port or settings.redis_port
+    channel_name = (channel or settings.fxcm_ohlcv_channel or "").strip()
+    if not channel_name:
+        channel_name = settings.fxcm_ohlcv_channel
     normalized_secret = (
         hmac_secret.strip() if isinstance(hmac_secret, str) else hmac_secret
     )
@@ -550,7 +551,7 @@ async def run_fxcm_ingestor(
         "[FXCM_INGEST] Старт інжестора: host=%s port=%s channel=%s",
         host,
         port,
-        channel,
+        channel_name,
     )
     if allowed_pairs is None:
         logger.info(
@@ -571,8 +572,8 @@ async def run_fxcm_ingestor(
         redis = Redis(host=host, port=port)
         pubsub = redis.pubsub()
         try:
-            await pubsub.subscribe(channel)
-            logger.info("[FXCM_INGEST] Підписка активна (channel=%s)", channel)
+            await pubsub.subscribe(channel_name)
+            logger.info("[FXCM_INGEST] Підписка активна (channel=%s)", channel_name)
 
             async for message in pubsub.listen():
                 backoff_sec = 1.0
@@ -599,7 +600,7 @@ async def run_fxcm_ingestor(
                 except JSONDecodeError:
                     logger.warning(
                         "[FXCM_INGEST] Некоректний JSON у повідомленні з каналу %s",
-                        channel,
+                        channel_name,
                     )
                     continue
 
@@ -645,7 +646,7 @@ async def run_fxcm_ingestor(
             backoff_sec = min(backoff_sec * 2.0, 60.0)
         finally:
             try:
-                await pubsub.unsubscribe(channel)
+                await pubsub.unsubscribe(channel_name)
             except Exception:  # noqa: BLE001
                 pass
             try:

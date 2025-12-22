@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
-from data.unified_store import UnifiedDataStore
+import pandas as pd
+
 from core.contracts.viewer_state import OhlcvBar
 from core.serialization import safe_float
+from data.unified_store import UnifiedDataStore
 
 
 class OhlcvNotFoundError(Exception):
@@ -22,9 +24,22 @@ class OhlcvProvider(Protocol):
         symbol: str,
         timeframe: str,
         limit: int,
+        *,
+        to_ms: int | None = None,
     ) -> Sequence[OhlcvBar]:
         """Повертає останні ``limit`` барів або кидає виняток."""
         raise NotImplementedError
+
+
+def _tf_ms(tf: str) -> int:
+    tf_norm = str(tf).strip().lower()
+    if tf_norm.endswith("m"):
+        return int(tf_norm[:-1]) * 60_000
+    if tf_norm.endswith("h"):
+        return int(tf_norm[:-1]) * 60 * 60_000
+    if tf_norm.endswith("d"):
+        return int(tf_norm[:-1]) * 24 * 60 * 60_000
+    raise ValueError(f"Непідтримуваний TF: {tf}")
 
 
 def _to_millis(value: Any) -> int | None:
@@ -59,11 +74,34 @@ class UnifiedStoreOhlcvProvider:
         symbol: str,
         timeframe: str,
         limit: int,
+        *,
+        to_ms: int | None = None,
     ) -> list[OhlcvBar]:
         limit = max(1, limit)
-        df = await self.store.get_df(symbol, timeframe, limit=limit)
+        # Важливо для replay: якщо задано to_ms (курсор часу), нам потрібно
+        # робити tail(limit) ПОСЛІ фільтрації (інакше на ранніх кроках отримаємо порожній графік).
+        df = await self.store.get_df(symbol, timeframe, limit=None if to_ms else limit)
         if df is None or df.empty:
             raise OhlcvNotFoundError(f"OHLCV порожній для {symbol} {timeframe}")
+
+        if to_ms is not None:
+            # Фільтруємо лише бари, які "відомі" на момент to_ms.
+            # У відповіді UI ми кодуємо time як close_time (якщо є), інакше як open_time.
+            to_ms_int = int(to_ms)
+            if "close_time" in df.columns:
+                close_time = pd.to_numeric(df["close_time"], errors="coerce")
+                df = df[close_time <= to_ms_int]
+            elif "open_time" in df.columns:
+                open_time = pd.to_numeric(df["open_time"], errors="coerce")
+                df = df[(open_time + _tf_ms(timeframe)) <= to_ms_int]
+            elif "timestamp" in df.columns:
+                ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+                open_ns = ts.astype("int64")
+                open_ms = (open_ns // 1_000_000).where(open_ns > 0)
+                df = df[(open_ms + _tf_ms(timeframe)) <= to_ms_int]
+
+            if df is None or df.empty:
+                return []
 
         sort_col = None
         for candidate in ("close_time", "open_time"):

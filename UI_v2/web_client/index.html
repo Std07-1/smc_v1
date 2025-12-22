@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SMC Viewer v2 (Web)</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20251221_3" />
 </head>
 
 <body class="ui-view-overview">
@@ -17,6 +17,8 @@
             <select id="timeframe-select">
                 <option value="1m">1m</option>
                 <option value="5m">5m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
             </select>
         </div>
         <div class="header-right">
@@ -27,6 +29,9 @@
             <div class="status-meta">
                 <span class="status-meta__item" id="payload-ts">Payload ts: -</span>
                 <span class="status-meta__item" id="payload-lag">Lag (s): -</span>
+                <span class="status-meta__item" id="active-zones">active_zones: -/6</span>
+                <span class="status-meta__item" id="exec-status">EXEC: -</span>
+                <span class="status-meta__item" id="tf-health">TF health: -</span>
             </div>
         </div>
     </header>
@@ -123,19 +128,115 @@
             <section class="card card-chart" aria-label="Графік">
                 <div class="chart-overlay-shell" aria-label="Графік">
                     <div id="chart-container" class="chart-demo-container"></div>
+                    <div id="chart-poi-label-layer" class="chart-poi-label-layer" aria-hidden="true"></div>
                     <div id="chart-hover-tooltip" class="chart-hover-tooltip" hidden></div>
+
+                    <aside id="stage6-panel" class="stage6-panel" aria-label="SMC контекст (пояснювач)">
+                        <div class="stage6-panel__header">
+                            <div class="stage6-panel__heading">
+                                <div class="stage6-panel__title">SMC Контекст</div>
+                                <div class="stage6-panel__subtitle">Режим ринку (контекст), не сигнал</div>
+                            </div>
+                        </div>
+                        <div id="stage6-nodata" class="stage6-panel__nodata" hidden>Немає контексту</div>
+                        <div id="stage6-grid" class="stage6-panel__grid">
+                            <div class="stage6-row">
+                                <div class="label">Режим</div>
+                                <div id="stage6-mode" class="stage6-panel__value">немає даних</div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">stable_conf</div>
+                                <div class="stage6-panel__value">
+                                    <div id="stage6-stable-conf">немає даних</div>
+                                    <div class="stage6-progress" aria-hidden="true">
+                                        <div id="stage6-stable-conf-bar" class="stage6-progress__bar"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">Що думаю зараз</div>
+                                <div id="stage6-raw-line" class="stage6-panel__value">немає даних</div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">Pending</div>
+                                <div id="stage6-pending-line" class="stage6-panel__value">немає даних</div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">Чому</div>
+                                <div id="stage6-why" class="stage6-panel__value">немає даних</div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">DR</div>
+                                <div id="stage6-htf-dr" class="stage6-panel__value">немає даних</div>
+                            </div>
+                            <div class="stage6-row">
+                                <div class="label">PD</div>
+                                <div id="stage6-htf-pd" class="stage6-panel__value">немає даних</div>
+                            </div>
+                            <div class="stage6-row">
+                                <div class="label">ATR14</div>
+                                <div id="stage6-htf-atr" class="stage6-panel__value">немає даних</div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">Sweep</div>
+                                <div id="stage6-sweep" class="stage6-panel__value">немає даних</div>
+                            </div>
+                            <div class="stage6-row">
+                                <div class="label">Hold above</div>
+                                <div id="stage6-hold" class="stage6-panel__value">немає даних</div>
+                            </div>
+                            <div class="stage6-row">
+                                <div class="label">Failed hold</div>
+                                <div id="stage6-failed-hold" class="stage6-panel__value">немає даних</div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">Targets</div>
+                                <div id="stage6-targets" class="stage6-panel__value">немає даних</div>
+                            </div>
+                            <div class="stage6-row">
+                                <div class="label">POI</div>
+                                <div id="stage6-poi" class="stage6-panel__value">немає даних</div>
+                            </div>
+
+                            <div class="stage6-row">
+                                <div class="label">TTL</div>
+                                <div id="stage6-antiflip-ttl" class="stage6-panel__value">немає даних</div>
+                            </div>
+                            <div class="stage6-row">
+                                <div class="label">blocked</div>
+                                <div id="stage6-antiflip-blocked" class="stage6-panel__value">немає даних</div>
+                            </div>
+                            <div class="stage6-row">
+                                <div class="label">override</div>
+                                <div id="stage6-antiflip-override" class="stage6-panel__value">немає даних</div>
+                            </div>
+                        </div>
+                    </aside>
+
                     <div class="chart-overlay-actions" role="group" aria-label="Керування графіком">
-                        <button id="chart-layer-menu-btn" type="button" class="chart-layer-menu-btn" aria-label="Шари"
-                            aria-haspopup="true" aria-expanded="false">▾</button>
-                        <button id="chart-size-toggle-btn" type="button" class="chart-fullscreen-btn"
-                            aria-label="Збільшити графік" title="Збільшити до 900" aria-pressed="false">x2</button>
-                        <button id="chart-fullscreen-btn" type="button" class="chart-fullscreen-btn"
-                            aria-label="На весь екран" title="На весь екран" aria-pressed="false">
-                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
-                                <path fill="currentColor"
-                                    d="M7 14H5v5h5v-2H7v-3zm0-4h3V7h3V5H5v5h2V7h3v3zm10 7h-3v2h5v-5h-2v3zm0-10V5h-5v2h3v3h2z" />
-                            </svg>
-                        </button>
+                        <div class="chart-overlay-actions__left" aria-hidden="false">
+                            <button id="chart-layer-menu-btn" type="button" class="chart-layer-menu-btn" aria-label="Шари"
+                                aria-haspopup="true" aria-expanded="false">▾</button>
+                            <button id="chart-size-toggle-btn" type="button" class="chart-fullscreen-btn"
+                                aria-label="Збільшити графік" title="Збільшити до 900" aria-pressed="false">x2</button>
+                            <button id="chart-fullscreen-btn" type="button" class="chart-fullscreen-btn"
+                                aria-label="На весь екран" title="На весь екран" aria-pressed="false">
+                                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                                    <path fill="currentColor"
+                                        d="M7 14H5v5h5v-2H7v-3zm0-4h3V7h3V5H5v5h2V7h3v3zm10 7h-3v2h5v-5h-2v3zm0-10V5h-5v2h3v3h2z" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="chart-overlay-actions__right" aria-hidden="false">
+                            <button id="stage6-toggle-btn" type="button" class="stage6-panel__toggle" aria-label="Згорнути SMC контекст" title="Згорнути SMC контекст" aria-pressed="false">S6</button>
+                        </div>
                     </div>
                     <div id="chart-layer-menu" class="chart-layer-menu" hidden>
                         <div class="chart-layer-controls" role="group" aria-label="Керування шарами">
@@ -165,6 +266,17 @@
                                 <span class="layer-toggle__text">Сесії (UTC)</span>
                             </label>
                         </div>
+
+                        <div class="chart-layer-controls" role="group" aria-label="Налаштування зон">
+                            <label class="layer-toggle layer-toggle--select">
+                                <span class="layer-toggle__text">Ліміт зон</span>
+                                <select id="zones-limit-select" aria-label="Ліміт зон (для 1m)">
+                                    <option value="near2">Дефолт (2 + 2 + в зоні)</option>
+                                    <option value="near1">Ліміт 2 (1 + 1 + в зоні)</option>
+                                    <option value="all">Без ліміту</option>
+                                </select>
+                            </label>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -191,7 +303,7 @@
                 </div>
             </section>
 
-            <section class="panel" aria-labelledby="events-title">
+            <section class="panel debug-only" aria-labelledby="events-title">
                 <div class="panel-header">
                     <h3 id="events-title">Structure Events (BOS / CHOCH)</h3>
                 </div>
@@ -208,7 +320,7 @@
                 </table>
             </section>
 
-            <section class="panel" aria-labelledby="ote-title">
+            <section class="panel debug-only" aria-labelledby="ote-title">
                 <div class="panel-header">
                     <h3 id="ote-title">OTE Zones</h3>
                 </div>
@@ -225,7 +337,7 @@
                 </table>
             </section>
 
-            <section class="panel" aria-labelledby="pools-title">
+            <section class="panel debug-only" aria-labelledby="pools-title">
                 <div class="panel-header">
                     <h3 id="pools-title">Liquidity Pools</h3>
                 </div>
@@ -242,11 +354,11 @@
                 </table>
             </section>
 
-            <section class="panel" aria-labelledby="zones-title">
+            <section class="panel debug-only" aria-labelledby="zones-title">
                 <div class="panel-header">
                     <h3 id="zones-title">Zones</h3>
                 </div>
-                <table>
+                <table class="zones-table">
                     <thead>
                         <tr>
                             <th>Type</th>
@@ -297,18 +409,29 @@
                 </label>
             </div>
 
+            <div class="filters-group" aria-label="Зони">
+                <label for="zones-limit-select-mobile" class="filters-label">Ліміт зон (1m)</label>
+                <select id="zones-limit-select-mobile">
+                    <option value="near2">Як зараз (2 + 2 + в зоні)</option>
+                    <option value="near1">Ліміт 2 (1 + 1 + в зоні)</option>
+                    <option value="all">Без ліміту</option>
+                </select>
+            </div>
+
             <div class="filters-group" aria-label="Таймфрейм">
                 <label for="timeframe-select-mobile" class="filters-label">Таймфрейм</label>
                 <select id="timeframe-select-mobile">
                     <option value="1m">1m</option>
                     <option value="5m">5m</option>
+                    <option value="1h">1h</option>
+                    <option value="4h">4h</option>
                 </select>
             </div>
         </div>
     </aside>
     <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="chart_adapter.js"></script>
-    <script src="app.js"></script>
+    <script src="chart_adapter.js?v=20251221_3"></script>
+    <script src="app.js?v=20251221_3"></script>
 </body>
 
 </html>

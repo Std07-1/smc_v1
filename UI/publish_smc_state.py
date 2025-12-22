@@ -1,4 +1,14 @@
-"""Публікація SMC-only стану в Redis канал для UI."""
+"""Публікація SMC-only стану в Redis канал для UI.
+
+Функції модуля:
+- формує UiSmcStatePayload (assets + meta + counters + analytics);
+- виконує серіалізацію через SSOT `core.serialization`;
+- агрегує базові лічильники пайплайна та Stage6 (raw/stable сценарії, flips,
+  частка `UNCLEAR` і причини `UNCLEAR`).
+
+Примітка:
+- Stage6 анти-фліп живе в `app.SmcStateManager`; тут ми лише читаємо поля зі `stats`.
+"""
 
 from __future__ import annotations
 
@@ -16,9 +26,8 @@ from config.config import (
     UI_SMC_PAYLOAD_SCHEMA_VERSION,
     UI_SMC_SNAPSHOT_TTL_SEC,
 )
-from core.formatters import fmt_price_stage1, fmt_volume_usd
-from core.serialization import json_dumps, utc_now_iso_z
-from core.serialization import safe_float
+from core.formatters import fmt_price_stage1
+from core.serialization import json_dumps, safe_float, utc_now_iso_z
 
 try:  # pragma: no cover - best-effort залежність
     from smc_core.serializers import to_plain_smc_hint as _core_plain_smc_hint
@@ -108,6 +117,13 @@ async def publish_smc_state(  # type: ignore
     serialized: list[dict[str, Any]] = []
     amd_phase_counter: Counter[str] = Counter()
     bias_counter: Counter[str] = Counter()
+    stage6_scenario_counter: Counter[str] = Counter()
+    stage6_raw_scenario_counter: Counter[str] = Counter()
+    stage6_flip_counter: Counter[str] = Counter()
+    stage6_unclear_total = 0
+    stage6_unclear_reason_counter: Counter[str] = Counter()
+    stage6_sweep_counter: Counter[str] = Counter()
+    stage6_break_hold_counter: Counter[str] = Counter()
     magnet_counts: list[int] = []
     pool_counts: list[int] = []
     active_zone_counts: list[int] = []
@@ -117,6 +133,36 @@ async def publish_smc_state(  # type: ignore
         if not isinstance(stats, dict):
             stats = {}
             asset["stats"] = stats
+
+        # Stage6: агрегуємо stable/raw сценарії з stats (анти-фліп живе в SmcStateManager).
+        try:
+            sid = str(stats.get("scenario_id") or "").strip().upper()
+            if sid:
+                stage6_scenario_counter[sid] += 1
+                if sid == "UNCLEAR":
+                    stage6_unclear_total += 1
+                    reason = stats.get("scenario_unclear_reason")
+                    if isinstance(reason, str) and reason.strip():
+                        stage6_unclear_reason_counter[reason.strip().upper()] += 1
+            raw_sid = str(stats.get("scenario_raw_id") or "").strip().upper()
+            if raw_sid:
+                stage6_raw_scenario_counter[raw_sid] += 1
+                if raw_sid == "UNCLEAR":
+                    raw_reason = stats.get("scenario_raw_unclear_reason")
+                    if isinstance(raw_reason, str) and raw_reason.strip():
+                        stage6_unclear_reason_counter[raw_reason.strip().upper()] += 1
+            flip = stats.get("scenario_flip")
+            if isinstance(flip, dict):
+                f_from = str(flip.get("from") or "").strip().upper()
+                f_to = str(flip.get("to") or "").strip().upper()
+                if f_from and f_to:
+                    stage6_flip_counter[f"{f_from}->{f_to}"] += 1
+
+            # best-effort: sweep/break_hold агрегуємо з raw telemetry, якщо продубльовано.
+            gates = stats.get("scenario_raw_gates")
+            _ = gates  # не використовуємо зараз, але лишаємо для майбутніх summary
+        except Exception:
+            pass
 
         symbol_lower = str(asset.get("symbol") or "").lower()
         cp = safe_float(stats.get("current_price"))
@@ -230,6 +276,15 @@ async def publish_smc_state(  # type: ignore
         analytics["amd_phase_counts"] = dict(amd_phase_counter)
     if bias_counter:
         analytics["bias_counts"] = dict(bias_counter)
+    if stage6_scenario_counter:
+        analytics["stage6_scenario_counts"] = dict(stage6_scenario_counter)
+        analytics["stage6_unclear_total"] = int(stage6_unclear_total)
+    if stage6_unclear_reason_counter:
+        analytics["stage6_unclear_reason_counts"] = dict(stage6_unclear_reason_counter)
+    if stage6_raw_scenario_counter:
+        analytics["stage6_raw_scenario_counts"] = dict(stage6_raw_scenario_counter)
+    if stage6_flip_counter:
+        analytics["stage6_flip_counts"] = dict(stage6_flip_counter)
     if pool_counts:
         analytics["avg_pools_per_asset"] = round(sum(pool_counts) / len(pool_counts), 2)
         analytics["max_pools_per_asset"] = max(pool_counts)
@@ -250,6 +305,26 @@ async def publish_smc_state(  # type: ignore
         analytics["smc_latency_ms_max"] = round(max(latency_samples), 2)
     if analytics:
         payload["analytics"] = analytics
+
+    # Легка «телеметрія» у counters (UI-friendly, без Prometheus).
+    try:
+        payload.setdefault("counters", {})
+        counters = payload.get("counters")
+        if isinstance(counters, dict):
+            if stage6_scenario_counter:
+                counters["ai_one_smc_scenario_total"] = dict(stage6_scenario_counter)
+            if stage6_unclear_total:
+                counters["ai_one_smc_scenario_unclear_total"] = int(
+                    stage6_unclear_total
+                )
+            if stage6_unclear_reason_counter:
+                counters["ai_one_stage6_unclear_total"] = dict(
+                    stage6_unclear_reason_counter
+                )
+            if stage6_flip_counter:
+                counters["ai_one_smc_scenario_flip_total"] = dict(stage6_flip_counter)
+    except Exception:
+        pass
 
     payload_json = json_dumps(payload)
 

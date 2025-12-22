@@ -1,0 +1,898 @@
+{
+  "bars": 800,
+  "last_close": 4347.89,
+  "liquidity_meta": {
+    "amd_reason": "range INSIDE + спокійна ATR без свіжих BOS",
+    "bar_count": 800,
+    "bias": "SHORT",
+    "liquidity_targets": [
+      {
+        "price": 4332.676725,
+        "reason": [
+          "source:magnet",
+          "liq_type:RANGE_EXTREME",
+          "magnet_role:PRIMARY",
+          "pools:75",
+          "touches:3571"
+        ],
+        "role": "internal",
+        "side": "below",
+        "strength": 45.0,
+        "tf": "5m",
+        "type": "RANGE_EXTREME"
+      }
+    ],
+    "magnet_count": 1,
+    "pool_count": 75,
+    "primary_tf": "5m",
+    "sfp_events": [],
+    "symbol": "XAUUSD",
+    "wick_clusters": [
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4324.99,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4331.81,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4325.69,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4322.83,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4331.44,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4328.62,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4333.56,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4327.79,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4320.265,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4309.75,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4312.67,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4313.08,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4317.01,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4317.67,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4324.27,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4321.72,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4323.26,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4321.07,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4324.47,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4325.88,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4322.45,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4325.68,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4325.16,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4320.82,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4323.42,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4327.6,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4325.495,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4319.88,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4335.16,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4342.11,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4343.3,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4347.15,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4350.35,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4343.215,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "swing"
+      },
+      {
+        "count": 52,
+        "first_ts": "2025-12-18T17:35:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4343.215,
+        "max_wick": 3.2600000000002183,
+        "side": "LOW",
+        "source": "range"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4341.38,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4340.36,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4334.93,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4335.88,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4338.35,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4336.74,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4337.05,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4332.5,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4331.33,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4328.55,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4327.8,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4324.98,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4322.56,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4323.92,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4329.14,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4329.66,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4328.52,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4329.72,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4331.02,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4333.83,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4331.91,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4329.78,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4329.62,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4329.05,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4335.55,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4334.25,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4338.04,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4346.57,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4354.93,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4350.59,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4353.96,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4356.11,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4356.71,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4350.795,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "swing"
+      },
+      {
+        "count": 48,
+        "first_ts": "2025-12-18T17:40:00+00:00",
+        "last_ts": "2025-12-19T19:30:00+00:00",
+        "level": 4352.35,
+        "max_wick": 5.300000000000182,
+        "side": "HIGH",
+        "source": "range"
+      }
+    ]
+  },
+  "structure_meta": {
+    "atr_available": true,
+    "atr_last": 3.034285714285488,
+    "atr_median": 3.1199999999997607,
+    "atr_period": 14,
+    "bar_count": 300,
+    "bias": "SHORT",
+    "bos_min_move_atr_m1": 0.6,
+    "bos_min_move_pct_m1": 0.0018,
+    "cfg_min_range_bars": 12,
+    "cfg_min_swing": 3,
+    "events_recent_total": 0,
+    "events_retained_total": 0,
+    "last_choch_ts": null,
+    "leg_min_amplitude_atr_m1": 0.8,
+    "ote_max_active_per_side_m1": 1,
+    "ote_trend_only_m1": true,
+    "snapshot_end_ts": "2025-12-19T19:30:00Z",
+    "snapshot_start_ts": "2025-12-18T17:35:00Z",
+    "swing_times": [
+      "2025-12-18T17:50:00Z",
+      "2025-12-18T18:15:00Z",
+      "2025-12-18T18:25:00Z",
+      "2025-12-18T18:35:00Z",
+      "2025-12-18T18:45:00Z",
+      "2025-12-18T19:30:00Z",
+      "2025-12-18T19:55:00Z",
+      "2025-12-18T20:05:00Z",
+      "2025-12-18T20:40:00Z",
+      "2025-12-18T21:00:00Z",
+      "2025-12-18T21:35:00Z",
+      "2025-12-18T23:20:00Z",
+      "2025-12-18T23:35:00Z",
+      "2025-12-18T23:50:00Z",
+      "2025-12-19T00:15:00Z",
+      "2025-12-19T00:30:00Z",
+      "2025-12-19T00:55:00Z",
+      "2025-12-19T01:00:00Z",
+      "2025-12-19T01:15:00Z",
+      "2025-12-19T01:35:00Z",
+      "2025-12-19T02:00:00Z",
+      "2025-12-19T02:30:00Z",
+      "2025-12-19T03:00:00Z",
+      "2025-12-19T03:20:00Z",
+      "2025-12-19T03:30:00Z",
+      "2025-12-19T04:25:00Z",
+      "2025-12-19T05:00:00Z",
+      "2025-12-19T05:20:00Z",
+      "2025-12-19T05:50:00Z",
+      "2025-12-19T06:00:00Z",
+      "2025-12-19T06:15:00Z",
+      "2025-12-19T06:40:00Z",
+      "2025-12-19T07:10:00Z",
+      "2025-12-19T07:20:00Z",
+      "2025-12-19T07:30:00Z",
+      "2025-12-19T08:00:00Z",
+      "2025-12-19T08:40:00Z",
+      "2025-12-19T09:00:00Z",
+      "2025-12-19T09:30:00Z",
+      "2025-12-19T09:45:00Z",
+      "2025-12-19T10:10:00Z",
+      "2025-12-19T10:30:00Z",
+      "2025-12-19T10:55:00Z",
+      "2025-12-19T11:05:00Z",
+      "2025-12-19T11:35:00Z",
+      "2025-12-19T11:50:00Z",
+      "2025-12-19T12:10:00Z",
+      "2025-12-19T12:40:00Z",
+      "2025-12-19T12:50:00Z",
+      "2025-12-19T13:25:00Z",
+      "2025-12-19T13:30:00Z",
+      "2025-12-19T14:05:00Z",
+      "2025-12-19T14:25:00Z",
+      "2025-12-19T14:40:00Z",
+      "2025-12-19T14:45:00Z",
+      "2025-12-19T15:20:00Z",
+      "2025-12-19T15:25:00Z",
+      "2025-12-19T16:00:00Z",
+      "2025-12-19T16:15:00Z",
+      "2025-12-19T16:30:00Z",
+      "2025-12-19T16:40:00Z",
+      "2025-12-19T17:05:00Z",
+      "2025-12-19T17:15:00Z",
+      "2025-12-19T17:55:00Z",
+      "2025-12-19T18:00:00Z",
+      "2025-12-19T18:25:00Z",
+      "2025-12-19T18:45:00Z",
+      "2025-12-19T19:00:00Z"
+    ],
+    "symbol": "XAUUSD",
+    "tf_input": "5m"
+  },
+  "symbol": "XAUUSD",
+  "tf": "5m",
+  "zones": [
+    {
+      "direction": "LONG",
+      "filled_pct": 0.729,
+      "origin_time": "2025-12-19T15:05:00+00:00",
+      "poi_type": "FVG",
+      "price_max": 4338.2,
+      "price_min": 4334.03,
+      "role": "COUNTERTREND",
+      "score": 60.19,
+      "type": "SmcZoneType.IMBALANCE",
+      "why": [
+        "base=40.0 strength=1.37 conf=0.2",
+        "bias=counter",
+        "discount",
+        "gap_atr=1.37",
+        "liq_target_near",
+        "filled>=60%",
+        "dist_atr=3.88",
+        "filled=72.9%"
+      ],
+      "zone_id": "fvg_5m_1766156700000000000_744"
+    },
+    {
+      "direction": "SHORT",
+      "filled_pct": 0.9379,
+      "origin_time": "2025-12-18T17:10:00+00:00",
+      "poi_type": "FVG",
+      "price_max": 4358.34,
+      "price_min": 4332.11,
+      "role": "PRIMARY",
+      "score": 90.75,
+      "type": "SmcZoneType.IMBALANCE",
+      "why": [
+        "base=40.0 strength=3.0 conf=0.35",
+        "role=PRIMARY",
+        "bias=match",
+        "gap_atr=8.64",
+        "filled>=85%",
+        "dist_atr=0.88",
+        "filled=93.8%"
+      ],
+      "zone_id": "fvg_5m_1766077800000000000_493"
+    }
+  ],
+  "zones_meta": {
+    "active_poi": [
+      {
+        "direction": "LONG",
+        "filled_pct": 0.729,
+        "price_max": 4338.2,
+        "price_min": 4334.03,
+        "role": "COUNTERTREND",
+        "score": 60.19,
+        "type": "FVG",
+        "why": [
+          "base=40.0 strength=1.37 conf=0.2",
+          "bias=counter",
+          "discount",
+          "gap_atr=1.37",
+          "liq_target_near",
+          "filled>=60%",
+          "dist_atr=3.88",
+          "filled=72.9%"
+        ]
+      },
+      {
+        "direction": "SHORT",
+        "filled_pct": 0.9379,
+        "price_max": 4358.34,
+        "price_min": 4332.11,
+        "role": "PRIMARY",
+        "score": 90.75,
+        "type": "FVG",
+        "why": [
+          "base=40.0 strength=3.0 conf=0.35",
+          "role=PRIMARY",
+          "bias=match",
+          "gap_atr=8.64",
+          "filled>=85%",
+          "dist_atr=0.88",
+          "filled=93.8%"
+        ]
+      }
+    ],
+    "active_zone_count": 47,
+    "active_zone_distance_threshold_atr": 15.0,
+    "active_zones_within_threshold": 47,
+    "breaker_long": 0,
+    "breaker_params": {
+      "breaker_level_tolerance_pct": 0.0015,
+      "breaker_max_ob_age_minutes": 720,
+      "breaker_max_sweep_delay_minutes": 180,
+      "breaker_min_body_pct": 0.35,
+      "breaker_min_displacement_atr": 0.75
+    },
+    "breaker_primary": 0,
+    "breaker_short": 0,
+    "breaker_total": 0,
+    "fvg_long": 27,
+    "fvg_params": {
+      "fvg_max_age_minutes": 4320,
+      "fvg_min_gap_atr": 0.5,
+      "fvg_min_gap_pct": 0.0015
+    },
+    "fvg_short": 20,
+    "fvg_total": 47,
+    "max_zone_distance_atr": 12.597693032015824,
+    "ob_params": {
+      "max_lookback_bars": 300,
+      "ob_body_domination_pct": 0.65,
+      "ob_body_min_pct": 0.25,
+      "ob_leg_max_bars": 40,
+      "ob_leg_min_atr_mul": 0.8,
+      "ob_max_active_distance_atr": 15.0,
+      "ob_prelude_max_bars": 6
+    },
+    "orderblocks_countertrend": 0,
+    "orderblocks_long": 0,
+    "orderblocks_primary": 0,
+    "orderblocks_short": 0,
+    "orderblocks_total": 0,
+    "poi": {
+      "poi_active": 2,
+      "poi_active_long": 1,
+      "poi_active_short": 1,
+      "poi_archived": 45,
+      "poi_archived_filled": 26,
+      "poi_archived_invalidated": 18,
+      "poi_archived_score_le_0": 1,
+      "poi_candidates": 2,
+      "poi_candidates_long": 1,
+      "poi_candidates_short": 1,
+      "poi_dropped_due_cap": 0,
+      "poi_max_per_side": 3,
+      "poi_skipped_bad_direction": 0,
+      "poi_skipped_non_poi_type": 0
+    },
+    "zone_count": 47,
+    "zones_filtered_by_distance": 0
+  }
+}

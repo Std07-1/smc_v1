@@ -293,6 +293,52 @@ header button:hover {
     gap: 0.35rem;
 }
 
+/* Нижні таблиці/панелі — лише для debug_ui=1. */
+.debug-only {
+    display: none;
+}
+
+body.debug-ui .debug-only {
+    display: block;
+}
+
+/* Desktop/Prod Chart: у debug=off віддаємо всю робочу висоту під чарт. */
+body.ui-view-chart:not(.debug-ui) {
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+body.ui-view-chart:not(.debug-ui) .app-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+body.ui-view-chart:not(.debug-ui) .card-chart {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+body.ui-view-chart:not(.debug-ui) .chart-overlay-shell {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+body.ui-view-chart:not(.debug-ui) .chart-demo-container {
+    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 .summary {
     grid-column: 1 / -1;
     background: #131722;
@@ -323,6 +369,17 @@ body.summary-collapsed .summary {
     font-size: 0.85rem;
     font-weight: 600;
     line-height: 1.15;
+}
+
+.summary-hint {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #9da5b4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .summary-badge {
@@ -412,6 +469,11 @@ body.summary-collapsed .summary {
 
 .panel table {
     table-layout: fixed;
+}
+
+/* Zones: 4 колонки мають підлаштовуватись під ширину вікна (без жорсткого fixed). */
+table.zones-table {
+    table-layout: auto;
 }
 
 .panel th,
@@ -802,6 +864,19 @@ tbody tr.empty-row td {
     text-transform: uppercase;
 }
 
+.layer-toggle--select {
+    gap: 0.55rem;
+}
+
+.layer-toggle--select select {
+    font-size: 0.8rem;
+    color: #d1d4dc;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+}
+
 @media (min-width: 768px) {
     .card-chart__header {
         flex-direction: row;
@@ -911,7 +986,10 @@ tbody tr.empty-row td {
     cursor: pointer;
     user-select: none;
     touch-action: none;
-    transition: height 0.2s ease;
+    /* Важливо: НЕ анімуємо висоту контейнера чарта.
+       Інакше canvas проміжно масштабується CSS-ом (видиме «розмазування/стрибки»),
+       поки lightweight-charts не встигає синхронно перемалюватись під новий розмір. */
+    transition: none;
 }
 
 /* Щоб вертикальний слайдер зліва не дублювався з лівим бордером чарта. */
@@ -923,21 +1001,49 @@ tbody tr.empty-row td {
     position: relative;
 }
 
+.chart-poi-label-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 35;
+    pointer-events: none;
+}
+
+.poi-label {
+    position: absolute;
+    transform: translate(6px, -50%);
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    color: #d1d4dc;
+    background: rgba(22, 32, 74, 0.22);
+    border: 1px solid rgba(91, 118, 183, 0.22);
+    backdrop-filter: blur(1px);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .chart-hover-tooltip {
     position: absolute;
     z-index: 40;
     pointer-events: none;
-    background: rgba(17, 19, 26, 0.78);
-    border: 1px solid rgba(58, 63, 75, 0.7);
+    /* Прозорість задається alpha (останнє число) в rgba: 0 = прозоро, 1 = непрозоро */
+    background: rgba(22, 32, 74, 0.28); /* 0.28 — прозорість/непрозорість фону */
+
+    /* Тут теж є прозорість: alpha в rgba для кольору рамки */
+    border: 1px solid rgba(91, 118, 183, 0.28); /* 0.28 — прозорість рамки */
     color: #d1d4dc;
     border-radius: 8px;
-    padding: 6px 8px;
-    font-size: 0.78rem;
-    line-height: 1.15;
-    white-space: nowrap;
-    max-width: 220px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    line-height: 1.25;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 260px;
     overflow: hidden;
-    text-overflow: ellipsis;
     backdrop-filter: blur(2px);
 }
 
@@ -945,7 +1051,18 @@ tbody tr.empty-row td {
     position: absolute;
     top: 8px;
     left: 8px;
+    right: 8px;
     z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    /* Резерв під праву цінову шкалу, щоб оверлей-кнопки не наїжджали на неї */
+    padding-right: 56px;
+}
+
+.chart-overlay-actions__left,
+.chart-overlay-actions__right {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1175,6 +1292,7 @@ tbody tr.empty-row td {
 .card-chart--fullscreen .chart-overlay-actions {
     top: 12px;
     left: 12px;
+    right: 12px;
 }
 
 .card-chart--fullscreen .chart-demo-container {
@@ -1204,4 +1322,156 @@ body.chart-fullscreen-lock {
     left: 0;
     right: 0;
     width: 100%;
+}
+
+/* ── Stage6: компактна SMC-панель (правий верхній кут) ─────────────────── */
+
+.stage6-panel {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 30;
+    width: 420px;
+    max-width: min(520px, 46vw);
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(31, 40, 51, 0.15);
+    background: rgba(12, 16, 32, 0.08);
+    color: #f5f5f5;
+    backdrop-filter: blur(2px);
+}
+
+.stage6-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.stage6-panel__heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stage6-panel__title {
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    opacity: 0.9;
+}
+
+.stage6-panel__subtitle {
+    font-size: 0.68rem;
+    line-height: 1.1;
+    opacity: 0.8;
+    color: #9da5b4;
+}
+
+.stage6-panel__toggle {
+    border: 1px solid transparent;
+    background: #1f2833;
+    color: #f5f5f5;
+    border-radius: 10px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0 10px;
+    cursor: pointer;
+    line-height: 1;
+    font-weight: 800;
+    font-size: 0.7rem;
+}
+
+.stage6-panel__toggle:focus-visible {
+    outline: 2px solid #3a3f4b;
+    outline-offset: 2px;
+}
+
+.stage6-panel__toggle:hover {
+    background: #304055;
+}
+
+.stage6-panel__toggle:active {
+    transform: scale(0.98);
+}
+
+.stage6-panel__grid {
+    display: grid;
+    gap: 6px;
+    align-items: start;
+}
+
+.stage6-row {
+    display: grid;
+    grid-template-columns: 118px 1fr;
+    gap: 6px 10px;
+    align-items: start;
+}
+
+.stage6-row .label {
+    white-space: nowrap;
+}
+
+.stage6-panel__nodata {
+    margin: 6px 0 8px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(91, 118, 183, 0.22);
+    background: rgba(22, 32, 74, 0.18);
+    color: #d1d4dc;
+    font-size: 0.72rem;
+    line-height: 1.2;
+}
+
+.stage6-progress {
+    height: 6px;
+    margin-top: 4px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.stage6-progress__bar {
+    height: 100%;
+    width: 0%;
+    background: #9da5b4;
+    opacity: 0.9;
+}
+
+.stage6-panel__value {
+    font-size: 0.72rem;
+    font-weight: 650;
+    line-height: 1.25;
+    color: #9da5b4;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.stage6-panel--collapsed {
+    width: auto;
+    max-width: none;
+    padding: 0;
+    background: transparent;
+    border-color: transparent;
+    backdrop-filter: none;
+}
+
+.stage6-panel--collapsed .stage6-panel__title {
+    display: none;
+}
+
+.stage6-panel--collapsed .stage6-panel__subtitle {
+    display: none;
+}
+
+.stage6-panel--collapsed .stage6-panel__grid {
+    display: none;
+}
+
+.stage6-panel.stage6-panel--collapsed {
+    top: 4px;
+    right: 4px;
 }

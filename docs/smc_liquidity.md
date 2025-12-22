@@ -27,7 +27,9 @@ roadmap.
 2. **Трендові TLQ/SLQ** (`pools.add_trend_pools`) — бере останній swing low/high і
    додає пул PRIMARY у бік bias.
 3. **Range/session пули** (`pools.add_range_and_session_pools`) — активний діапазон
-   → `RANGE_EXTREME`; контекст `pdl/pdh` → `SESSION_LOW/HIGH`.
+  → `RANGE_EXTREME`; сесійні екстремуми беруться з власного SMC-контексту
+  `snapshot.context["smc_sessions"]` (ASIA/LONDON/NY) та полів
+  `smc_session_high/smc_session_low`.
 4. **SFP + wick** (`sfp_wick.detect_sfp_and_wicks`) — проходить кожну свічку,
    шукає sweep проти рівня й довгі гніта (`WICK_RATIO`), повертає додаткові пули та
    телеметрію.
@@ -52,6 +54,8 @@ roadmap.
 - `sfp_events` (масив словників з рівнем/стороною/часом), `wick_clusters`
   (рівень, кількість гніт, max_wick, джерело).
 - `amd_reason` — текстове пояснення поточної фази.
+- `liquidity_targets` — (опційно) список JSON-friendly цілей ліквідності
+  `internal/external` для Stage3/Stage2 (див. `docs/smc_liquidity_stage3.md`).
 
 ## Конфігурація та пороги
 
@@ -66,6 +70,10 @@ roadmap.
 
 - Stage2: `smc_core.liquidity_bridge.build_liquidity_hint` стискає стан у прапори
   `smc_liq_has_above/below`, відстань до найближчого PRIMARY магніта, `amd_phase`.
+  Додатково:
+  - `smc_liq_nearest_internal` / `smc_liq_nearest_external` — найближчі цілі (можуть бути `null`).
+  - `smc_liq_nearest_*_why` — пояснення, чому значення `null` або звідки взято.
+  - `smc_liq_nearest_*_confidence` — 0..1 (1.0 = з `liquidity_targets`, 0.1 = fallback, 0.0 = не обчислено).
   Будь-які нові поля для Stage2 потрібно додавати через bridge, не змінюючи базовий
   `SmcLiquidityState` без плану міграції.
 

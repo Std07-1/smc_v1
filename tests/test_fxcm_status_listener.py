@@ -172,6 +172,8 @@ def test_apply_status_snapshot_updates_price_and_session(
                 "state": "open",
                 "seconds_to_close": 600,
                 "next_open_seconds": 1800,
+                "session_high": 123.4,
+                "session_low": 120.1,
             },
         }
     )
@@ -187,8 +189,14 @@ def test_apply_status_snapshot_updates_price_and_session(
     assert snapshot.session_seconds_to_close == pytest.approx(600)
     assert snapshot.session_seconds_to_next_open == pytest.approx(1800)
     assert snapshot.session_name == "Tokyo"
+    assert isinstance(snapshot.session, dict)
+    assert snapshot.session.get("session_high") == pytest.approx(123.4)
+    assert snapshot.session.get("session_low") == pytest.approx(120.1)
 
     metrics = snapshot.to_metrics_dict()
     assert metrics["price_state"] == "down"
     assert metrics["ohlcv_state"] == "delayed"
     assert metrics["session_name"] == "Tokyo"
+    assert isinstance(metrics.get("session"), dict)
+    assert metrics["session"].get("session_high") == pytest.approx(123.4)
+    assert metrics["session"].get("session_low") == pytest.approx(120.1)

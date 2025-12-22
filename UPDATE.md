@@ -16,6 +16,171 @@
 
 ---
 
+## 2025-12-22 — Bootstrap/UDS: стабілізація `base_dir`, щоб UI не стартував з 1 бару
+
+**Що змінено**
+
+- `config/datastore.yaml` тепер читається через абсолютний шлях (не залежить від CWD).
+- В `load_datastore_cfg()` додано нормалізацію `base_dir`: відносні шляхи резолвляться в абсолютний каталог (пріоритет — корінь проєкту), щоб `UnifiedDataStore` гарантовано бачив дискові snapshot-и.
+- Додано інфраструктурний запобіжник `AI_ONE_NAMESPACE`: дозволяє ізолювати локальні/dev запуски від прод Redis, щоб не перезаписувати ключі/канали `ai_one:*`.
+- Додано простий перемикач профілю `AI_ONE_MODE=local|prod`:
+  - `local` → дефолтний namespace стає `ai_one_local` (якщо `AI_ONE_NAMESPACE` не заданий);
+  - `prod` → дефолтний namespace `ai_one`.
+  Також у `local` дефолтний bind host для UI_v2 стає `127.0.0.1`, а у `prod` — `0.0.0.0` (явні `SMC_VIEWER_*_HOST` мають пріоритет).
+- Додано таргетний тест на резолв відносного `base_dir`.
+
+**Де**
+
+- app/settings.py
+- config/config.py
+- tests/test_app_settings_datastore_cfg_paths.py
+- tests/test_config_run_mode_namespace.py
+- app/main.py
+
+**Тести/перевірка**
+
+- `python -m pytest -q tests/test_app_settings_datastore_cfg_paths.py` → passed.
+- `python -m pytest -q tests/test_config_run_mode_namespace.py` → passed.
+
+**Примітки/ризики**
+
+- Якщо хтось навмисно тримав `base_dir` відносно CWD — тепер буде стабільний резолв (краще для прод/служб, де CWD непередбачуваний).
+
+## 2025-12-21 — Stage6: довіра (UNCLEAR reasons) + анти-фліп (decay/override) + UI summary (stable/raw/pending)
+
+**Що змінено**
+
+- Stage6 тепер повертає «чесний» `UNCLEAR` з явним кодом причини (`unclear_reason`) замість умовного мовчання.
+- Анти-фліп Stage6 перестав бути «липким»: додано decay до `UNCLEAR` після серії raw `UNCLEAR`, а також сильний override для швидкої зміни при сильних фактах.
+- У UI_v2 summary відображається одночасно: stable (після анти-фліпу), raw (як зараз), pending (кандидат + лічильник) та top-3 `why` / `UNCLEAR reason`.
+- Telemetry/analytics: додається агрегація причин `UNCLEAR` у publisher для подальшого моніторингу.
+- QA-скрипт Stage6 розширено: звіт містить `UNCLEAR reasons` і колонку `reason` у журналі.
+
+**Поточні результати дослідження (QA, XAUUSD, 5m primary)**
+
+- Report: `reports/stage6_stats_xauusd_h60_v2.md`
+- steps=500, warmup=220, horizon(1m)=60, tp/sl=1.0 ATR
+- raw: `{'4_3': 197, 'UNCLEAR': 235, '4_2': 68}` (UNCLEAR=47.00%)
+- stable: `{'4_3': 234, 'UNCLEAR': 77, '4_2': 189}` (UNCLEAR=15.40%), flips=26
+- UNCLEAR reasons: `{'CONFLICT': 60, 'LOW_SCORE': 252}`
+- winrate stable: 4_2=52.13%, 4_3=45.06% (пост-фактум TP/SL на 1m)
+
+**Де**
+
+- smc_core/stage6_scenario.py
+- app/smc_state_manager.py
+- UI/publish_smc_state.py
+- UI_v2/web_client/index.html
+- UI_v2/web_client/styles.css
+- UI_v2/web_client/app.js
+- tools/qa_stage6_scenario_stats.py
+
+**Тести/перевірка**
+
+- `pytest tests/test_smc_stage6_scenario.py tests/test_smc_stage6_hysteresis.py` → passed.
+
+**Примітки/ризики**
+
+- `stable` тепер може повертатися в `UNCLEAR` (decay) — це свідомий компроміс заради довіри та контролю “липкості”.
+- QA-метрика winrate тут — лише sanity-check для напрямку на горизонті, не торговий бектест.
+
+---
+
+## 2025-12-21 — UI_v2 (Web): нижні панелі лише в debug + чарт займає всю робочу висоту (prod)
+
+**Що змінено**
+
+- Нижні таблиці (Structure Events / OTE / Pools / Zones) сховано у проді та показуються лише при `?debug_ui=1`.
+- У режимі `view=chart` + `debug_ui=0` робочу висоту viewport віддано під чарт (без зайвих «нижніх блоків»).
+- Додано `debug-ui` class на `<body>` як єдиний перемикач для debug UI (CSS + існуючі JS індикатори).
+- Піднято cache-bust для `styles.css`/`app.js`/`chart_adapter.js`.
+- Виправлено «пливе/розтягується» чарт на desktop у `view=chart` (prod): стабілізовано flex-ланцюжок та висоту контейнера, щоб `ResizeObserver` не потрапляв у feedback-loop.
+
+**Додатково (UX OTE)**
+
+- OTE зони тепер малюються як прямокутники з часовими межами: від моменту появи (актуальності) до моменту зникнення/неактуальності, а не лініями «на весь екран». Часовий цикл відстежується на фронті по стріму (бекенд віддає лише active).
+
+**Додатково (HTF UX: 1h/4h)**
+
+- На HTF (view TF >= 1h) 5m POI показуємо лише як refinement: або якщо 5m зона повністю лежить всередині будь-якої HTF POI, або як top-1 5m вище та top-1 5m нижче від поточної ціни. 1m/5m фільтри не змінювались.
+- На HTF (view TF >= 1h) BOS/CHOCH також фільтруються по часу: показуємо лише ті, що узгоджені з HTF-свічкою (без «підтягування» 5m подій на HTF).
+
+**Де**
+
+- UI_v2/web_client/index.html
+- UI_v2/web_client/styles.css
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-20 — UI_v2 (Web): POI/зони як canary під флагом + жорсткі ворота (no-repaint/TF-truth/антишум)
+
+**Що змінено**
+
+- Додано Gate 1 (No-repaint): `price_min/price_max/origin_time` зони фіксуються при першій появі; далі можуть змінюватися лише `state` і `filled_pct`.
+- Додано Gate 2 (Truth по TF, жорстко): зони рендеряться лише якщо `origin_time` кратний TF і не пізніше останнього complete close-time для цього TF (евристика на основі останньої complete свічки на графіку).
+- Додано Gate 3 (Антишум на 1m): на TF=1m показуємо тільки найближчі 5m POI (top-2 вище та top-2 нижче від поточної ціни; також лишаємо POI, якщо ціна всередині зони).
+- Сховано технічні рядки в шапці під `?debug_ui=1` (active_zones / EXEC / TF health).
+- Додано user-налаштування ліміту зон для TF=1m (щоб не засмічувати екран):
+  - `Як зараз (2 + 2 + в зоні)` / `Ліміт 2 (1 + 1 + в зоні)` / `Без ліміту`.
+  - Значення зберігається в localStorage (`smc_viewer_zone_limit_mode`) і синхронізоване між desktop menu та mobile drawer.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/web_client/app.js
+- UI_v2/web_client/index.html
+- UI_v2/web_client/styles.css
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `12 passed`.
+
+**Примітки/ризики**
+
+- Gate 2 є навмисно жорстким: якщо бекенд віддає `origin_time` не вирівняний по TF, зона буде прихована (краще drop, ніж репейнт/preview).
+
+---
+
+## 2025-12-20 — UI_v2 (Web): ліміт зон (статус) + liquidity pools як сегменти (prod-friendly)
+
+**Контекст**
+
+- Користувач повідомив, що перемикання режимів ліміту зон (near2/near1/all) **візуально не дає різниці** у реплеї.
+
+**Що змінено**
+
+- Ліміт зон: додано `setViewTimeframe(tf)` у chart controller і прокинуто обраний TF з UI в `chart_adapter`, щоб Gate3 (антишум на 1m) не залежав лише від евристики `barTimeSpanSeconds` (у реплеї при «дірках» це могло вимкнути 1m-логіку).
+- Додано cache-bust версію для `chart_adapter.js`/`app.js` у `index.html`, щоб уникати випадків зі старим JS у браузері.
+- Liquidity pools: замість `createPriceLine(... lineVisible=true)` (лінії «на весь екран») зроблено рендер короткими горизонтальними сегментами біля правого краю + компактні бейджі на шкалі тільки для обраних рівнів.
+- Tooltip: pools — прибрано префікс `Pool`, ціну перенесено на рядок нижче (під назвою). Додано hit-test по OTE (назва зверху, діапазон під нею). Пріоритет збережено: POI зона > pools/OTE.
+- Tooltip: OTE — додано `role`, прибрано `Mid`, `Width` перейменовано на `Range`, позицію `Close` подано як «в зоні / нижче зони / вище зони».
+- Pools: додано антишум-фільтр для рендера на чарті — не показуємо «слабкі» рівні (окрім PRIMARY і HTF targets), щоб не засмічувати екран.
+
+**Статус / відкладено**
+
+- Ліміт зон: попри зміни, на стороні користувача в реплеї ефект **ще не підтверджено**. Ймовірні причини:
+  - у конкретному вікні даних недостатньо 5m POI-кандидатів, щоб різниця near1/near2 була помітна;
+  - інші ворота/кластеризація/price-window дають однаковий набір зон.
+  - Для повернення до теми: додати мінімальний debug-індикатор (лише при `debug_ui=1`) з поточними `zoneLimitMode` і `viewTimeframe`.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/web_client/app.js
+- UI_v2/web_client/index.html
+
+**Тести/перевірка**
+
+- Не запускалось (зміни у фронтенд JS; перевірка — ручна у браузері/реплеї).
+
+---
+
 ## 2025-12-17 — UI_v2 (Web): override `fxcm_ws_base` для FXCM WebSocket (public/Cloudflare)
 
 **Що змінено**
@@ -30,6 +195,524 @@
 **Тести/перевірка**
 
 - Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `13 passed`.
+
+---
+
+## 2025-12-19 — Stage0 завершено + Stage1 старт: реальні 5m/1h/4h у UnifiedDataStore (через contract)
+
+**Що змінено**
+
+- Зафіксовано завершення Етапу 0 (TF-правда + чесні гейти + телеметрія) як базовий інваріант рантайму.
+- Стартовано Етап 1: розширено SMC contract-of-needs, щоб FXCM пайплайн фізично наповнював `UnifiedDataStore` таймфреймами `1h` та `4h` (разом з `1m/5m`).
+
+**Де**
+
+- app/settings.py
+- config/datastore.yaml
+- tests/test_smc_universe_cfg.py
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_smc_universe_cfg.py` → passed.
+
+---
+
+## 2025-12-19 — Stage1/Data: збільшено ціль історії до 30 днів (SMC contract-of-needs)
+
+**Що змінено**
+
+- Піднято `min_history_bars` для `xauusd` до 30 днів: `43_200` (1m барів).
+- Збільшено `RAM_BUFFER_MAX_BARS`, щоб кеш у RAM не обрізав 30d історію при догрузці/бекфілі.
+
+**Де**
+
+- config/datastore.yaml
+- app/settings.py
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_smc_universe_cfg.py tests/test_s3_warmup_requester.py tests/test_s2_history_state.py` → passed.
+
+**Примітки/ризики**
+
+- Вузьке місце зазвичай не RAM/диск, а час старту (кількість запитів), rate/timeout FXCM history API та сумарний обсяг кешу при багатьох символах.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): прибрано «стрибки/розмазування» price-scale на 5m/1h + wheel-zoom стабілізовано
+
+**Що змінено**
+
+- Прибрано візуальне «розмазування/стриби по Y» на 5m/1h, яке проявлялось після перемикання TF та першої взаємодії (drag/scroll).
+- Стабілізовано resize-поведінку: `scheduleChartResize()` тепер debounced (не більше 1 resize на кадр), щоб не було resize-thrash.
+- Wheel-zoom/pan по правій шкалі ціни зроблено більш передбачуваним на різних браузерах/пристроях через нормалізацію `wheel.deltaMode` (pixels/lines/pages → pixels).
+- Price-scale autoscale cache (`lastAutoRange`) тепер скидається при reset/новому датасеті/resize, щоб при старті manualRange не підхоплювався застарілий діапазон і не давав різкий «бам».
+- Додатково: sessionRangeBox та rangeAreas більше НЕ впливають на autoscale (саме вони могли давати «підскоки» по Y під час горизонтального скролу), але під час manualRange синхронізуються з ним.
+- Додатково: бекфіл «вліво» (розширення історії в минуле) більше НЕ тригерить resetManualPriceScale()/fitContent як “новий датасет”.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/web_client/app.js
+- UI_v2/web_client/styles.css
+
+**Тести/перевірка**
+
+- Запущено таргетно: `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `12 passed`.
+
+**Статус**
+
+- За фідбеком користувача, «стрибки» по Y **все ще відтворюються** (тобто проблема не закрита); потрібна додаткова діагностика, можливий відкат.
+
+**Примітки/ризики**
+
+- Якщо «стрибок» лишиться саме під час горизонтального скролу (без ручного vertical-pan/zoom), наступний кандидат — autoscale внесок `sessionRangeBox` (логіка overlaps по visible range може різко змінювати діапазон).
+
+---
+
+## 2025-12-19 — UI_v2 (Web): `tick_count` як volume вимкнено (під флагом) + volume лише на закритті свічки
+
+**Що змінено**
+
+- Прибрано підміну/домішування `tick_count` у `volume` за замовчуванням.
+- Volume-гістограма тепер оновлюється лише для закритих барів (`complete=true`) і лише з "чистого" FXCM `volume` (`volume/vol/v`).
+- Додано query-параметр `fxcm_tickcount_volume=1`, який дозволяє fallback до `tick_count`/`ticks`/`intensity` (для діагностики або якщо FXCM систематично шле `volume=0`).
+
+**Де**
+
+- UI_v2/web_client/app.js
+
+**Тести/перевірка**
+
+- Не запускалось (зміни у фронтенд JS).
+
+**Примітки/ризики**
+
+- Якщо FXCM віддає `volume=0` навіть на закритих барах, гістограма буде нульовою (це тепер очікувана поведінка без флагу).
+
+---
+
+## 2025-12-19 — UI_v2 (Web): volume як у TradingView (tick volume + autoscale по видимому діапазону)
+
+**Що змінено**
+
+- Дефолт для FXCM volume повернуто до **tick volume** (`tick_count/ticks/intensity`) — це ближче до TradingView для FX/CFD.
+  - Можна вимкнути: `?fxcm_tickcount_volume=0`.
+- Нормалізовано рендер volume без «стелі»: шкала volume тепер підганяється під **видимий діапазон часу** (з headroom), без кліпінгу значень.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/web_client/README.md
+
+---
+
+## 2025-12-19 — UI_v2 (Web): drag по price-scale = zoom по Y (без time-pan) + повернуто vertical-pan
+
+**Що змінено**
+
+- Відновлено vertical-pan у pane (можна рухати графік вверх/вниз).
+- Додано lock: під час drag по правій ціновій осі тимчасово вимикаємо `handleScroll.pressedMouseMove`, щоб:
+  - drag по price-scale працював як вертикальний zoom/scale,
+  - і не перетворювався на горизонтальний time-pan.
+- При початку drag по price-scale скидаємо manual price-range (`manualRange`), щоб уникнути конфлікту з нативним scale (симптоми: «стрибок вверх» і вертикальне «розмазування»).
+- Wheel по правій ціновій осі перехоплюється і масштабує по Y (через `manualRange`), блокуючи стандартний wheel-обробник, щоб не було time-pan/time-zoom «вбік».
+
+**Відомо / відкладено**
+
+- Інколи графік може «завмирати» під час звичайного pan/drag. `debug_chart=1` наразі не відловлює це стабільно; повернутися пізніше, коли буде репродакшн/дамп.
+
+---
+
+## 2025-12-20 — UI_v2 (Web): фіксація debug_chart + стабілізація взаємодій price-scale (wheel/drag) + `VOL src`
+
+**Контекст**
+
+- Проблема: «стрибки»/мікро-span та фальшиві аномалії в `debug_chart=1` під час `axis_wheel`/`axis_drag`/`applyManualRange`.
+- Ціль: зробити поведінку більш TV-like (керований manual-range), і зробити діагностику відтворюваною без залежності від localStorage.
+
+**Що змінено**
+
+- Додано/стабілізовано `VOL src` у Summary (показує джерело volume: `volume|tick_count|ticks|intensity`; не миготить на live-барі).
+- `debug_chart=1`: зроблено надійний дамп аномалій (console + глобальні змінні + sessionStorage fallback) і додано `window.__chartDebugDumpNow()`.
+- Усунуто фальшивий кейс «ціна=0» у debug: `normalizeBar()` тепер строгіший (порожні строки не стають `0`; бари з невалідним OHLC/<=0 відкидаються), а `debugState.lastPrice` оновлюється лише валідною ціною.
+- Перехоплено/унормовано взаємодії по price-axis:
+  - `wheel` по правій осі масштабує manualRange (і блокує стандартний wheel);
+  - `drag` по правій осі тепер керований: нативний scale бібліотеки тимчасово вимикається, ми масштабуємо manualRange детерміновано, щоб не «прибивало» span до `computeMinPriceSpan()`.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Локально: тільки перевірка на синтакс/помилки редактором (Node відсутній у середовищі).
+- Ручна перевірка у браузері: `?debug_chart=1` + перевірка wheel/drag по правій осі.
+
+**Примітки/ризики**
+
+- Це зона високого UX-ризику: будь-яка зміна інтеракцій може відрізнятися між браузерами/тачпадами.
+- Якщо «стрибки» лишаться — наступний кандидат: агресивність факторів `exp(intensity)` (потрібно підбирати під конкретний deltaY/тачпад), або конфлікт з іншими обробниками (capture/propagation).
+
+---
+
+## 2025-12-20 — UI_v2 (Web): Stage4 Zones/POI — трейдерський tooltip + zone labels (опційно)
+
+**Що змінено**
+
+- Tooltip зроблено «чесним»: окремі секції `Свічка / Курсор / Hover Zone / Top POI`, hit-test по `cursor_price`.
+- `Top POI` показуємо **тільки коли hover відсутній**, щоб не створювати плутанину “POI одна чи дві”.
+- `filled`/`dist_atr`: якщо даних немає — показуємо `n/a` (не фейкові нулі).
+- Додано `status` (FRESH/TOUCHED/MITIGATED/INVALIDATED) як короткий підсумок стану зони.
+- Опційно: `?zone_labels=1` додає markers-підписи зон і не конфліктує з BOS/CHOCH (markers зливаються).
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_viewer_state_builder.py tests/test_ui_v2_viewer_state_server.py` → passed.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Не запускалось (зміни у фронтенд JS).
+
+---
+
+## 2025-12-19 — UI_v2 (Web): прибрано повторні «стрибки» autoscale через sessionRangeBox
+
+**Що змінено**
+
+- Вимкнено внесок `sessionRangeBox` (high/low бокс сесії) в autoscale price-scale: серія більше не розширює діапазон, тож при горизонтальному скролі/перемиканні TF не виникають різкі стрибки шкали через toggle overlaps.
+- Режим manualRange (наш vertical-pan/zoom) не змінювався: у ньому `sessionRangeBox` і надалі синхронізується з `manualRange`, щоб не було «стеля/підлога».
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+---
+
+## 2025-12-19 — UI_v2 (Web): прибрано «посіріння» свічок від одиночних volume-спайків після рестартів
+
+**Що змінено**
+
+- `computeRecentMaxVolume()` тепер використовує квантиль (анти-спайк) замість max, щоб один “битий” tick_count/volume не робив більшість свічок майже прозорими.
+- Якщо у вікні volume майже завжди відсутній/0 (типово для історії з `UnifiedDataStore`) — volume-based opacity вимикається (повертаємо `recentMax=0`), щоб не створювати хибний сигнал “дані погані”.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+- `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `12 passed`.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): прибрано стрибки autoscale через rangeAreas (BaselineSeries у setRanges)
+
+**Що змінено**
+
+- `rangeAreas` (box-діапазони) більше не впливають на autoscale price-scale (повертаємо `null` в autoscale-режимі).
+- При активному `manualRange` ці серії синхронізуються з manualRange, щоб не було «стеля/підлога» при vertical-pan/zoom.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `12 passed`.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): бекфіл більше не скидає viewport/price-scale (прибрано «стрибає при рухах»)
+
+**Що змінено**
+
+- Зміна `firstTime` (розширення історії вліво під час бекфілу/догріву) більше не трактується як «новий датасет».
+- Скидання `fitContent()` + `manualRange` робимо лише при реальному reset/shrink датасету або при зміні TF (визначаємо по кроку барів).
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `12 passed`.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): стабільна нормалізація volume при підкачці історії + live
+
+**Що змінено**
+
+- Прибрано «стрибки» масштабу volume на live-оновленнях: `volumeScaleMax` більше не підвищується від накопичення live-свічки/одиночних спайків.
+- Значення volume для відображення тепер кепляться квантильним максимумом датасету (очікувана нормалізація), щоб нові піки не «вбивали» історію.
+- Додано авто-калібрування одиниць volume між історією (HTTP `/ohlcv`) та live/WS (часто `tick_count`): це прибирає ситуацію, коли нові свічки виглядають «огромєнними» порівняно з історією.
+- Зафіксовано інваріант рендера: history (candles+volume) — лише `complete=true`, live (liveCandles+liveVolume) — лише `complete=false`; при приході закритого бару live-overlay на тому ж `time` скидається, щоб не було подвійного бруска.
+- Для калібрування використовуються окремі `history*` масиви (не мутуються WS-апдейтами), щоб scale не «ламається на продовженні».
+- Для live volume при тому ж `time` використовується `liveVolume.update()` замість `setData()` на кожному тіку (менше фліку).
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Примітки/ризики**
+
+- Дуже рідкісні екстремальні піки volume можуть виглядати «обрізаними» (це свідомий cap для стабільного масштабу).
+
+---
+
+## 2025-12-19 — UI_v2 (Web): інваріант “volume ≠ якість/compute” + hysteresis шкали volume
+
+**Що змінено**
+
+- Додано явний канон у коді: прозорість/opacity — лише стиль, не індикатор якості даних чи “чи щось пораховано”.
+- Для complete=true свічок введено clamp альфи `0.78..1.0`, щоб графік ніколи не ставав напівневидимим.
+- Для `volumeScaleMax` додано hysteresis: шкала рахується по історії та оновлюється лише при reset датасету або появі нового complete-бару (правий край), без впливу live-апдейтів і backfill.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): volume відносно історії (або live, якщо історія=0) без “все на максимумі”
+
+**Що змінено**
+
+- Зафіксовано фіксовану шкалу volume `0..volumeScaleMax` через `autoscaleInfoProvider` для `volume` та `liveVolume`, щоб прибрати «мигання» масштабу від live-оновлень/visible-range.
+- Якщо історія майже без позитивного volume (типово для UDS), шкала бере robust cap з live (p98 по `recentVolumes`) з hysteresis; це робить нові volume-бруски пропорційними (не «під лінієчку на максимумах»).
+- Інваріант збережено: live не має права “підбивати” шкалу, якщо історичний volume вже валідний.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): прибрано флік volume при live-оновленнях (не піднімаємо scale на кожному тіку)
+
+**Що змінено**
+
+- Прибрано анти-патерн: `volumeScaleMax` більше не росте від кожного live-тіку (це робило кожен новий volume “максимумом” і викликало постійне миготіння масштабу).
+- Live volume для того ж `time` тепер оновлюється через `liveVolume.update()` замість `setData()` на кожному тіку.
+- Додано фіксований autoscale для volume-серій `0..volumeScaleMax` та cap відображення, щоб піки не ламали масштаб.
+- Для випадку `history volume≈0` scale підтягується рідко (hysteresis) і максимум 1 раз на свічку (bump), щоб live не був постійно clipped.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): калібрування unit-scale для live volume (tick_count) відносно історії
+
+**Що змінено**
+
+- Додано одноразове калібрування `volumeUnitScale` між history volume (HTTP `/ohlcv`) та live/WS (часто `tick_count`), щоб нові бруски не виглядали “гігантами” і не упирались у `capVolumeForDisplay()`.
+- Калібрування спрацьовує лише при явному роз'їзді одиниць (≈4×) і має clamp-рейку, щоб не ловити випадковий спайк.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): live tick_count більше не “роздуває” нові volume (калібрування не фіксується завчасно)
+
+**Що змінено**
+
+- Виправлено логіку калібрування `volumeUnitScale`: більше не фіксуємо scale=1 на старті свічки (коли tick_count ще малий), а калібруємо лише при очевидному роз'їзді від `historyVolumeScaleMax`.
+- Виправлено `isNewTime` у `setLiveBar()`: визначається ДО оновлення `lastLiveBar`, тому `liveVolume.setData()`/`liveVolume.update()` працюють стабільно і без зайвого фліку на межі свічок.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): прибрано “залипання” volume в максимумі при зміні режиму активності
+
+**Що змінено**
+
+- Виправлено регрес: коли історія має валідний volume, `volumeScaleMax` раніше фіксувався і не зростав зовсім → при підвищенні активності праві бруски кліпились в cap і виглядали як кілька однаково «максимальних».
+- Додано рейку: `setLiveBar()` може підняти `volumeScaleMax` **не частіше 1 разу на свічку** і лише при явному кліпінгу (поріг 1.30×), без підняття на кожному тіку.
+- Додано інваріант: основна адаптація масштабу робиться **лише на новому закритому барі** через robust p98 по `recentVolumes` + hysteresis (без мигання від live/visible-range).
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): live volume приведено до одиниць історії (overlap-калібрування)
+
+**Що змінено**
+
+- Замість спроб «вгадати» одиниці по max/quantile, додано точну калібровку `volumeUnitScale` по overlap: якщо є бар з тим самим `time` у history (HTTP `/ohlcv`) і в live/WS, беремо співвідношення `histVol / wsVol` як семпл.
+- `volumeUnitScale` тепер береться як медіана останніх семплів (до 21), що прибирає “гігантів” і не вимагає підкручувати історичні volume.
+- Скидання семплів при новому датасеті (TF/символ/ресет), щоб не тягнути scale між різними інструментами.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): ретроспектива інциденту volume (флік/«гіганти»/зникнення) + відкат
+
+**Контекст**
+
+- Симптоми в прод/рантаймі (за фідбеком користувача):
+  - нові volume-бруски на правому краю часто виглядають як «одразу в потолок» і повторюються як максимуми;
+  - інколи гістограма volume «падає вниз/зникає»;
+  - періодично повертаються «скачки» масштабу.
+- Важливо: ці симптоми виглядають як «биті дані», але переважно були UI-наслідком масштабу/кліпінгу/змішаних одиниць (history volume vs live tick_count).
+
+**Що пробували (хронологічно, на рівні логіки)**
+
+- Anti-spike для opacity:
+  - `computeRecentMaxVolume()` переведено з `max` на квантиль, і вимикали volume-based opacity, якщо позитивного volume мало.
+  - Мета: прибрати «посіріння/напівневидимість» свічок після рестартів.
+
+- Фіксована шкала volume:
+  - `autoscaleInfoProvider` для `volume`/`liveVolume` зафіксував діапазон `0..volumeScaleMax`.
+  - Мета: прибрати миготіння масштабу від live-оновлень та visible-range.
+
+- Заборона підняття scale на кожному тіку:
+  - `volumeScaleMax` перестали піднімати від live-накопичення всередині свічки.
+  - `liveVolume` для того ж `time` переведено з `setData()` на `update()`.
+  - Мета: зняти «флік» і ефект «кожна нова свічка = максимум».
+
+- Калібрування одиниць history↔WS:
+  - Додано `volumeUnitScale`, щоб приводити live/WS (часто `tick_count`) до масштабу history.
+  - Спочатку калібрували по порівнянню з `historyVolumeScaleMax`, потім уточнили, щоб не фіксувати scale=1 «завчасно».
+  - Далі додано більш правильний підхід: overlap-калібрування по тому ж `time` (семпли `histVol/wsVol`, медіана семплів).
+  - Мета: прибрати «гігантів» нових брусків на фоні історії.
+
+- Боротьба з кліпінгом у cap:
+  - Додано контрольований `bump` масштабу (не частіше 1 разу на свічку), коли live явно впирається в cap.
+  - Додано оновлення масштабу лише на новому закритому барі через robust p98 + hysteresis.
+  - Виправлено порядок у `updateLastBar()`, щоб новий великий `vol` потрапляв у `recentVolumes` ДО перерахунку масштабу.
+  - Мета: прибрати «кілька однаково максимальних» брусків праворуч.
+
+**Що пішло не так (чому інцидент не вважаємо закритим)**
+
+- Частина покращень проходила тести та виглядала правильно на синтетичних сценаріях, але в реальному рантаймі:
+  - «скачки в потолок» повертались (ймовірно через поєднання: різні одиниці + кліпінг + момент перерахунку cap);
+  - у певні моменти користувач бачив «volume зник/впав вниз».
+- Користувач повідомив, що після кількох ітерацій стало гірше і він зробив відкат до попереднього стану UI.
+
+**Статус**
+
+- НЕ ЗАКРИТО як “готово до релізу”: проблема volume-UX у рантаймі (за фідбеком користувача) лишилась.
+- Зафіксовано рішення користувача: відкат UI до попередньої поведінки (конкретний SHA/тег не зафіксовано у цьому журналі).
+
+**Нотатки для наступної спроби (без коду в цьому записі)**
+
+- Діагностика має починатися з 1 скріна/лог-оверлею `?debug=1`: `wsVolRaw`, `volScaled`, `volumeUnitScale`, `volumeScaleMax`, `historyVolAtTime`, щоб відрізнити:
+  - «дані стрибнули» (WS прислав батч/накопичення),
+  - від «UI стрибнув» (перерахунок масштабу/кліпінг/ресет датасету).
+
+---
+
+## 2025-12-19 — Runtime/Data: піднято ліміт RAMBuffer для довшої історії (під 30d 1m)
+
+**Що змінено**
+
+- Збільшено `RAM_BUFFER_MAX_BARS` з ~30k до 60k (per symbol/timeframe), щоб безболісно тримати до ~30 днів 1m-барів у RAM, якщо contract-of-needs/бекфіл це попросить.
+
+**Де**
+
+- app/settings.py
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_smc_universe_cfg.py` → passed.
+
+**Примітки/ризики**
+
+- Це лише «рейка» для кешу: фактична глибина історії визначається `smc_universe.fxcm_contract.symbols[].min_history_bars` у config/datastore.yaml та можливостями FXCM history API (rate/timeout).
+
+---
+
+## 2025-12-19 — Stage1/Data: contract-of-needs переведено на 30d історії (XAUUSD)
+
+**Що змінено**
+
+- `smc_universe.fxcm_contract` для `xauusd` переведено з 14d (20160) на 30d (43200) у «1m барах».
+
+**Де**
+
+- config/datastore.yaml
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_smc_universe_cfg.py` → passed.
+- `python -m tools.tf_coverage_report --symbol xauusd --tfs 1m 5m 1h 4h --window-minutes 43200` → зараз показує `BAD` на локальних snapshot'ах (це очікувано, доки бекфіл/догрів не закриє 30d без гепів).
+
+**Примітки/ризики**
+
+- Етап 1 вважаємо «DONE» лише коли coverage для контрольного вікна по 5m/1h/4h (і бажано 1m) стає `OK` (gaps=0, offgrid=0) у реальних snapshot-файлах UDS.
+
+---
+
+## 2025-12-19 — S3 warmup requester: поступове нарощування історії (без одномоментного 14d)
+
+**Що змінено**
+
+- Змінено політику `prefetch_history`: requester більше не просить одразу всю контрактну глибину (напр. 14d), а нарощує `request_bars` поступово від поточного `bars_count` у `UnifiedDataStore`.
+- Крок нарощування = `SMC_RUNTIME_PARAMS.limit` (типово 300; для bootstrap можна поставити 50), тому можна стартувати з live + малого вікна і поступово дорощувати історію у фоні.
+- Прогрес не зберігається окремо: після рестарту requester бере актуальний `bars_count` з UDS і продовжує з нього.
+
+**Де**
+
+- app/fxcm_warmup_requester.py
+
+**Тести/перевірка**
+
+- (потрібно прогнати локально) `pytest -q tests/test_s3_warmup_requester.py`
 
 ---
 
@@ -154,6 +837,27 @@
 **Тести/перевірка**
 
 - Не застосовується (лише документація).
+
+---
+
+## 2025-12-18 — Stage0: TF-правда (SSOT) + чесні гейти compute для 5m
+
+**Що змінено**
+
+- Додано SSOT TF-план `SMC_TF_PLAN`: `tf_exec=1m`, `tf_structure=5m`, `tf_context=(1h,4h)`.
+- Вирівняно runtime-дефолти: `tf_primary := 5m`, `tfs_extra := (1m,1h,4h)`; `15m` не використовуємо на цьому етапі.
+- Додано Stage0 гейти в побудові `SmcHint`: якщо немає 5m або замало/протух хвіст — SMC-core compute пропускається, але UI отримує стабільний `smc_hint.meta` з `gates` + `tf_plan` + `telemetry` + (`history_state/age_ms/last_ts/lag_ms`).
+
+**Де**
+
+- config/config.py
+- app/smc_producer.py
+- smc_core/input_adapter.py
+- tests/test_smc_tf_truth_primary_present.py
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_smc_tf_truth_primary_present.py` → passed.
 
 ---
 
@@ -1348,7 +2052,150 @@
 
 ---
 
+## 2025-12-19 — UI_v2 (Web): прибрано «пам’ять на сесію» чарта; стабілізація жестів
+
+**Що змінено**
+
+- Відкотили/прибрали session-only «пам’ять» позиції/масштабу чарта (через `sessionStorage`) як зайву та таку, що провокувала UX-регресії.
+- Стабілізовано жести: вертикальний pan (manual price-range) керується явною активацією (price-axis або `Shift`), а drag по price-axis блокується на час нашого vertical-pan, щоб прибрати «стрибок» при кліку+русі по шкалі.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- Немає JS-юнiт-тестів у репо.
+- Python: `12 passed` (таргетні тести UI_v2).
+
+---
+
+## 2025-12-19 — UI_v2 (Web): спроба price-scale UX як TradingView (axis-only vertical-pan + `autoOffset`) — НЕ СПРАЦЮВАЛО
+
+**Що змінено**
+
+- Vertical-pan по Y зроблено з запуском лише з правої цінової осі (price axis), а не з усієї області графіка.
+- Під час vertical-pan прибрано вимикання drag бібліотеки та прибрано `stopPropagation` у move-обробнику (ідея: горизонтальний drag лишається «рідним»).
+- Додано TV-like поведінку: якщо `manualRange` не активний, вертикальний drag по осі змінює `priceScaleState.autoOffset`, а autoscale лишається autoscale (діапазон зсувається через autoscaleInfoProvider).
+- Double-click по осі скидає і `manualRange`, і `autoOffset` (повертає чистий autoscale).
+
+**Додатково**
+
+- Прибрано `stopPropagation/stopImmediatePropagation` у wheel-хендлері (залишено `preventDefault`), щоб не «глушити» події.
+- Локальна перевірка JS у VS Code: синтаксичних помилок у файлі не виявлено.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Статус**
+
+- За фідбеком користувача: vertical-pan «зламався» (неможливо нормально рухати графік вверх/вниз), а «стрибки/розмазування» по Y лишились.
+- Потрібен відкат (див. наступний запис) і повернення до діагностики першопричини без UX-регресій.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): ВІДКАТ price-scale UX патчу (vertical-pan/autoOffset)
+
+**Що змінено**
+
+- Відкотили зміни у взаємодії з price-scale, які вводили `autoOffset` та обмежували vertical-pan лише до price-axis.
+- Причина: регресія UX — користувач не міг рухати графік вверх/вниз як раніше, а «стрибки/розмазування» все одно відтворювались.
+- Повернули vertical-pan через `manualRange` у старому режимі (старт по pane), та відновили wheel stopPropagation для уникнення подвійного масштабування.
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest -q tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+**Статус**
+
+- Тема «стрибки/розмазування» по Y НЕ закрита; потрібна окрема діагностика без ламання базових жестів.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): price-scale UX (мінімальний DIFF): autoOffset vertical-pan + manualRange тільки для zoom + wheel handled-only
+
+**Що змінено**
+
+- Додано `priceScaleState.autoOffset`: вертикальний pan (drag) у autoscale-режимі тепер зсуває діапазон через `autoOffset`, не вмикаючи «липкий» `manualRange`.
+- `manualRange` тепер використовується як «свідомий» режим саме для wheel-zoom (і для pan у manualRange, якщо він вже активний через zoom).
+- Wheel-події тепер глушаться (`preventDefault/stopPropagation`) **лише якщо** наш код реально обробив подію; це прибирає кейс, коли wheel «вмирає» через заглушення без фактичного zoom/pan.
+- Додано kill-switch `?ps_legacy_vertical_pan=1`: повертає legacy поведінку vertical-pan через `manualRange`.
+- Double-click по price-axis скидає і `manualRange`, і `autoOffset` (повертає чистий autoscale).
+
+**Де**
+
+- UI_v2/web_client/chart_adapter.js
+
+**Тести/перевірка**
+
+- `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → `12 passed`.
+
+**Примітки/ризики**
+
+- Це точкова UX-зміна взаємодії зі шкалою ціни; якщо з’являться нові регресії — швидкий відкат через `ps_legacy_vertical_pan=1`.
+
+---
+
+## 2025-12-19 — UI_v2 (Web): спроба прибрати «подвійне масштабування» через вимкнення library price-scale (wheel/axis-drag) — ВІДКАТ користувачем
+
+**Контекст / гіпотеза**
+
+- Під час wheel-zoom по price-axis інколи з’являється «стрибнуло/розмазало».
+- Гіпотеза: відбувається «подвійне масштабування» — lightweight-charts встигає застосувати свій price-scale wheel/axis scale, і паралельно наша логіка ще раз застосовує zoom/pan через `manualRange`/`autoOffset`.
+
+**Що пробували (експериментально)**
+
+- Вимкнути вбудоване масштабування price-scale у lightweight-charts (на рівні chart options):
+  - `handleScale.mouseWheel = false`
+  - `handleScale.axisPressedMouseMove.price = false`
+
+**Фактичний результат (фідбек користувача)**
+
+- Зламалось масштабування по горизонталі (time-scale UX регресував).
+- По Y зсув/масштабування при wheel по price-axis все ще могло «стрибнути/розмазати», але слабше і з відчутним зсувом вниз.
+
+**Статус**
+
+- Користувач відкотив зміни.
+- Тема «стрибки/розмазування» по price-scale при wheel по осі ціни лишається відкритою.
+
+**Наслідки / нотатки**
+
+- Потенційно причина не лише в дублюванні wheel-scale, а й у порядку/фазі обробки подій (capture/bubble) або в тому, що вимкнення price-scale scale зачіпає очікувану поведінку time-scale.
+
 ## Нагадування (обов’язково далі)
 
 - Кожна нова правка в коді → **новий запис** сюди.
 - Кожна нова правка → **таргетні тести** + запис у секції "Тести/перевірка" з результатом.
+
+---
+
+## 2025-12-20 — UI_v2 (Web): Stage5 execution-стрілочки на свічках (tooltip-only)
+
+**Що змінено**
+
+- Додано рендер Stage5 `execution_events` як стрілочки `arrowUp/arrowDown` на відповідній свічці (без текстових лейблів на графіку).
+- Деталі події показуємо лише в tooltip при hover на барі зі стрілкою (щоб не засмічувати графік).
+- Зроблено “липку” поведінку маркерів: якщо подія була в одному снапшоті, стрілка лишається на свічці й не зникає в наступних апдейтах.
+
+**Де**
+
+- UI_v2/web_client/app.js
+- UI_v2/web_client/chart_adapter.js
+- UI_v2/web_client/index.html
+- UI_v2/viewer_state_builder.py
+
+**Тести/перевірка**
+
+- Немає JS-юнiт-тестів у репо.
+- Python (таргетно): `pytest tests/test_ui_v2_static_http.py tests/test_ui_v2_viewer_state_ws_server.py tests/test_ui_v2_fxcm_ws_server.py` → passed.
+
+**Примітки/ризики**
+
+- Видимість стрілок залежить від того, чи доходять `execution_events` у viewer_state (режим replay/TF/вікно можуть давати “порожньо” навіть при наявності подій в інших режимах).

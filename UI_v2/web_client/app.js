@@ -123,6 +123,22 @@ function isFxcmWsEnabled() {
     }
 }
 
+function isTfHealthEnabled() {
+    // Stage0/1 діагностика TF-правди — це контрактний сигнал, а не "дебаг-приблуда".
+    // Дефолт: показуємо завжди. Override: ?tf_health=0|1
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        const raw = params.get("tf_health");
+        const parsed = parseOptionalBool(raw);
+        if (parsed !== null) {
+            return parsed;
+        }
+        return true;
+    } catch (_e) {
+        return true;
+    }
+}
+
 function isFxcmWsSameOrigin() {
     // Якщо FXCM WS міст прокситься у same-origin (nginx/Cloudflare tunnel),
     // підключаємось до wss://<домен>/fxcm/... замість прямого :8082.
@@ -156,6 +172,23 @@ function isFxcmApplyCompleteEnabled() {
             return true;
         }
         return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+    } catch (_e) {
+        return true;
+    }
+}
+
+function isFxcmTickCountVolumeEnabled() {
+    // Керує тим, чи дозволено підміняти/доповнювати volume через tick_count.
+    // Дефолт: увімкнено (для FX це ближче до TradingView-поведінки: tick volume).
+    // Override: ?fxcm_tickcount_volume=0|1
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        const raw = params.get("fxcm_tickcount_volume");
+        const parsed = parseOptionalBool(raw);
+        if (parsed !== null) {
+            return parsed;
+        }
+        return true;
     } catch (_e) {
         return true;
     }
@@ -228,10 +261,13 @@ const FXCM_OHLCV_WS_BASE_URL = FXCM_WS_ENABLED ? buildFxcmWsBaseUrl() : null;
 const FXCM_TICKS_WS_BASE_URL = FXCM_OHLCV_WS_BASE_URL;
 const FXCM_STATUS_WS_BASE_URL = buildFxcmStatusWsBaseUrl();
 const FXCM_APPLY_COMPLETE_ENABLED = isFxcmApplyCompleteEnabled();
+const FXCM_TICKCOUNT_VOLUME_ENABLED = isFxcmTickCountVolumeEnabled();
+const TF_HEALTH_ENABLED = isTfHealthEnabled();
 const DEFAULT_SYMBOL = "xauusd";
 const OHLCV_DEFAULT_TF = "1m";
 const OHLCV_DEFAULT_LIMIT = 500;
-const AVAILABLE_TIMEFRAMES = ["1m", "5m"];
+const AVAILABLE_TIMEFRAMES = ["1m", "5m", "1h", "4h"];
+const DEFAULT_ZONE_LIMIT_MODE = "near2";
 const CHART_HEIGHT_NORMAL = 700;
 const CHART_HEIGHT_LARGE = 900;
 const CHART_HEIGHT_DEFAULT = CHART_HEIGHT_NORMAL;
@@ -240,7 +276,9 @@ const STORAGE_KEYS = {
     timeframe: "smc_viewer_selected_tf",
     chartHeight: "smc_viewer_chart_height",
     summaryCollapsed: "smc_viewer_summary_collapsed",
+    stage6Collapsed: "smc_viewer_stage6_collapsed",
     layersVisibility: "smc_viewer_layers_visibility",
+    zoneLimitMode: "smc_viewer_zone_limit_mode",
 };
 
 let lastOhlcvResponse = null;
@@ -280,15 +318,46 @@ function mapEventsFromViewerState(state) {
     }));
 }
 
+function mapExecutionEventsFromViewerState(state) {
+    const raw = state?.execution?.execution_events || [];
+    return (Array.isArray(raw) ? raw : []).map((evt) => ({
+        time: safeUnixSeconds(evt.time || evt.ts || evt.timestamp),
+        type: evt.event_type || evt.type,
+        direction: evt.direction || evt.dir,
+        price: evt.price,
+        level: evt.level,
+        ref: evt.ref,
+        poi_zone_id: evt.poi_zone_id,
+        meta: evt.meta,
+    }));
+}
+
 function mapPoolsFromViewerState(state) {
     const pools = state?.liquidity?.pools || [];
-    return pools.map((pool) => ({
+    const mappedPools = pools.map((pool) => ({
         price: pool.price,
         role: pool.role,
         type: pool.type,
         strength: pool.strength ?? pool.strength_score ?? null,
         touches: pool.touch_count ?? pool.touches ?? null,
     }));
+
+    // HTF targets (якщо є): використовуємо для Delivery/Target у тултіпі.
+    // Важливо: не малюємо горизонтальну лінію по всьому графіку, лише бейдж на шкалі.
+    const targets = state?.liquidity?.targets || [];
+    const mappedTargets = (Array.isArray(targets) ? targets : []).map((t) => ({
+        price: t.price,
+        role: "TARGET",
+        type: t.type,
+        tf: t.tf,
+        strength: t.strength ?? null,
+        touches: null,
+        _isTarget: true,
+        _axisLabel: true,
+        _lineVisible: false,
+    }));
+
+    return [...mappedPools, ...mappedTargets];
 }
 
 function mapRangesFromViewerState(state) {
@@ -313,12 +382,307 @@ function mapOteZonesFromViewerState(state) {
 }
 
 function mapZonesFromViewerState(state) {
-    const zones = state?.zones?.raw?.zones || [];
-    return zones.map((zone) => ({
-        min: zone.price_min ?? zone.min,
-        max: zone.price_max ?? zone.max,
-        label: zone.type || zone.role,
-    }));
+    const raw = state?.zones?.raw || {};
+
+    const atrLast = Number(
+        state?.structure?.meta?.atr_last ??
+        state?.structure?.meta?.atr_median ??
+        state?.structure?.atr_last ??
+        null,
+    );
+
+    // UX-правило: дефолт — тільки "active" (малий список для трейдингу).
+    // Архів/повний список зон показуємо лише в debug-режимі.
+    let debugZones = false;
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        const parsed = parseOptionalBool(params.get("debug_zones"));
+        debugZones = parsed === true;
+    } catch (_e) {
+        debugZones = false;
+    }
+
+    const zones = debugZones ? raw.zones || [] : raw.active_zones || raw.poi_zones || [];
+
+    const mapped = (Array.isArray(zones) ? zones : []).map((zone) => {
+        const meta = zone?.meta && typeof zone.meta === "object" ? zone.meta : {};
+        const kind = String(zone?.type ?? zone?.zone_type ?? meta?.poi_type ?? zone?.role ?? "ZONE");
+        const dir = String(zone?.direction ?? meta?.direction ?? "").toUpperCase();
+        const role = zone?.role ?? meta?.role ?? null;
+
+        const timeframe = zone?.timeframe ?? zone?.tf ?? meta?.timeframe ?? meta?.tf ?? null;
+
+        const whyRaw =
+            zone?.why ??
+            meta?.why ??
+            meta?.reasons ??
+            meta?.explain ??
+            meta?.explanation ??
+            null;
+        const why = Array.isArray(whyRaw)
+            ? whyRaw.map((v) => String(v)).filter((v) => v)
+            : typeof whyRaw === "string"
+                ? [whyRaw]
+                : [];
+
+        const originRaw = zone?.origin_time ?? zone?.origin_ts ?? zone?.ts ?? zone?.timestamp ?? null;
+        const originSec = safeUnixSeconds(originRaw);
+
+        const invalidatedRaw =
+            zone?.invalidated_time ??
+            zone?.invalidated_ts ??
+            zone?.end_time ??
+            zone?.end_ts ??
+            meta?.invalidated_time ??
+            meta?.invalidated_ts ??
+            null;
+        const invalidatedSec = safeUnixSeconds(invalidatedRaw);
+
+        const rawScore = zone?.score ?? meta?.score ?? null;
+        const scoreNum = Number(rawScore);
+        const score = Number.isFinite(scoreNum) && scoreNum > 0 ? scoreNum : null;
+
+        const rawFilled = zone?.filled_pct ?? meta?.filled_pct ?? null;
+        const filledNum = Number(rawFilled);
+        let filledPct = null;
+        if (Number.isFinite(filledNum)) {
+            // Канон у бекенді: 0..1. UI показує 0..100.
+            filledPct = filledNum <= 1.0 ? filledNum * 100.0 : filledNum;
+        }
+
+        const rawState = zone?.state ?? meta?.state ?? null;
+        const distanceAtrRaw = zone?.distance_atr ?? meta?.distance_atr ?? null;
+        const distanceAtr = Number(distanceAtrRaw);
+
+        let stateTag = rawState ? String(rawState).toUpperCase() : "";
+        if (!stateTag) {
+            if (invalidatedSec !== undefined && invalidatedSec !== null) {
+                stateTag = "INVALIDATED";
+            } else if (Number.isFinite(filledPct) && filledPct >= 99.9) {
+                stateTag = "FILLED";
+            } else if (Number.isFinite(filledPct) && filledPct > 0) {
+                stateTag = "TOUCHED";
+            } else {
+                stateTag = "FRESH";
+            }
+        }
+
+        return {
+            min: zone?.price_min ?? zone?.min,
+            max: zone?.price_max ?? zone?.max,
+            label: kind,
+            type: zone?.type ?? zone?.zone_type ?? null,
+            direction: dir,
+            role,
+            poi_type: zone?.poi_type ?? meta?.poi_type ?? null,
+            score,
+            filled_pct: filledPct,
+            timeframe,
+            strength: zone?.strength ?? meta?.strength ?? null,
+            confidence: zone?.confidence ?? meta?.confidence ?? null,
+            why,
+            origin_time: originSec,
+            invalidated_time: invalidatedSec,
+            zone_id: zone?.zone_id ?? null,
+            state: stateTag,
+            distance_atr: Number.isFinite(distanceAtr) ? distanceAtr : null,
+        };
+    });
+
+    // Merge stacked зон у COMPOSITE (мінімізує шум і робить кластер POI читабельним).
+    // Правило: overlap >= 0.35 або gap <= 0.2 * ATR.
+    function bounds(z) {
+        const a = Number(z?.min);
+        const b = Number(z?.max);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+        return { lo: Math.min(a, b), hi: Math.max(a, b) };
+    }
+
+    function overlapRatio(a, b) {
+        const aa = bounds(a);
+        const bb = bounds(b);
+        if (!aa || !bb) return null;
+        const inter = Math.max(0, Math.min(aa.hi, bb.hi) - Math.max(aa.lo, bb.lo));
+        const uni = Math.max(aa.hi, bb.hi) - Math.min(aa.lo, bb.lo);
+        if (!(uni > 0)) return null;
+        return inter / uni;
+    }
+
+    function gapAbs(a, b) {
+        const aa = bounds(a);
+        const bb = bounds(b);
+        if (!aa || !bb) return null;
+        if (aa.hi < bb.lo) return bb.lo - aa.hi;
+        if (bb.hi < aa.lo) return aa.lo - bb.hi;
+        return 0;
+    }
+
+    function shortTypeLabel(z) {
+        const raw = String(z?.poi_type || z?.type || z?.label || "ZONE").toUpperCase();
+        if (raw.startsWith("COMPOSITE")) return raw;
+        if (raw.includes("ORDER") && raw.includes("BLOCK")) return "OB";
+        if (raw.includes("OB")) return "OB";
+        if (raw.includes("BREAKER")) return "BREAKER";
+        if (raw.includes("FVG") || raw.includes("IMBALANCE")) return "FVG";
+        return raw.replace(/\s+/g, " ").trim() || "ZONE";
+    }
+
+    function compositeLabel(types) {
+        const counts = new Map();
+        types.forEach((t) => counts.set(t, (counts.get(t) || 0) + 1));
+        const parts = Array.from(counts.entries())
+            .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+            .map(([t, n]) => (n > 1 ? `${t}×${n}` : String(t)));
+        return `COMPOSITE(${parts.join("+")})`;
+    }
+
+    function shouldMerge(a, b) {
+        const o = overlapRatio(a, b);
+        if (o !== null && o >= 0.35) return true;
+        const g = gapAbs(a, b);
+        if (g === null) return false;
+        if (Number.isFinite(atrLast) && atrLast > 0) {
+            return g <= 0.2 * atrLast;
+        }
+        return false;
+    }
+
+    function mergeGroup(group) {
+        const mins = group.map((z) => Number(z.min)).filter((v) => Number.isFinite(v));
+        const maxs = group.map((z) => Number(z.max)).filter((v) => Number.isFinite(v));
+        if (!mins.length || !maxs.length) {
+            return group[0];
+        }
+        const lo = Math.min(...mins);
+        const hi = Math.max(...maxs);
+
+        const types = group.map(shortTypeLabel);
+        const label = compositeLabel(types);
+
+        const scores = group.map((z) => Number(z.score)).filter((v) => Number.isFinite(v));
+        const baseScore = scores.length ? Math.max(...scores) : null;
+        const boost = scores.length > 1 ? (scores.length - 1) * 3.0 : 0.0;
+        const score = baseScore !== null ? baseScore + boost : null;
+
+        const whys = [];
+        group.forEach((z) => {
+            const w = Array.isArray(z.why) ? z.why : [];
+            w.forEach((x) => {
+                const s = String(x);
+                if (s && !whys.includes(s)) whys.push(s);
+            });
+        });
+        whys.unshift("confluence:overlap");
+
+        const filleds = group.map((z) => Number(z.filled_pct)).filter((v) => Number.isFinite(v));
+        const filled_pct = filleds.length ? Math.max(...filleds) : null;
+
+        const dist = group.map((z) => Number(z.distance_atr)).filter((v) => Number.isFinite(v));
+        const distance_atr = dist.length ? Math.min(...dist) : null;
+
+        const state = group.some((z) => String(z.state || "").toUpperCase() === "TOUCHED") ? "TOUCHED" : "FRESH";
+
+        return {
+            ...group[0],
+            min: lo,
+            max: hi,
+            poi_type: label,
+            label,
+            score,
+            filled_pct,
+            why: whys,
+            state,
+            distance_atr,
+            zone_id: `composite:${group.map((z) => z.zone_id || "-").join("|")}`,
+            composite_of: group.map((z) => z.zone_id).filter(Boolean),
+        };
+    }
+
+    function mergeStacked(zonesIn) {
+        const byKey = new Map();
+        zonesIn.forEach((z) => {
+            const dir = String(z.direction || "").toUpperCase();
+            const tf = String(z.timeframe || "");
+            const key = `${dir}|${tf}`;
+            if (!byKey.has(key)) byKey.set(key, []);
+            byKey.get(key).push(z);
+        });
+
+        const out = [];
+        for (const group of byKey.values()) {
+            const sorted = group
+                .slice()
+                .sort((a, b) => Number(a.min) - Number(b.min));
+            let bucket = [];
+            for (const z of sorted) {
+                if (!bucket.length) {
+                    bucket = [z];
+                    continue;
+                }
+                const last = bucket[bucket.length - 1];
+                if (shouldMerge(last, z)) {
+                    bucket.push(z);
+                } else {
+                    out.push(bucket.length > 1 ? mergeGroup(bucket) : bucket[0]);
+                    bucket = [z];
+                }
+            }
+            if (bucket.length) {
+                out.push(bucket.length > 1 ? mergeGroup(bucket) : bucket[0]);
+            }
+        }
+
+        // Зберігаємо порядок «важливості» приблизно як було (score desc).
+        return out.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+    }
+
+    // ВАЖЛИВО (SMC UX): компоненти POI-кластера мають лишатись доступними для tooltip.
+    // Кластеризацію/антишум робимо в chart_adapter (рендер + hit-test), а не тут.
+    return mapped;
+}
+
+function isDebugUiEnabled() {
+    try {
+        const params = new URLSearchParams(window.location.search || "");
+        const parsed = parseOptionalBool(params.get("debug_ui"));
+        return parsed === true;
+    } catch (_e) {
+        return false;
+    }
+}
+
+function formatZoneTypeShort(zone) {
+    const raw = String(zone?.poi_type || zone?.type || zone?.label || "ZONE").toUpperCase();
+    if (raw.includes("ORDER") && raw.includes("BLOCK")) return "OB";
+    if (raw.includes("OB")) return "OB";
+    if (raw.includes("BREAKER")) return "BREAKER";
+    if (raw.includes("FVG") || raw.includes("IMBALANCE")) return "FVG";
+    return raw.replace(/\s+/g, " ").trim() || "ZONE";
+}
+
+function formatZoneSide(zone) {
+    const dir = String(zone?.direction || "").toUpperCase();
+    if (dir === "SHORT") return "SELL";
+    if (dir === "LONG") return "BUY";
+    return "-";
+}
+
+function formatZoneHeadline(zone, index = null) {
+    const side = formatZoneSide(zone);
+    const type = formatZoneTypeShort(zone);
+    const tf = zone?.timeframe ? String(zone.timeframe) : "";
+    const score = Number(zone?.score);
+    const scorePart = Number.isFinite(score) ? ` score=${formatNumber(score, 2)}` : "";
+    const filled = Number(zone?.filled_pct);
+    const filledPart = type === "FVG" && Number.isFinite(filled) ? ` filled=${formatNumber(filled, 0)}%` : "";
+    return `${side} ${type}${tf ? " " + tf : ""}${scorePart}${filledPart}`.trim();
+}
+
+function formatZoneWhyShort(zone) {
+    const why = Array.isArray(zone?.why) ? zone.why : [];
+    if (!why.length) return "-";
+    const head = why.slice(0, 3).join("; ");
+    return head || "-";
 }
 
 function safeUnixSeconds(value) {
@@ -381,6 +745,9 @@ function normalizeOhlcvBar(bar) {
         return null;
     }
     normalized.volume = Number(bar.volume ?? bar.vol ?? 0);
+    // Якщо бекенд віддає `complete=false` (поточний незакритий бар) — збережемо для UI інваріантів.
+    // За відсутності поля вважаємо бар закритим (історія).
+    normalized.complete = bar.complete !== false;
     return normalized;
 }
 
@@ -398,8 +765,13 @@ function pickVolumeFromFxcmBar(bar) {
     if (!bar) {
         return 0;
     }
-    // Важливо: FXCM інколи передає `volume=0`, але `tick_count>0`.
+    // "Чистий" volume (без проксі-інтенсивності).
     // Nullish-coalescing (??) тут не підходить — нам треба «перше додатне».
+    if (!FXCM_TICKCOUNT_VOLUME_ENABLED) {
+        return pickFirstPositiveNumber(bar.volume, bar.vol, bar.v);
+    }
+
+    // Під флагом дозволяємо fallback, якщо FXCM інколи передає `volume=0`, але `tick_count>0`.
     return pickFirstPositiveNumber(
         bar.volume,
         bar.vol,
@@ -416,24 +788,49 @@ function pickVolumeSourceFromFxcmBar(bar) {
     if (!bar) {
         return "-";
     }
-    // Повертаємо лише коротку мітку джерела — для тимчасового діагностичного поля у шапці.
-    const vol = Number(bar.volume ?? bar.vol ?? bar.v);
-    if (Number.isFinite(vol) && vol > 0) {
+    // Повертаємо коротку мітку джерела, щоб миттєво бачити, від чого *зараз*
+    // залежить висота volume-гістограми.
+    // Важливо: для стабільності UX не показуємо "-" лише через те, що значення 0
+    // (наприклад, у свіжому інструменті або при пустій історії). Якщо позитивного
+    // значення немає — показуємо найімовірніше/наявне поле відповідно до режиму.
+
+    const volValue = Number(bar.volume ?? bar.vol ?? bar.v);
+    const tcValue = Number(bar.tick_count ?? bar.tickCount);
+    const ticksValue = Number(bar.ticks);
+    const intensityValue = Number(bar.volume_intensity ?? bar.intensity);
+
+    const hasVol = bar.volume != null || bar.vol != null || bar.v != null;
+    const hasTc = bar.tick_count != null || bar.tickCount != null;
+    const hasTicks = bar.ticks != null;
+    const hasIntensity = bar.volume_intensity != null || bar.intensity != null;
+
+    // 1) Якщо є позитивний "чистий" volume — він завжди пріоритетний.
+    if (Number.isFinite(volValue) && volValue > 0) {
         return "volume";
     }
-    const tc = Number(bar.tick_count ?? bar.tickCount);
-    if (Number.isFinite(tc) && tc > 0) {
-        return "tick_count";
+
+    // 2) Під флагом дозволяємо проксі-джерела (tick_count/ticks/intensity).
+    if (FXCM_TICKCOUNT_VOLUME_ENABLED) {
+        if (Number.isFinite(tcValue) && tcValue > 0) {
+            return "tick_count";
+        }
+        if (Number.isFinite(ticksValue) && ticksValue > 0) {
+            return "ticks";
+        }
+        if (Number.isFinite(intensityValue) && intensityValue > 0) {
+            return "intensity";
+        }
+
+        // 3) Немає позитивних значень: показуємо найкраще доступне поле (не "-").
+        if (hasTc) return "tick_count";
+        if (hasTicks) return "ticks";
+        if (hasIntensity) return "intensity";
+        if (hasVol) return "volume";
+        return "-";
     }
-    const ticks = Number(bar.ticks);
-    if (Number.isFinite(ticks) && ticks > 0) {
-        return "ticks";
-    }
-    const intensity = Number(bar.volume_intensity ?? bar.intensity);
-    if (Number.isFinite(intensity) && intensity > 0) {
-        return "intensity";
-    }
-    return "-";
+
+    // 2b) Без флагу: завжди чесно показуємо, що працюємо тільки з volume.
+    return hasVol ? "volume" : "-";
 }
 
 function extractLastBarFromViewerState(state) {
@@ -448,6 +845,28 @@ function extractLastBarFromViewerState(state) {
         state.ohlcv?.last_bar ||
         state.ohlcv?.last;
     return normalizeOhlcvBar(candidate);
+}
+
+function extractReplayCursorMs(state) {
+    try {
+        const raw = state?.meta?.replay_cursor_ms;
+        if (raw === null || raw === undefined) return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? Math.floor(n) : null;
+    } catch (_e) {
+        return null;
+    }
+}
+
+function isReplayViewerState(state) {
+    try {
+        const mode = String(state?.meta?.replay_mode || "").trim().toLowerCase();
+        if (mode) return true;
+        const fxcmState = String(state?.meta?.fxcm?.process_state || "").trim().toLowerCase();
+        return fxcmState.includes("replay");
+    } catch (_e) {
+        return false;
+    }
 }
 
 function getOverlaySeqKey(state) {
@@ -502,6 +921,12 @@ const appState = {
     lastTickSymbol: null,
     lastTickTsMs: 0,
     lastOhlcvVolSrc: "-",
+    replay: {
+        lastCursorMs: null,
+        lastOhlcvCursorMs: null,
+        lastOhlcvRefetchAtMs: 0,
+        ohlcvRefetchMinIntervalMs: 200,
+    },
     prevCompleteCandle: null,
     lastCompleteCandle: null,
     lastPayloadTs: null,
@@ -521,6 +946,7 @@ const appState = {
             zones: true,
             sessions: true,
         },
+        zoneLimitMode: DEFAULT_ZONE_LIMIT_MODE,
     },
     chartUi: {
         heightPx: CHART_HEIGHT_DEFAULT,
@@ -531,6 +957,7 @@ const appState = {
         view: "overview",
         filtersOpen: false,
         summaryCollapsed: false,
+        stage6Collapsed: false,
     },
 };
 
@@ -543,6 +970,10 @@ document.addEventListener("DOMContentLoaded", () => {
     initUiViews();
     bindUi();
     initChartController();
+
+    // Debug UI: вмикає видимість діагностичних блоків (таблиці під чартом) та технічні індикатори.
+    document.body.classList.toggle("debug-ui", isDebugUiEnabled());
+
     bootstrap().catch((err) => console.error("[UI] Помилка старту:", err));
 });
 
@@ -561,7 +992,14 @@ function cacheElements() {
     elements.marketStatus = document.getElementById("market-status");
     elements.payloadTs = document.getElementById("payload-ts");
     elements.payloadLag = document.getElementById("payload-lag");
+    elements.activeZones = document.getElementById("active-zones");
+    elements.execStatus = document.getElementById("exec-status");
+    elements.tfHealth = document.getElementById("tf-health");
     elements.timeframeSelect = document.getElementById("timeframe-select");
+
+    if (elements.tfHealth && !TF_HEALTH_ENABLED) {
+        elements.tfHealth.hidden = true;
+    }
 
     elements.summaryToggleBtn = document.getElementById("summary-toggle-btn");
     elements.mobileSummaryToggle = {
@@ -583,6 +1021,30 @@ function cacheElements() {
         volSrc: document.getElementById("summary-vol-src"),
     };
 
+    elements.stage6 = {
+        panel: document.getElementById("stage6-panel"),
+        toggleBtn: document.getElementById("stage6-toggle-btn"),
+        grid: document.getElementById("stage6-grid"),
+        noData: document.getElementById("stage6-nodata"),
+        mode: document.getElementById("stage6-mode"),
+        stableConf: document.getElementById("stage6-stable-conf"),
+        stableConfBar: document.getElementById("stage6-stable-conf-bar"),
+        rawLine: document.getElementById("stage6-raw-line"),
+        pendingLine: document.getElementById("stage6-pending-line"),
+        why: document.getElementById("stage6-why"),
+        htfDr: document.getElementById("stage6-htf-dr"),
+        htfPd: document.getElementById("stage6-htf-pd"),
+        htfAtr: document.getElementById("stage6-htf-atr"),
+        sweep: document.getElementById("stage6-sweep"),
+        hold: document.getElementById("stage6-hold"),
+        failedHold: document.getElementById("stage6-failed-hold"),
+        targets: document.getElementById("stage6-targets"),
+        poi: document.getElementById("stage6-poi"),
+        antiflipTtl: document.getElementById("stage6-antiflip-ttl"),
+        antiflipBlocked: document.getElementById("stage6-antiflip-blocked"),
+        antiflipOverride: document.getElementById("stage6-antiflip-override"),
+    };
+
     elements.tables = {
         events: document.getElementById("events-body"),
         ote: document.getElementById("ote-body"),
@@ -595,6 +1057,7 @@ function cacheElements() {
     elements.chartFullscreenBtn = document.getElementById("chart-fullscreen-btn");
     elements.chartLayerMenuBtn = document.getElementById("chart-layer-menu-btn");
     elements.chartLayerMenu = document.getElementById("chart-layer-menu");
+    elements.zonesLimitSelect = document.getElementById("zones-limit-select");
     elements.layerToggles = {
         events: document.getElementById("layer-toggle-events"),
         pools: document.getElementById("layer-toggle-pools"),
@@ -625,6 +1088,7 @@ function cacheElements() {
             zones: document.getElementById("drawer-layer-zones"),
             sessions: document.getElementById("drawer-layer-sessions"),
         },
+        zonesLimitSelect: document.getElementById("zones-limit-select-mobile"),
     };
     elements.mobile = {
         headerOverview: document.getElementById("mobile-header-overview"),
@@ -638,6 +1102,72 @@ function cacheElements() {
         backBtn: document.getElementById("m-chart-back"),
         menuBtn: document.getElementById("m-chart-menu"),
     };
+}
+
+function normalizeZoneLimitMode(value) {
+    const v = String(value || "").trim().toLowerCase();
+    if (v === "near1" || v === "near2" || v === "all") {
+        return v;
+    }
+    return DEFAULT_ZONE_LIMIT_MODE;
+}
+
+function persistZoneLimitMode(value) {
+    const storage = getStorage();
+    if (!storage) {
+        return;
+    }
+    try {
+        storage.setItem(STORAGE_KEYS.zoneLimitMode, normalizeZoneLimitMode(value));
+    } catch (err) {
+        console.warn("[UI] Не вдалося зберегти ліміт зон у localStorage", err);
+    }
+}
+
+function applyZoneLimitModeToChart() {
+    if (!appState.chart || typeof appState.chart.setZoneLimitMode !== "function") {
+        return;
+    }
+    appState.chart.setZoneLimitMode(appState.chartState.zoneLimitMode);
+}
+
+function bindZonesLimitControl() {
+    const desktop = elements.zonesLimitSelect;
+    const mobile = elements.drawer?.zonesLimitSelect;
+
+    const applyValue = (value, options = {}) => {
+        const next = normalizeZoneLimitMode(value);
+        appState.chartState.zoneLimitMode = next;
+        if (desktop) desktop.value = next;
+        if (mobile) mobile.value = next;
+        if (options.persist !== false) {
+            persistZoneLimitMode(next);
+        }
+        applyZoneLimitModeToChart();
+
+        const symbol = appState.currentSymbol;
+        const state = symbol ? appState.latestStates[symbol] : null;
+        if (state) {
+            updateChartFromViewerState(state, {
+                force: true,
+                symbolOverride: symbol,
+            });
+        }
+    };
+
+    // Початкове значення.
+    applyValue(appState.chartState.zoneLimitMode, { persist: false });
+
+    if (desktop) {
+        desktop.addEventListener("change", (event) => {
+            applyValue(event.target.value);
+        });
+    }
+    if (mobile) {
+        mobile.addEventListener("change", (event) => {
+            applyValue(event.target.value);
+        });
+    }
 }
 
 function initUiViews() {
@@ -810,6 +1340,18 @@ function syncDrawerFromDesktopControls() {
     });
 }
 
+function isMobileViewport() {
+    try {
+        return (
+            typeof window !== "undefined" &&
+            typeof window.matchMedia === "function" &&
+            window.matchMedia("(max-width: 768px)").matches
+        );
+    } catch (_e) {
+        return false;
+    }
+}
+
 function setDrawerOpen(isOpen) {
     appState.ui.filtersOpen = Boolean(isOpen);
     if (!elements.drawer?.root) {
@@ -827,6 +1369,9 @@ function scheduleMobileChartHeight() {
     if (typeof window === "undefined") {
         return;
     }
+    if (!isMobileViewport()) {
+        return;
+    }
     const raf = window.requestAnimationFrame || window.setTimeout;
     if (mobileChartHeightRaf) {
         return;
@@ -838,6 +1383,9 @@ function scheduleMobileChartHeight() {
 }
 
 function updateMobileChartHeightVar() {
+    if (!isMobileViewport()) {
+        return;
+    }
     const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
     const vh = Number(viewportHeight || 0);
     if (!Number.isFinite(vh) || vh <= 0) {
@@ -880,6 +1428,12 @@ function initChartController() {
     }
     try {
         appState.chart = window.createChartController(elements.chartContainer);
+
+        if (appState.chart && typeof appState.chart.setViewTimeframe === "function") {
+            appState.chart.setViewTimeframe(appState.currentTimeframe);
+        }
+
+        applyZoneLimitModeToChart();
 
         if (appState.chart && typeof appState.chart.setSessionsEnabled === "function") {
             const enabled = appState.chartState?.layersVisibility?.sessions !== false;
@@ -937,9 +1491,11 @@ function bindUi() {
     }
 
     bindSummaryToggle();
+    bindStage6Toggle();
 
     bindLayerToggles();
     bindChartLayerMenu();
+    bindZonesLimitControl();
     initChartLayoutControls();
     syncDrawerFromDesktopControls();
 }
@@ -962,6 +1518,17 @@ function bindSummaryToggle() {
     });
 
     applySummaryCollapsed(appState.ui.summaryCollapsed, { persist: false });
+}
+
+function bindStage6Toggle() {
+    const btn = elements.stage6?.toggleBtn;
+    if (!btn) {
+        return;
+    }
+    btn.addEventListener("click", () => {
+        applyStage6Collapsed(!appState.ui.stage6Collapsed);
+    });
+    applyStage6Collapsed(appState.ui.stage6Collapsed, { persist: false });
 }
 
 function bindChartLayerMenu() {
@@ -1133,10 +1700,16 @@ async function fetchOhlcv(symbol, timeframe = appState.currentTimeframe || OHLCV
     const normalizedTf = normalizeTimeframe(timeframe);
 
     const lowerSymbol = symbol.toLowerCase();
+    // Replay cursor (опційно): якщо йде offline replay, бари повинні "доростати"
+    // разом з курсором, без lookahead.
+    const replayCursorMs = Number(appState.replay?.lastCursorMs);
+    const cursorSuffix = Number.isFinite(replayCursorMs) ? `&to_ms=${encodeURIComponent(String(Math.floor(replayCursorMs)))}` : "";
+
     const url = `${HTTP_BASE_URL}/smc-viewer/ohlcv` +
         `?symbol=${encodeURIComponent(lowerSymbol)}` +
         `&tf=${encodeURIComponent(normalizedTf)}` +
-        `&limit=${OHLCV_DEFAULT_LIMIT}`;
+        `&limit=${OHLCV_DEFAULT_LIMIT}` +
+        cursorSuffix;
 
     try {
         const response = await fetch(url, {
@@ -1240,6 +1813,11 @@ function handleTimeframeChange(nextTf) {
         return;
     }
     appState.currentTimeframe = normalized;
+
+    if (appState.chart && typeof appState.chart.setViewTimeframe === "function") {
+        appState.chart.setViewTimeframe(normalized);
+    }
+
     syncTimeframeSelect(normalized);
     if (elements.drawer?.timeframeSelect) {
         elements.drawer.timeframeSelect.value = normalized;
@@ -1592,7 +2170,7 @@ function renderAll(state, options = {}) {
     renderOverviewEvents(state.structure?.events || []);
     renderOteZones(state.structure?.ote_zones || []);
     renderPools(state.liquidity?.pools || []);
-    renderZones(state.zones?.raw?.zones || []);
+    renderZones(mapZonesFromViewerState(state));
     if (!skipChartUpdate) {
         updateChartFromViewerState(state, {
             force: forceChartUpdate,
@@ -1620,6 +2198,204 @@ function updatePayloadMeta(state) {
                 ? `${formatNumber(lagSeconds, 2)} s`
                 : "-";
     }
+
+    const debugUi = isDebugUiEnabled();
+
+    if (elements.activeZones) {
+        if (!debugUi) {
+            elements.activeZones.hidden = true;
+        } else {
+            elements.activeZones.hidden = false;
+            const active = Array.isArray(state?.zones?.raw?.active_zones)
+                ? state.zones.raw.active_zones
+                : [];
+            elements.activeZones.textContent = `active_zones: ${active.length}/6`;
+        }
+    }
+
+    if (elements.execStatus) {
+        if (!debugUi) {
+            elements.execStatus.hidden = true;
+        } else {
+            elements.execStatus.hidden = false;
+            elements.execStatus.textContent = formatExecutionMetaLine(state || null);
+        }
+    }
+
+    if (elements.tfHealth) {
+        if (!TF_HEALTH_ENABLED || !debugUi) {
+            elements.tfHealth.hidden = true;
+        } else {
+            elements.tfHealth.hidden = false;
+            elements.tfHealth.textContent = formatTfMetaLine(state || null);
+        }
+    }
+}
+
+function formatExecutionMetaLine(state) {
+    if (!state || typeof state !== "object") {
+        return "EXEC: -";
+    }
+
+    const exec = state.execution && typeof state.execution === "object" ? state.execution : null;
+    if (!exec) {
+        return "EXEC: -";
+    }
+
+    const meta = exec.meta && typeof exec.meta === "object" ? exec.meta : null;
+    const execEnabled = meta && "exec_enabled" in meta ? meta.exec_enabled === true : null;
+    if (execEnabled === false) {
+        return "EXEC: вимкнено";
+    }
+
+    const inPlay =
+        (meta && meta.in_play === true) ||
+        ("in_play" in exec && exec.in_play === true);
+
+    const refObj = meta && meta.in_play_ref && typeof meta.in_play_ref === "object" ? meta.in_play_ref : null;
+    const ref = refObj && refObj.ref ? String(refObj.ref) : null;
+
+    const refDetail = (() => {
+        if (!refObj || !ref) return "";
+        const u = String(ref).toUpperCase();
+        if (u === "TARGET") {
+            const lvl = Number.isFinite(refObj.level) ? `@${formatNumber(refObj.level, 2)}` : "";
+            return lvl;
+        }
+        if (u === "POI") {
+            const zid = refObj.poi_zone_id ? `#${String(refObj.poi_zone_id)}` : "";
+            return zid;
+        }
+        return "";
+    })();
+
+    const rawEvents = Array.isArray(exec.execution_events) ? exec.execution_events : [];
+    const last = rawEvents.slice(-2);
+
+    const shortType = (t) => {
+        const u = String(t || "").toUpperCase();
+        if (u === "RETEST_OK") return "RETEST";
+        if (u === "MICRO_BOS") return "μBOS";
+        if (u === "MICRO_CHOCH") return "μCHOCH";
+        return u || "?";
+    };
+
+    const fmtEvt = (e) => {
+        if (!e || typeof e !== "object") return "?";
+        const t = shortType(e.event_type);
+        const d = String(e.direction || "").toUpperCase();
+        const arrow = d === "LONG" ? "↑" : d === "SHORT" ? "↓" : "";
+        const lvl = Number.isFinite(e.level) ? `@${formatNumber(e.level, 2)}` : "";
+        return `${t}${arrow}${lvl}`;
+    };
+
+    const eventsPart = last.length ? last.map(fmtEvt).join(" ") : null;
+    const statePart = inPlay ? "в грі" : "idle";
+    const refPart = ref ? `(${ref}${refDetail ? ":" + refDetail : ""})` : "";
+
+    return eventsPart ? `EXEC: ${statePart}${refPart} | ${eventsPart}` : `EXEC: ${statePart}${refPart}`;
+}
+
+function formatTfMetaLine(state) {
+    if (!state || typeof state !== "object") {
+        return "TF: -";
+    }
+
+    const plan = state.tf_plan && typeof state.tf_plan === "object" ? state.tf_plan : null;
+    const effective = Array.isArray(state.tf_effective) ? state.tf_effective : [];
+    const gates = Array.isArray(state.gates) ? state.gates : [];
+    const targets = Array.isArray(state?.liquidity?.targets) ? state.liquidity.targets : [];
+
+    const planPart = formatTfPlanCompact(plan);
+    const effPart = effective.length ? `ефф: ${effective.slice(0, 4).join(",")}${effective.length > 4 ? "…" : ""}` : "ефф: -";
+    const gatesPart = formatGatesCompact(gates);
+
+    const bars5m = Number.isFinite(state.bars_5m) ? Number(state.bars_5m) : null;
+    const lagMs = Number.isFinite(state.lag_ms) ? Number(state.lag_ms) : null;
+    const barsPart = bars5m !== null ? `5m:${bars5m}` : null;
+    const lagPart = lagMs !== null ? `лаг:${formatNumber(lagMs / 1000.0, 1)}s` : null;
+
+    const healthPart = formatTfHealthCompact(state.tf_health || null);
+    const ltPart = formatLiquidityTargetsCompact(targets);
+
+    const extras = [barsPart, lagPart, healthPart, ltPart].filter((v) => v);
+    return `TF: ${planPart} | ${effPart} | ${gatesPart}${extras.length ? " | " + extras.join(" ") : ""}`;
+}
+
+function formatTfPlanCompact(plan) {
+    if (!plan) {
+        return "план:-";
+    }
+    const execTf = plan.tf_exec ? String(plan.tf_exec) : "-";
+    const structTf = plan.tf_structure ? String(plan.tf_structure) : "-";
+    const ctx = Array.isArray(plan.tf_context) ? plan.tf_context.map(String).join(",") : "-";
+    return `план:${execTf}/${structTf}/${ctx}`;
+}
+
+function formatGatesCompact(gates) {
+    if (!gates.length) {
+        return "gates: OK";
+    }
+    const codes = gates
+        .map((g) => (g && typeof g === "object" ? (g.code || g.id || null) : null))
+        .filter((v) => v)
+        .map(String);
+    if (!codes.length) {
+        return `gates: ${gates.length}`;
+    }
+    const uniq = [...new Set(codes)].slice(0, 3);
+    return `gates: ${uniq.join(",")}${codes.length > uniq.length ? "…" : ""}`;
+}
+
+function formatLiquidityTargetsCompact(targets) {
+    if (!targets.length) {
+        return null;
+    }
+    const pick = (role) => targets.find((t) => t && typeof t === "object" && t.role === role);
+    const i = pick("internal");
+    const e = pick("external");
+
+    const fmt = (t) => {
+        if (!t) return null;
+        const side = String(t.side || "").toLowerCase();
+        const arrow = side === "above" ? "↑" : side === "below" ? "↓" : "";
+        const price = Number.isFinite(t.price) ? formatNumber(t.price, 2) : "-";
+        return `${String(t.role || "-").slice(0, 1)}${arrow}${price}`;
+    };
+
+    const parts = [fmt(i), fmt(e)].filter((v) => v);
+    if (!parts.length) {
+        return null;
+    }
+    return `LT:${parts.join(" ")}`;
+}
+
+function formatTfHealthCompact(tfHealth) {
+    if (!tfHealth || typeof tfHealth !== "object") {
+        return null;
+    }
+
+    const order = ["1m", "5m", "1h", "4h"];
+    const parts = [];
+
+    order.forEach((tf) => {
+        const info = tfHealth[tf];
+        if (!info || typeof info !== "object") {
+            parts.push(`${tf}:-`);
+            return;
+        }
+
+        const hasData = info.has_data === true;
+        const bars = Number.isFinite(info.bars) ? Number(info.bars) : null;
+        const lagMs = Number.isFinite(info.lag_ms) ? Number(info.lag_ms) : null;
+
+        const status = hasData ? "ok" : "no";
+        const barsPart = bars !== null ? `|${bars}` : "";
+        const lagPart = lagMs !== null ? `|${formatNumber(lagMs / 1000.0, 1)}s` : "";
+        parts.push(`${tf}:${status}${barsPart}${lagPart}`);
+    });
+
+    return `health:${parts.join(" ")}`;
 }
 
 function renderEmptyState(message = "Немає даних") {
@@ -1694,6 +2470,15 @@ function pushBarsToChart(ohlcvResponse) {
     if (!appState.chart || !ohlcvResponse || !Array.isArray(ohlcvResponse.bars)) {
         return;
     }
+    // Діагностика: при HTTP-історії у нас немає OHLCV WS-івента, тож
+    // ініціалізуємо VOL src одразу (і не чекаємо live-барів).
+    const rawLast = ohlcvResponse.bars[ohlcvResponse.bars.length - 1] || null;
+    if (rawLast) {
+        appState.lastOhlcvVolSrc = pickVolumeSourceFromFxcmBar(rawLast) || "-";
+        if (elements.summary?.volSrc) {
+            setText(elements.summary.volSrc, appState.lastOhlcvVolSrc || "-");
+        }
+    }
     const bars = ohlcvResponse.bars.map(normalizeOhlcvBar).filter(Boolean);
     if (!bars.length) {
         return;
@@ -1706,6 +2491,30 @@ function maybeUpdateChartFromWs(symbol, viewerState) {
     if (!appState.chart || !viewerState) {
         return;
     }
+
+    // Replay: якщо змінився cursor — перевантажуємо OHLCV, щоб свічки реально додавались.
+    // Без цього графік вантажиться один раз і не "доростає".
+    if (isReplayViewerState(viewerState)) {
+        const cursorMs = extractReplayCursorMs(viewerState);
+        if (cursorMs !== null) {
+            appState.replay.lastCursorMs = cursorMs;
+            const now = Date.now();
+            const lastCursor = appState.replay.lastOhlcvCursorMs;
+            const lastAt = Number(appState.replay.lastOhlcvRefetchAtMs || 0);
+            const minInterval = Number(appState.replay.ohlcvRefetchMinIntervalMs || 200);
+            const shouldRefetch =
+                (lastCursor === null || lastCursor === undefined || cursorMs !== lastCursor) &&
+                (now - lastAt >= minInterval);
+
+            if (shouldRefetch && symbol === appState.currentSymbol) {
+                appState.replay.lastOhlcvCursorMs = cursorMs;
+                appState.replay.lastOhlcvRefetchAtMs = now;
+                // Не await: щоб не блокувати WS onmessage.
+                fetchOhlcv(symbol, appState.currentTimeframe);
+            }
+        }
+    }
+
     const lastBar = extractLastBarFromViewerState(viewerState);
     if (lastBar) {
         appState.chart.updateLastBar(lastBar);
@@ -2084,12 +2893,11 @@ function handleTickWsPayload(payload) {
     const tfSec = timeframeToSeconds(appState.currentTimeframe);
     const candleStart = Math.floor(tsSec / tfSec) * tfSec;
 
-    // Локальний tick_count (інтенсивність) для гістограми volume.
-    // Стабільний fallback: якщо FXCM шле `volume=0` або на 5m не надходить tick_count.
+    // ВАЖЛИВО: volume малюємо лише при закритті свічки (complete=true) і лише з "чистого" volume.
+    // Тиковий стрім використовується тільки для live-ціни (OHLC), без підміни volume.
     if (appState.tickLiveOpenTimeSec !== candleStart) {
         appState.tickLiveVolumeCount = 0;
     }
-    appState.tickLiveVolumeCount += 1;
 
     // throttle, щоб не "забивати" UI при частих тиках
     const nowMs = Date.now();
@@ -2116,7 +2924,7 @@ function handleTickWsPayload(payload) {
             high: Math.max(Number(baseOpen), mid),
             low: Math.min(Number(baseOpen), mid),
             close: mid,
-            volume: appState.tickLiveVolumeCount,
+            volume: 0,
         };
         appState.tickLiveCandle = candle;
         appState.tickLiveOpenTimeSec = candleStart;
@@ -2127,7 +2935,7 @@ function handleTickWsPayload(payload) {
             high: Math.max(candle.high, mid),
             low: Math.min(candle.low, mid),
             close: mid,
-            volume: appState.tickLiveVolumeCount,
+            volume: 0,
         };
         appState.tickLiveCandle = candle;
     }
@@ -2207,27 +3015,12 @@ function handleOhlcvWsPayload(payload) {
             volume: 0,
         };
 
-        const volumeFromBar = pickVolumeFromFxcmBar(bar);
-        const tickVolumeFallback =
-            appState.tickLiveOpenTimeSec === candle.time && appState.tickLiveVolumeCount > 0
-                ? appState.tickLiveVolumeCount
-                : 0;
-        const previousLiveVolumeSameCandle =
-            appState.ohlcvLiveCandle && appState.ohlcvLiveOpenTimeSec === candle.time
-                ? Number(appState.ohlcvLiveCandle.volume)
-                : 0;
-
-        // Не даємо volume скидатися в 0 у межах однієї live-свічки.
-        candle.volume = Math.max(volumeFromBar, tickVolumeFallback, previousLiveVolumeSameCandle);
-
-        // Діагностика: показуємо, звідки береться volume (volume vs tick_count).
-        // Якщо FXCM не дав обсяг, але tick fallback дав — маркуємо як tick_count.
-        if (volumeFromBar > 0) {
-            appState.lastOhlcvVolSrc = pickVolumeSourceFromFxcmBar(bar);
-        } else if (tickVolumeFallback > 0) {
-            appState.lastOhlcvVolSrc = "tick_count";
-        } else {
-            appState.lastOhlcvVolSrc = pickVolumeSourceFromFxcmBar(bar);
+        const isComplete = bar.complete !== false;
+        // Діагностика: показуємо, звідки береться volume для *закритих* свічок.
+        // Для live-свічок volume навмисно 0 (щоб не малювати "псевдо-обсяг"),
+        // тому НЕ перезаписуємо VOL src на "-" — інакше він буде скакати при кожному тіку.
+        if (isComplete) {
+            appState.lastOhlcvVolSrc = pickVolumeSourceFromFxcmBar(bar) || "-";
         }
         if (
             !Number.isFinite(candle.open) ||
@@ -2238,16 +3031,18 @@ function handleOhlcvWsPayload(payload) {
             continue;
         }
 
-        const isComplete = bar.complete !== false;
         if (!isComplete) {
             noteFxcmLiveSeen();
             if (typeof appState.chart.setLiveBar === "function") {
+                candle.volume = 0;
                 appState.chart.setLiveBar(candle);
                 appState.ohlcvLiveOpenTimeSec = candle.time;
                 appState.ohlcvLiveCandle = candle;
             }
             continue;
         }
+
+        candle.volume = pickVolumeFromFxcmBar(bar);
 
         appState.chart.updateLastBar(candle);
         appState.prevCompleteCandle = appState.lastCompleteCandle;
@@ -2293,6 +3088,7 @@ function updateChartFromViewerState(state, options = {}) {
     }
 
     const events = mapEventsFromViewerState(state);
+    const execEvents = mapExecutionEventsFromViewerState(state);
     const pools = mapPoolsFromViewerState(state);
     const ranges = mapRangesFromViewerState(state);
     const oteZones = mapOteZonesFromViewerState(state);
@@ -2308,6 +3104,9 @@ function updateChartFromViewerState(state, options = {}) {
     };
 
     appState.chart.setEvents(layersVisibility.events ? events : []);
+    if (typeof appState.chart.setExecutionEvents === "function") {
+        appState.chart.setExecutionEvents(layersVisibility.events ? execEvents : []);
+    }
     appState.chart.setLiquidityPools(layersVisibility.pools ? pools : []);
     appState.chart.setRanges(layersVisibility.ranges ? ranges : []);
     appState.chart.setOteZones(layersVisibility.ote ? oteZones : []);
@@ -2326,6 +3125,37 @@ function updateChartFromViewerState(state, options = {}) {
 function renderSummary(state) {
     const struct = state.structure || {};
     const fxcm = state.meta?.fxcm || state.fxcm || {};
+    const scenario = state.scenario || {};
+
+    const scenarioNameByCode = {
+        "4_2": "Продовження вниз",
+        "4_3": "Інвалідація шорта → вгору",
+        "UNCLEAR": "Невизначено",
+    };
+
+    const scenarioArrow = (direction) => {
+        const d = String(direction || "").toUpperCase();
+        if (d === "LONG") return "↑";
+        if (d === "SHORT") return "↓";
+        return "·";
+    };
+
+    const formatScenarioHuman = (id) => {
+        const code = String(id || "").toUpperCase();
+        if (scenarioNameByCode[code]) {
+            return scenarioNameByCode[code];
+        }
+        return code ? `Невідомий режим (${code})` : "-";
+    };
+
+    const formatScenarioHumanWithConfidence = (id, conf) => {
+        const name = formatScenarioHuman(id);
+        const c = Number(conf);
+        if (Number.isFinite(c) && c > 0) {
+            return `${name} · ${formatNumber(c, 2)}`;
+        }
+        return name;
+    };
 
     const nowMs = Date.now();
     const tickIsFresh =
@@ -2341,6 +3171,31 @@ function renderSummary(state) {
     setText(elements.summary.session, state.session || "-");
     setBadgeText("summary-trend", struct.trend || "UNKNOWN");
     setBadgeText("summary-bias", struct.bias || "UNKNOWN");
+
+    renderStage6Panel(scenario, {
+        formatScenarioHuman,
+        scenarioArrow,
+        formatScenarioHumanWithConfidence,
+    });
+
+    // У згорнутому режимі кнопка показує компактний "маркер режиму" (стрілка + confidence).
+    const btn = elements.stage6?.toggleBtn;
+    if (btn) {
+        if (appState.ui.stage6Collapsed) {
+            const arrow = scenarioArrow(scenario.direction);
+            const c = Number(scenario.confidence);
+            const conf = Number.isFinite(c) && c > 0 ? formatNumber(c, 2) : "";
+            const compact = `${arrow}${conf}`.trim();
+            btn.textContent = compact || "S6";
+            const code = String(scenario.scenario_id || "").toUpperCase();
+            const name = formatScenarioHuman(code);
+            btn.title = code ? `SMC Контекст: ${name} (код: ${code})` : `SMC Контекст: ${name}`;
+        } else {
+            btn.textContent = "S6";
+            btn.title = "Згорнути SMC контекст";
+        }
+    }
+
     setBadgeText("summary-range", struct.range_state || "UNKNOWN");
     setBadgeText("summary-amd", state.liquidity?.amd_phase || "UNKNOWN");
     setText(elements.summary.market, fxcm.market_state || "-");
@@ -2357,6 +3212,273 @@ function renderSummary(state) {
     setText(elements.mobile?.overviewPrice, priceText);
     setText(elements.mobile?.chartPrice, priceText);
     renderMobileDelta();
+}
+
+function renderStage6Panel(scenario, helpers) {
+    const el = elements.stage6;
+    if (!el) {
+        return;
+    }
+
+    const emptyText = "немає даних";
+    const setValue = (node, value, opts = {}) => {
+        if (!node) return;
+        const v = value == null ? "" : String(value);
+        const text = v.trim() ? v : (opts.emptyText || emptyText);
+        node.textContent = text;
+        if (opts.title !== undefined) {
+            node.title = String(opts.title || "");
+        }
+    };
+
+    const minutesFromTf = (tf) => {
+        const s = String(tf || "").toLowerCase();
+        if (!s) return null;
+        if (s.endsWith("m")) {
+            const n = Number(s.slice(0, -1));
+            return Number.isFinite(n) ? n : null;
+        }
+        if (s.endsWith("h")) {
+            const n = Number(s.slice(0, -1));
+            return Number.isFinite(n) ? n * 60 : null;
+        }
+        return null;
+    };
+
+    const formatDurationSec = (sec) => {
+        const s = Number(sec);
+        if (!Number.isFinite(s) || s <= 0) return "0s";
+        const total = Math.floor(s);
+        const m = Math.floor(total / 60);
+        const r = total % 60;
+        if (m <= 0) return `${r}s`;
+        return `${m}m ${r}s`;
+    };
+
+    const formatLevel = (v) => {
+        const x = Number(v);
+        if (!Number.isFinite(x)) return null;
+        return formatNumber(x, 2);
+    };
+
+    const formatAtr = (v) => {
+        const x = Number(v);
+        if (!Number.isFinite(x)) return null;
+        return formatNumber(x, 1);
+    };
+
+    const whyList = Array.isArray(scenario?.why) ? scenario.why.map((v) => String(v)) : [];
+    const rawGates = Array.isArray(scenario?.raw_gates) ? scenario.raw_gates.map((v) => String(v)) : [];
+    const reason =
+        scenario?.unclear_reason || scenario?.raw_unclear_reason || rawGates.join(", ") || "";
+
+    const rawId = String(scenario?.raw_scenario_id || "").toUpperCase();
+    const stableId = String(scenario?.scenario_id || "").toUpperCase();
+    const hasSmc = Boolean(scenario?.raw_key_levels?.smc || scenario?.key_levels?.smc);
+    const isNoContext =
+        !scenario ||
+        (!stableId && !rawId) ||
+        (!hasSmc && (stableId === "UNCLEAR" || rawId === "UNCLEAR" || rawGates.length > 0 || reason));
+
+    if (el.noData && el.grid) {
+        if (isNoContext) {
+            const gateText = rawGates.length ? rawGates.join(", ") : (reason ? String(reason) : "немає даних");
+            el.noData.textContent = `Немає контексту: ${gateText}`;
+            el.noData.removeAttribute("hidden");
+            el.grid.setAttribute("hidden", "");
+        } else {
+            el.noData.setAttribute("hidden", "");
+            el.grid.removeAttribute("hidden");
+        }
+    }
+
+    // Режим (stable) + код у tooltip.
+    const stableName = helpers?.formatScenarioHuman ? helpers.formatScenarioHuman(stableId) : (stableId || emptyText);
+    const stableConf = Number(scenario?.confidence);
+    const stableConfText = Number.isFinite(stableConf) ? formatNumber(stableConf, 2) : "";
+    const stableDirArrow = helpers?.scenarioArrow ? helpers.scenarioArrow(scenario?.direction) : "·";
+    const modeText = stableId ? `${stableName}` : emptyText;
+    setValue(el.mode, modeText, { title: stableId ? `код: ${stableId}` : "" });
+
+    // stable_conf + прогрес.
+    setValue(el.stableConf, Number.isFinite(stableConf) ? stableConfText : "", { emptyText });
+    if (el.stableConfBar) {
+        const pct = Number.isFinite(stableConf) ? Math.max(0, Math.min(1, stableConf)) * 100 : 0;
+        el.stableConfBar.style.width = `${pct}%`;
+        el.stableConfBar.title = Number.isFinite(stableConf) ? `stable_conf=${stableConfText}` : "";
+    }
+
+    // RAW line: raw label + conf + unclear_reason (якщо є).
+    const rawName = helpers?.formatScenarioHuman ? helpers.formatScenarioHuman(rawId) : (rawId || emptyText);
+    const rawConf = Number(scenario?.raw_confidence);
+    const rawConfText = Number.isFinite(rawConf) ? formatNumber(rawConf, 2) : "";
+    const rawReason = scenario?.raw_unclear_reason || scenario?.unclear_reason || "";
+    const rawParts = [];
+    if (rawId) rawParts.push(`${rawName}`);
+    if (rawConfText) rawParts.push(`conf ${rawConfText}`);
+    if (rawReason) rawParts.push(String(rawReason));
+    setValue(el.rawLine, rawParts.join(" · "), { title: rawId ? `код: ${rawId}` : "" });
+
+    // Pending: показуємо прогрес confirm (2/3).
+    const pendingId = scenario?.pending_id;
+    const pendingCount = Number(scenario?.pending_count);
+    const anti = scenario?.anti_flip || {};
+    const evalBlock = scenario?.last_eval || {};
+    const confirmReq = Number(anti?.confirm_required ?? evalBlock?.confirm_required);
+    if (pendingId && Number.isFinite(pendingCount) && pendingCount > 0 && Number.isFinite(confirmReq) && confirmReq > 0) {
+        const pCode = String(pendingId || "").toUpperCase();
+        const pName = helpers?.formatScenarioHuman ? helpers.formatScenarioHuman(pCode) : pCode;
+        setValue(el.pendingLine, `${pName} (${pendingCount}/${confirmReq})`, { title: pCode ? `код: ${pCode}` : "" });
+    } else {
+        setValue(el.pendingLine, "", { emptyText: "—" });
+    }
+
+    // Чому: why[] (коротко) + tooltip повністю.
+    const whyShort = whyList.filter((v) => v).slice(0, 4).join(" · ");
+    setValue(el.why, whyShort, {
+        emptyText: reason ? `Немає контексту: ${String(reason)}` : emptyText,
+        title: whyList.filter((v) => v).slice(0, 12).join("\n"),
+    });
+
+    // SMC dict.
+    const smc = scenario?.raw_key_levels?.smc || scenario?.key_levels?.smc || null;
+    const htf = smc?.htf || {};
+    const facts = smc?.facts || {};
+    const sweep = facts?.sweep || null;
+    const hold = facts?.hold || {};
+    const failedHold = facts?.failed_hold || {};
+
+    // HTF DR/PD/ATR.
+    const drLow = formatLevel(htf?.dr_low);
+    const drHigh = formatLevel(htf?.dr_high);
+    const drMid = formatLevel(htf?.dr_mid);
+    const drTf = String(htf?.dr_tf || "");
+    const drText = drLow && drHigh ? `${drLow}–${drHigh}${drMid ? ` (mid ${drMid})` : ""}` : "";
+    setValue(el.htfDr, drText, {
+        emptyText: rawGates.length ? `немає даних (${rawGates.join(", ")})` : emptyText,
+        title: drTf ? `DR TF: ${drTf}` : "",
+    });
+    setValue(el.htfPd, htf?.pd ? String(htf.pd) : "", { emptyText, title: "" });
+    const atrText = formatAtr(htf?.atr14);
+    const atrTf = String(htf?.atr_tf || "");
+    setValue(el.htfAtr, atrText ? atrText : "", { emptyText, title: atrTf ? `ATR TF: ${atrTf}` : "" });
+
+    // Sweep.
+    const tfMin = minutesFromTf(appState.currentTimeframe);
+    if (sweep && sweep.level != null) {
+        const lvl = formatLevel(sweep.level) || "?";
+        const side = String(sweep.side || "").toUpperCase();
+        const sideArrow = side === "DOWN" ? "↓" : side === "UP" ? "↑" : "·";
+        const typ = String(sweep.pool_type || sweep.type || "?");
+        const ageBars = Number(sweep.age_bars);
+        let ageText = "";
+        if (Number.isFinite(ageBars) && ageBars >= 0) {
+            ageText = `age ${ageBars} bars`;
+            if (Number.isFinite(tfMin)) {
+                ageText += ` (~${ageBars * tfMin}m)`;
+            }
+        }
+        const text = `sweep: ${typ} ${sideArrow} @ ${lvl}${ageText ? ` (${ageText})` : ""}`;
+        setValue(el.sweep, text, { title: "" });
+    } else {
+        setValue(el.sweep, "", { emptyText: "sweep: —" });
+    }
+
+    // Hold / Failed hold.
+    const holdK = hold?.k;
+    const holdOk = hold?.ok;
+    const holdLvl = formatLevel(hold?.level_up);
+    if (holdOk === true || holdOk === false) {
+        const yesNo = holdOk ? "YES" : "NO";
+        const kText = holdK != null ? `k=${holdK}` : "k=?";
+        const lvlText = holdLvl ? ` @ ${holdLvl}` : "";
+        setValue(el.hold, `hold_above(range_high,${kText}): ${yesNo}${lvlText}`);
+    } else {
+        setValue(el.hold, "", { emptyText: "hold_above(range_high): немає даних" });
+    }
+
+    const failedOk = failedHold?.ok;
+    const failedLvl = formatLevel(failedHold?.level_up);
+    if (failedOk === true || failedOk === false) {
+        const yesNo = failedOk ? "YES" : "NO";
+        const lvlText = failedLvl ? ` @ ${failedLvl}` : "";
+        setValue(el.failedHold, `failed_hold: ${yesNo}${lvlText}`);
+    } else {
+        setValue(el.failedHold, "", { emptyText: "failed_hold: немає даних" });
+    }
+
+    // Targets / POI.
+    const targets = Array.isArray(smc?.targets_near) ? smc.targets_near : [];
+    const poi = Array.isArray(smc?.poi_active) ? smc.poi_active : [];
+    const briefTargets = targets
+        .slice(0, 2)
+        .map((x) => {
+            const k = x?.type ?? x?.kind ?? "?";
+            const lvl = formatLevel(x?.level);
+            return lvl ? `${String(k)}@${lvl}` : String(k);
+        })
+        .join(", ");
+    setValue(el.targets, `targets: ${targets.length}${briefTargets ? ` (${briefTargets})` : ""}`, {
+        emptyText: "targets: немає даних",
+        title: targets
+            .slice(0, 6)
+            .map((x) => {
+                const k = x?.type ?? x?.kind ?? "?";
+                const lvl = formatLevel(x?.level);
+                const d = Number(x?.dist_atr);
+                const dText = Number.isFinite(d) ? `dist ${formatNumber(d, 2)} ATR` : "";
+                return `${String(k)}@${lvl || "?"}${dText ? ` · ${dText}` : ""}`;
+            })
+            .join("\n"),
+    });
+
+    const poiBrief = poi
+        .slice(0, 1)
+        .map((x) => {
+            const k = x?.type ?? x?.kind ?? "?";
+            const score = Number(x?.score ?? x?.poi_score);
+            const d = Number(x?.dist_atr);
+            const scoreText = Number.isFinite(score) ? `score ${formatNumber(score, 2)}` : "";
+            const dText = Number.isFinite(d) ? `dist ${formatNumber(d, 2)} ATR` : "";
+            return [String(k), scoreText, dText].filter(Boolean).join(", ");
+        })
+        .join(" ");
+    setValue(el.poi, `POI: ${poi.length}${poiBrief ? ` (${poiBrief})` : ""}`, {
+        emptyText: "POI: немає даних",
+        title: poi
+            .slice(0, 6)
+            .map((x) => {
+                const k = x?.type ?? x?.kind ?? "?";
+                const score = Number(x?.score ?? x?.poi_score);
+                const d = Number(x?.dist_atr);
+                const scoreText = Number.isFinite(score) ? `score ${formatNumber(score, 2)}` : "";
+                const dText = Number.isFinite(d) ? `dist ${formatNumber(d, 2)} ATR` : "";
+                return [String(k), scoreText, dText].filter(Boolean).join(" · ");
+            })
+            .join("\n"),
+    });
+
+    // Anti-flip.
+    const ttlLeft = Number(anti?.ttl_left_sec ?? evalBlock?.ttl_left_sec);
+    const ttlHuman = Number.isFinite(ttlLeft) && ttlLeft > 0 ? `TTL: ${formatDurationSec(ttlLeft)}` : "TTL: ок";
+    const reasonText = String(anti?.reason || "").trim();
+    setValue(el.antiflipTtl, reasonText ? `${ttlHuman} · ${reasonText}` : ttlHuman, { emptyText });
+
+    const blocked = Array.isArray(anti?.blocked) ? anti.blocked.map((v) => String(v)) : [];
+    const reqConf = Number(anti?.required_confidence ?? evalBlock?.required_confidence);
+    const reqConfText = Number.isFinite(reqConf) ? `need_conf=${formatNumber(reqConf, 2)}` : "";
+    const delta = Number(evalBlock?.switch_delta ?? evalBlock?.delta ?? evalBlock?.delta_score);
+    const deltaText = Number.isFinite(delta) ? `delta=${formatNumber(delta, 2)}` : "";
+    const blockedParts = [blocked.length ? `reason=${blocked.join("|")}` : "", reqConfText, deltaText].filter(Boolean);
+    setValue(el.antiflipBlocked, blockedParts.length ? `blocked: ${blockedParts.join(" | ")}` : "blocked: —", { emptyText: "blocked: немає даних" });
+
+    const override =
+        anti?.strong_override ||
+        anti?.override ||
+        anti?.override_reason ||
+        evalBlock?.strong_override ||
+        "";
+    setValue(el.antiflipOverride, override ? `override: ${String(override)}` : "override: —", { emptyText: "override: немає даних" });
 }
 
 function renderMobileDelta() {
@@ -2445,6 +3567,12 @@ function loadPersistedPreferences() {
             appState.ui.summaryCollapsed = raw === "1" || raw === "true" || raw === "yes" || raw === "on";
         }
 
+        const storedStage6Collapsed = storage.getItem(STORAGE_KEYS.stage6Collapsed);
+        if (storedStage6Collapsed != null) {
+            const raw = String(storedStage6Collapsed).trim().toLowerCase();
+            appState.ui.stage6Collapsed = raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+        }
+
         const storedLayers = storage.getItem(STORAGE_KEYS.layersVisibility);
         if (storedLayers) {
             try {
@@ -2461,6 +3589,14 @@ function loadPersistedPreferences() {
                 }
             } catch (_e) {
                 // Якщо JSON пошкоджений — ігноруємо.
+            }
+        }
+
+        const storedZoneLimitMode = storage.getItem(STORAGE_KEYS.zoneLimitMode);
+        if (storedZoneLimitMode) {
+            appState.chartState.zoneLimitMode = normalizeZoneLimitMode(storedZoneLimitMode);
+            if (appState.chartState.zoneLimitMode !== storedZoneLimitMode) {
+                storage.setItem(STORAGE_KEYS.zoneLimitMode, appState.chartState.zoneLimitMode);
             }
         }
     } catch (err) {
@@ -2493,6 +3629,18 @@ function persistSummaryCollapsed(value) {
     }
 }
 
+function persistStage6Collapsed(value) {
+    const storage = getStorage();
+    if (!storage) {
+        return;
+    }
+    try {
+        storage.setItem(STORAGE_KEYS.stage6Collapsed, value ? "1" : "0");
+    } catch (err) {
+        console.warn("[UI] Не вдалося зберегти стан Stage6", err);
+    }
+}
+
 function applySummaryCollapsed(collapsed, options = {}) {
     const next = Boolean(collapsed);
     appState.ui.summaryCollapsed = next;
@@ -2515,6 +3663,33 @@ function applySummaryCollapsed(collapsed, options = {}) {
 
     if (options.persist !== false) {
         persistSummaryCollapsed(next);
+    }
+}
+
+function applyStage6Collapsed(collapsed, options = {}) {
+    const next = Boolean(collapsed);
+    appState.ui.stage6Collapsed = next;
+
+    const panel = elements.stage6?.panel;
+    if (panel) {
+        panel.classList.toggle("stage6-panel--collapsed", next);
+        if (next) {
+            panel.setAttribute("hidden", "");
+        } else {
+            panel.removeAttribute("hidden");
+        }
+    }
+
+    const btn = elements.stage6?.toggleBtn;
+    if (btn) {
+        const label = next ? "Показати SMC контекст" : "Згорнути SMC контекст";
+        btn.setAttribute("aria-pressed", next ? "true" : "false");
+        btn.setAttribute("aria-label", label);
+        btn.setAttribute("title", label);
+    }
+
+    if (options.persist !== false) {
+        persistStage6Collapsed(next);
     }
 }
 
@@ -2706,6 +3881,7 @@ function handleFullscreenKeydown(event) {
     }
 }
 
+let chartResizeRaf = null;
 function scheduleChartResize() {
     if (typeof window === "undefined") {
         return;
@@ -2714,7 +3890,11 @@ function scheduleChartResize() {
         return;
     }
     const raf = window.requestAnimationFrame || window.setTimeout;
-    raf(() => {
+    if (chartResizeRaf) {
+        return;
+    }
+    chartResizeRaf = raf(() => {
+        chartResizeRaf = null;
         try {
             appState.chart.resizeToContainer();
         } catch (err) {
@@ -2832,21 +4012,32 @@ function renderPools(pools) {
 }
 
 function renderZones(zones) {
-    const rows = Array.isArray(zones) ? zones.slice(0, 8) : [];
+    const rows = Array.isArray(zones) ? zones.slice(0, 6) : [];
     renderRows(
         elements.tables.zones,
         rows,
-        (zone) => {
+        (zone, idx) => {
             const role = (zone.role || "-").toUpperCase();
+            const headline = formatZoneHeadline(zone, idx);
             return `<tr>
-        <td>${zone.type || "-"}</td>
+        <td title="${escapeHtml(headline)}">${escapeHtml(headline)}</td>
         <td>${role}</td>
-        <td class="numeric">${formatNumber(zone.price_min)}</td>
-        <td class="numeric">${formatNumber(zone.price_max)}</td>
+        <td class="numeric">${formatNumber(zone.min ?? zone.price_min)}</td>
+        <td class="numeric">${formatNumber(zone.max ?? zone.price_max)}</td>
       </tr>`;
         },
         4
     );
+}
+
+function escapeHtml(text) {
+    const s = String(text ?? "");
+    return s
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
 }
 
 function renderRows(tbody, rows, renderer, columnsCount) {
@@ -2854,7 +4045,7 @@ function renderRows(tbody, rows, renderer, columnsCount) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="${columnsCount}">Немає даних</td></tr>`;
         return;
     }
-    tbody.innerHTML = rows.map(renderer).join("");
+    tbody.innerHTML = rows.map((row, idx) => renderer(row, idx)).join("");
 }
 
 function setText(node, value) {

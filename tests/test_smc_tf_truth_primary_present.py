@@ -1,7 +1,7 @@
-"""Гейт TF_TRUTH: tf_primary існує, але даних по ньому може не бути.
+"""Гейт TF_TRUTH (Stage0): compute блокується без 5m.
 
-Ціль (F1): зафіксувати, що пайплайн не падає і повертає стабільний shape.
-Без змін runtime-поведінки.
+Ціль: зафіксувати, що пайплайн не падає і повертає стабільний shape,
+але SMC-core compute не викликається, якщо немає 5m-даних.
 """
 
 from __future__ import annotations
@@ -57,8 +57,6 @@ def test_tf_primary_missing_frame_does_not_crash_and_returns_stable_hint(
     import app.smc_producer as sp
 
     monkeypatch.setitem(sp.SMC_RUNTIME_PARAMS, "enabled", True)
-    monkeypatch.setitem(sp.SMC_RUNTIME_PARAMS, "tf_primary", "5m")
-    monkeypatch.setitem(sp.SMC_RUNTIME_PARAMS, "tfs_extra", ("1m",))
     monkeypatch.setitem(sp.SMC_RUNTIME_PARAMS, "limit", 50)
 
     state_manager = SmcStateManager(["xauusd"])
@@ -77,13 +75,26 @@ def test_tf_primary_missing_frame_does_not_crash_and_returns_stable_hint(
     asset = state_manager.state.get("xauusd")
     assert isinstance(asset, dict)
 
-    # Поточна поведінка: SMC engine повертає SmcHint навіть коли tf_primary-кадру немає.
+    # Stage0: повертаємо gated SmcHint, але без compute.
     assert asset.get("signal") == "SMC_HINT"
     hint = asset.get("smc_hint")
     assert isinstance(hint, dict)
 
+    # compute пропущено => підстани відсутні
+    assert hint.get("structure") is None
+    assert hint.get("liquidity") is None
+    assert hint.get("zones") is None
+
     meta = hint.get("meta")
     assert isinstance(meta, dict)
     assert meta.get("snapshot_tf") == "5m"
-    # last_price відсутній, бо frame по tf_primary порожній
-    assert "last_price" not in meta
+
+    gates = meta.get("gates")
+    assert isinstance(gates, list)
+    assert any(isinstance(g, dict) and g.get("code") == "NO_5M_DATA" for g in gates)
+
+    tf_health = meta.get("tf_health")
+    assert isinstance(tf_health, dict)
+    assert set(tf_health.keys()) >= {"1m", "5m", "1h", "4h"}
+    assert tf_health["1m"].get("has_data") is True
+    assert tf_health["5m"].get("has_data") is False

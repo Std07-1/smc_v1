@@ -29,14 +29,15 @@ io_retry_backoff: 0.25
 # SMC contract-of-needs (джерело правди для FXCM стріму)
 smc_universe:
   fxcm_contract:
-    # Підтримувані tfs: "1m", "5m".
+    # Підтримувані tfs: "1m", "5m", "1h", "4h".
     # min_history_bars — ціль у «1m барах» (еквівалент хвилин), щоб мати одну цифру
     # для символу і масштабувати її під TF (напр. 14 днів = 20160 для 1m і 4032 для 5m).
     version: 1
     symbols:
       - id: "xauusd"
-        tfs: ["1m", "5m"]
-        min_history_bars: 20160
+        tfs: ["1m", "5m", "1h", "4h"]
+        # 30 днів 1m історії: 30d ≈ 43_200 барів.
+        min_history_bars: 43200
         enabled: true
       # приклад на майбутнє:
       # - id: "eurusd"

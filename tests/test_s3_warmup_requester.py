@@ -56,6 +56,9 @@ async def test_requester_publishes_warmup_once_then_rate_limits(
     fake_redis = _FakeRedis()
     fake_store = _FakeStore(df=None)  # 0 барів -> insufficient -> warmup
 
+    # Фіксуємо desired-limit, щоб тест не залежав від глобального config.
+    monkeypatch.setattr("app.fxcm_warmup_requester.SMC_RUNTIME_PARAMS", {"limit": 300})
+
     # фіксуємо час
     t0 = 1_700_000_000.0
     monkeypatch.setattr("app.fxcm_warmup_requester.utc_now_ms", lambda: int(t0 * 1000))
@@ -83,9 +86,10 @@ async def test_requester_publishes_warmup_once_then_rate_limits(
     assert payload["type"] == "fxcm_warmup"
     assert payload["symbol"] == "XAUUSD"
     assert payload["tf"] == "1m"
-    # Контракт може вимагати більше історії, ніж runtime desired-limit.
-    assert payload["min_history_bars"] == 2000
-    assert payload["lookback_bars"] == 2000
+    # На insufficient_history просимо мінімум для старту (desired-limit),
+    # а контрактну глибину дорощуємо окремо у prefetch режимі.
+    assert payload["min_history_bars"] == 300
+    assert payload["lookback_bars"] == 300
     assert isinstance(payload["lookback_minutes"], int)
     assert payload["lookback_minutes"] >= 1
     assert payload["reason"] == "insufficient_history"
@@ -111,6 +115,8 @@ async def test_requester_publishes_backfill_when_tail_stale(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_redis = _FakeRedis()
+
+    monkeypatch.setattr("app.fxcm_warmup_requester.SMC_RUNTIME_PARAMS", {"limit": 300})
 
     # Багато барів є, але хвіст старий
     now_ms = 1_700_000_000_000
@@ -164,6 +170,8 @@ async def test_requester_resets_active_issue_when_state_becomes_ok(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_redis = _FakeRedis()
+
+    monkeypatch.setattr("app.fxcm_warmup_requester.SMC_RUNTIME_PARAMS", {"limit": 300})
 
     # 1) insufficient -> warmup (publish)
     # 2) ok -> clear active issue (no publish)
@@ -221,6 +229,8 @@ async def test_requester_prefetches_when_ok_but_contract_wants_more(
 ) -> None:
     fake_redis = _FakeRedis()
 
+    monkeypatch.setattr("app.fxcm_warmup_requester.SMC_RUNTIME_PARAMS", {"limit": 300})
+
     # Є мінімум (300 барів) і хвіст свіжий -> state=ok,
     # але контракт вимагає більше -> має бути prefetch_history.
     now_ms = 1_700_000_000_000
@@ -261,4 +271,5 @@ async def test_requester_prefetches_when_ok_but_contract_wants_more(
     assert payload["type"] == "fxcm_warmup"
     assert payload["reason"] == "prefetch_history"
     assert payload["s2"]["history_state"] == "ok"
-    assert payload["lookback_bars"] == 2000
+    # Режим prefetch: нарощуємо поступово від поточного bars_count (300) кроком desired-limit (300).
+    assert payload["lookback_bars"] == 600

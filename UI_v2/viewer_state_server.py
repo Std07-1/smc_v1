@@ -32,9 +32,9 @@ from urllib.parse import parse_qs, urlsplit
 
 from prometheus_client import Counter, Histogram
 
+from core.contracts.viewer_state import OhlcvResponse
 from core.serialization import json_dumps, to_jsonable
 from UI_v2.ohlcv_provider import OhlcvNotFoundError, OhlcvProvider
-from core.contracts.viewer_state import OhlcvResponse
 from UI_v2.viewer_state_store import ViewerStateStore
 
 logger = logging.getLogger("smc_viewer_http")
@@ -326,6 +326,10 @@ class ViewerStateHttpServer:
         timeframe = (query.get("tf") or "").strip()
         limit_raw = (query.get("limit") or str(DEFAULT_OHLCV_LIMIT)).strip()
 
+        # Replay-cursor (опційно): дозволяє "відмотувати" OHLCV у часі
+        # і не показувати майбутні бари під час offline replay.
+        to_ms_raw = (query.get("to_ms") or query.get("cursor_ms") or "").strip()
+
         if not symbol or not timeframe:
             return (
                 self._build_response(
@@ -358,8 +362,42 @@ class ViewerStateHttpServer:
                 400,
             )
 
+        to_ms: int | None = None
+        if to_ms_raw:
+            try:
+                to_ms = int(float(to_ms_raw))
+            except ValueError:
+                return (
+                    self._build_response(
+                        status_code=400,
+                        reason="Bad Request",
+                        body={"error": "invalid_to_ms"},
+                    ),
+                    400,
+                )
+
+        # Якщо cursor не передали явно — пробуємо взяти з viewer_state.meta.replay_cursor_ms.
+        if to_ms is None:
+            try:
+                state = await self.store.get_state(symbol)
+                meta = state.get("meta") if isinstance(state, dict) else None
+                cursor_any = (
+                    meta.get("replay_cursor_ms") if isinstance(meta, dict) else None
+                )
+                if cursor_any is not None:
+                    to_ms = int(float(cursor_any))
+            except Exception:
+                to_ms = None
+
         try:
-            bars = list(await self.ohlcv_provider.fetch_ohlcv(symbol, timeframe, limit))
+            bars = list(
+                await self.ohlcv_provider.fetch_ohlcv(
+                    symbol,
+                    timeframe,
+                    limit,
+                    to_ms=to_ms,
+                )
+            )
         except OhlcvNotFoundError:
             return (
                 self._build_response(
@@ -492,11 +530,13 @@ async def main() -> None:
 
     from redis.asyncio import Redis as AsyncRedis  # type: ignore[import]
 
+    from config.config import REDIS_SNAPSHOT_KEY_SMC_VIEWER
+
     host = os.getenv("SMC_VIEWER_HTTP_HOST", "127.0.0.1")
     port = int(os.getenv("SMC_VIEWER_HTTP_PORT", "8080"))
     redis_host = os.getenv("REDIS_HOST", "127.0.0.1")
     redis_port = int(os.getenv("REDIS_PORT", "6379"))
-    snapshot_key = os.getenv("SMC_VIEWER_SNAPSHOT_KEY", "ai_one:ui:smc_viewer_snapshot")
+    snapshot_key = os.getenv("SMC_VIEWER_SNAPSHOT_KEY", REDIS_SNAPSHOT_KEY_SMC_VIEWER)
 
     redis = AsyncRedis(host=redis_host, port=redis_port, decode_responses=False)
     store = ViewerStateStore(redis=redis, snapshot_key=snapshot_key)

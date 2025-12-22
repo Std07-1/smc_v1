@@ -18,6 +18,12 @@
   - **Web/UI** → `UPDATE.md`.
 - Відповідь у чаті дозволена тільки після успішного тесту та запису у відповідний UPDATE.
 
+## 2025-12-20 — UI_v2 (Web) інцидент: price-scale стрибки + debug_chart
+
+- Важливо: у цій хвилі було багато ітерацій по `UI_v2/web_client/chart_adapter.js` та `UI_v2/web_client/app.js`.
+- Канонічний запис із причинами/змінами/ризиками зафіксовано в `UPDATE.md` (секція 2025-12-20).
+- Діагностика для репродакшну: `?debug_chart=1`, `window.__chartDebugDumpNow()`, `window.__chartAdapterBuild`.
+
 ## План: мультитаймфреймова SMC-система “без шуму” (етапами)
 
 **Принцип:** система не “дає сигнали”, а робить технічний розбір і компактно показує його на графіку.
@@ -55,6 +61,8 @@
 - Варианти: A) агрегація з 1m (кращий, SSOT=1m), B) прямий інжест старших TF (ризик “двох правд”).
 - Acceptance: coverage без гепів на контрольному вікні; UI показує `tf_health` для 1m/5m/1h/4h.
 
+- **Статус:** закрито 2025-12-19 — on-demand матеріалізація `1m→5m→1h→4h` у Data layer (`UnifiedDataStore`) + юніт-тести.
+
 ### Етап 2 — Структура “primary=5m”: swings → legs → BOS/ChoCH → dealing range
 
 - Тема: “що ринок робить” визначає 5m, не 1m.
@@ -78,6 +86,8 @@
 - Вихід: `active_poi[]` з `type`, `range`, `filled%`, `score`, `why[]`.
 - Скоринг: confluence (structure + liquidity + premium/discount + displacement).
 - Acceptance: на екрані завжди мало POI; кожен має пояснення “чому він тут”.
+
+- **Статус:** закрито 2025-12-20 (Stage4: зони+POI працюють, UI показує “чесний” hover).
 
 ### Етап 5 — Execution (1m): підтвердження біля POI/targets
 
@@ -111,8 +121,7 @@
 
 ### Наступний крок (конкретика)
 
-- Добити Етап 0: `tf_health` у meta (has_data/bars/last_ts/lag_ms для 1m/5m/1h/4h) + тести.
-- Перейти до Етапу 1: агрегація `1m→5m→1h→4h` у Data layer з гейтами гепів.
+- Етап 4 закрито; далі фокус: **Етап 5 (Execution 1m біля POI/targets)**.
 
 ## Stage1 Cold-start / Warmup
 
@@ -220,7 +229,7 @@
 - Каркас `SmcZonesState` уже інтегрований у `SmcCoreEngine`, тож етапи 1–3 готові до розширення Stage 4.
 - Документація залишається джерелом істини для подальшої розробки зон та наступних підсистем.
 
-## Етап 4 (`smc_zones`) — перезапуск із фокусом на OB_v1
+## Етап 4 (`smc_zones`) — закрито (OB/Breaker/FVG + POI/FTA)
 
 - Stage1–3 завершено й задокументовано; `SmcCoreEngine.process_snapshot(...)` уже викликає `smc_zones.compute_zones_state(...)`, тому каркас і типи SmcZone зобовʼязані залишатися стабільними.
 - Попередній план «усе й одразу» провалився: Breaker/FVG/POI мають власні залежності та edge-кейси, тому етап перезібрано на серію вузьких мікроетапів із чіткими acceptance-критеріями.
@@ -232,7 +241,7 @@
 - Телеметрія включає `zone_count`, `orderblocks_total`, `ob_params` (snapshot конфігів) навіть для пустого кейсу.
 - Тест: `tests/test_smc_zones_skeleton.py`.
 
-### 4.2 OrderBlock_v1 (у прогресі)
+### 4.2 OrderBlock_v1 (закрито)
 
 - Детектор працює тільки по ногах зі `SmcStructureState`, що виконують умови: амплітуда ≥ `ob_leg_min_atr_mul * ATR`, тривалість ≤ `ob_leg_max_bars`, є BOS/CHOCH подія зі звʼязком `source_leg`.
 - Тепер OB_v1 використовує `structure.event_history`, тож навіть старі BOS/CHOCH
@@ -241,11 +250,15 @@
 - Побудована зона має чіткі поля (`entry_mode`, `role`, `reference_event_type`) і потрапляє в `active_zones`, якщо `origin_time` в межах `cfg.max_lookback_bars` відносно останнього бара.
 - Meta `SmcZonesState` зберігає лічильники `orderblocks_primary/countertrend`, `active_zone_count`, `ob_params`. Тести: `tests/test_smc_zones_ob_basic.py` (PRIMARY long, COUNTERTREND, edge-кейси без BOS і з малим тілом).
 
-### 4.3+ Backlog (починаємо лише після freeze OB_v1)
+### 4.3 Breaker/FVG/POI (закрито)
 
-1. **Breaker_v1:** на основі вже записаних OB + свіп ліквідності.
-2. **Imbalance/FVG_v1:** детектор розривів між high/low сусідніх барів, meta про partial/full fill.
-3. **POI/FTA_v1:** кластеризація OB/FVG/liq-магнітів, перша проблемна область.
-4. **Fusion & Stage2 bridge:** після стабілізації зон.
+- Breaker_v1: будується лише з PRIMARY OB + sweep (SFP) + протилежний BOS.
+- FVG/Imbalance_v1: 3-свічковий gap-детектор із фільтрами по ATR/% та віку.
+- POI/FTA_v1: відбір/скоринг (0–100) + `why[]` + cap 1–3/side + TTL/архів.
 
-- Кожен наступний підетап → окремі тести, документація (roadmap + відповідний `docs/smc_*.md`). Переходимо далі лише після freeze попереднього кроку.
+Тести Stage4:
+- `tests/test_smc_zones_skeleton.py`
+- `tests/test_smc_zones_ob_basic.py`
+- `tests/test_smc_zones_poi_active.py`
+- `tests/test_smc_zones_fvg_basic.py`
+- `tests/test_smc_zones_breaker_basic.py`

@@ -8,6 +8,8 @@ from smc_core.liquidity_bridge import build_liquidity_hint
 from smc_core.serializers import to_plain_smc_hint
 from smc_core.smc_types import (
     SmcAmdPhase,
+    SmcExecutionEvent,
+    SmcExecutionState,
     SmcHint,
     SmcInput,
     SmcLiquidityMagnet,
@@ -38,6 +40,8 @@ __all__ = [
     "SmcLiquidityState",
     "SmcLiquidityType",
     "SmcPoi",
+    "SmcExecutionEvent",
+    "SmcExecutionState",
     "SmcZone",
     "SmcRangeState",
     "SmcSignal",

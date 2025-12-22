@@ -34,6 +34,35 @@ SmcSnapshotMeta = {
 - `snapshot_tf` відповідає `SmcInput.tf_primary`.
 - `last_price` береться з останнього бару `tf_primary` (або відсутній, якщо даних немає).
 
+### 3.1. Session context (SMC-owned)
+
+`SmcHint.meta` може містити стабільний контекст торгових сесій, який SMC рахує сам з OHLCV
+(UTC-вікна: ASIA 22–07, LONDON 07–13, NY 13–22) та прокидає далі без залежності від FXCM.
+
+```jsonc
+SmcSnapshotMeta = {
+  "snapshot_tf": "5m",
+  "last_price": 4201.23,
+
+  "smc_session_tag": "LONDON",
+  "smc_session_start_ms": 1732182000000,
+  "smc_session_end_ms": 1732203600000,
+  "smc_session_high": 4210.5,
+  "smc_session_low": 4195.2,
+  "smc_session_tf": "1m",
+  "smc_sessions": {
+    "ASIA": {"start_ms": 0, "end_ms": 0, "high": 0.0, "low": 0.0, "range": 0.0, "mid": 0.0, "bars": 0, "is_active": false, "tf": "1m"},
+    "LONDON": {"start_ms": 0, "end_ms": 0, "high": 0.0, "low": 0.0, "range": 0.0, "mid": 0.0, "bars": 0, "is_active": true, "tf": "1m"},
+    "NY": {"start_ms": 0, "end_ms": 0, "high": 0.0, "low": 0.0, "range": 0.0, "mid": 0.0, "bars": 0, "is_active": false, "tf": "1m"}
+  }
+}
+```
+
+Примітки:
+
+- `range`/`mid` заповнюються лише коли є і `high`, і `low`, інакше `null`.
+- `session_tag` (без `smc_`) може існувати як legacy-ключ для сумісності.
+
 ## 4. Block `structure`
 
 ```jsonc
@@ -201,6 +230,36 @@ SmcLiquidityMeta = {
     }
   ],
   "amd_reason": "range_inside + multiple magnets"
+}
+```
+
+#### 5.3.1. Liquidity targets (Stage3)
+
+`SmcLiquidityMeta` може містити `liquidity_targets` — список найближчих “цілей ліквідності”
+з роллю `internal/external`. Це **non-breaking extension**, бо лежить у `meta`.
+
+```jsonc
+SmcLiquidityMeta = {
+  "liquidity_targets": [
+    {
+      "role": "internal",
+      "tf": "5m",
+      "side": "above",
+      "price": 4205.0,
+      "type": "EQH",
+      "strength": 80.0,
+      "reason": ["source:magnet", "touches:4"]
+    },
+    {
+      "role": "external",
+      "tf": "4h",
+      "side": "below",
+      "price": 4180.0,
+      "type": "HTF_SWING_LOW",
+      "strength": 60.0,
+      "reason": ["source:htf_pivot"]
+    }
+  ]
 }
 ```
 

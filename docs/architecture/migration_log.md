@@ -118,6 +118,39 @@
 - 2025-12-17 — B6.1: audit зроблено блокуючим для критичних B-порушень (SSOT/час + заборонені локальні хелпери).
   - Файли: `tools/audit_repo_report.py`.
   - Суть: exit code != 0 при `json.dumps/json.loads/default=str`, ручних UTC/ISO патернах, та `def _safe_int/_safe_float/_as_dict` поза SSOT.
+
+## 2025-12-22 — D1 (SMC Zones): «Зона надто широка»
+
+- Файли: `smc_core/config.py`, `smc_zones/__init__.py`, `smc_zones/poi_fta.py`, `tools/smc_journal_report.py`, `docs/smc_mass_audit_A-I.md`, `tests/test_case_d_wide_zone_span_atr.py`.
+- Суть:
+  - додано `SmcCoreConfig.max_zone_span_atr` (default=2.0) як guardrail проти надшироких зон (span_atr = |price_max-price_min|/atr_last);
+  - надширокі зони прибираємо з `active_zones` (щоб не забивали top‑K UI) і не беремо в POI/FTA;
+  - у `tools.smc_journal_report` додано новий зріз `span_atr_vs_outcomes(touched/mitigated)` для кореляції/бінінгу.
+- Ризики/примітки:
+  - зменшиться кількість `active_zones/poi_zones`; це очікувано і має покращити читабельність та FP, але може прибрати рідкісні корисні широкі зони;
+  - поріг `max_zone_span_atr` можна підбирати QA-прогонами через `report_XAUUSD` (wide_zone_rate + span_atr_vs_outcomes).
+
+## 2025-12-22 — E/F (SMC Zones + Journal): дублі/перекриття + missed touch
+
+- Файли: `smc_core/config.py`, `smc_zones/__init__.py`, `smc_core/lifecycle_journal.py`, `tools/smc_journal_report.py`, `tests/test_smc_lifecycle_journal.py`, `tests/test_case_e_zone_overlap_merge.py`.
+- Суть:
+  - Case E: додано merge-by-overlap для зон одного типу/ролі/напрямку/TF (IoU поріг `SmcCoreConfig.zone_merge_iou_threshold`). Winner отримує `meta.merged_from`, а journal класифікує `removed_reason=replaced_by_merge`.
+  - Case E: у frames додано `zone_overlap_active` (статистика IoU перекриттів серед активних зон), у репорті — секція `zone_overlap_matrix_active` і метрика `merge_rate`.
+  - Case F: touch-логіку зроблено детермінованою через перетин high/low зі смугою `[min-eps, max+eps]` (eps = `SmcCoreConfig.touch_epsilon`), у репорті — офлайн аудит `missed_touch_rate(offline)` з параметром `--ohlcv-path`.
+
+## 2025-12-22 — H (Journal QA): outcome після touch (LONG vs SHORT)
+
+- Файли: `tools/smc_journal_report.py`, `tests/test_smc_journal_report_case_h.py`.
+- Суть: додано офлайн аудит `touch_outcomes_after_touch(offline)` — після `touched` події рахуємо чи була `reversal` та/або `continuation` на горизонтах $K=1..N$ барів із порогом $X\cdot ATR$.
+- Примітки/ризики: це **тільки QA/репорт**; runtime compute не змінюється. Якість оцінки залежить від коректності `atr_last` у контексті рядка та від відповідності `--ohlcv-path` символу/TF.
+
+- 2025-12-18 — S0: TF-правда для SMC (tf_structure=5m) + чесні гейти compute.
+  - Файли: `config/config.py`, `app/smc_producer.py`, `smc_core/input_adapter.py`, `tests/test_smc_tf_truth_primary_present.py`.
+  - Суть: зафіксовано SSOT TF-план і додано gating у runtime: без 5m (або при insufficient/stale) SMC-core compute не викликається, але `smc_hint.meta` містить `gates/tf_plan/telemetry`.
+
+- 2025-12-19 — S0.1: `tf_health` у `smc_hint.meta` для TF з плану.
+  - Файли: `app/smc_producer.py`, `tests/test_smc_tf_truth_primary_present.py`.
+  - Суть: додаємо `tf_health{tf: has_data/bars/last_ts/lag_ms}` для 1m/5m/1h/4h, щоб UI/логи показували «який TF реально живий».
   - Важливо: це **B-хвиля** (enforcement), не зміна контрактів (C).
 
 - 2025-12-17 — C-DONE: Contracts хвилі C формально закрито (checklist).
@@ -142,3 +175,49 @@
   - Файли: `data/fxcm_ingestor.py`, `data/fxcm_price_stream.py`, `data/fxcm_status_listener.py`, `app/main.py`.
   - Суть: якщо Redis/мережа пропадає (router/redis restart), лістенери не валять процес; роблять перепідключення з exponential backoff (1s..60s).
   - Тести: `pytest tests/test_redis_reconnect_loops.py` (імітація дисконекту → повторна підписка).
+
+- 2025-12-20 — UI_v2/Web: стабілізація price-scale взаємодій (wheel/drag) + `debug_chart=1` дамп аномалій (без зміни бекенду/контрактів).
+
+- 2025-12-20 — UI_v2/Web: zone-label markers (видимість/діагностика)
+  - Файли: `UI_v2/web_client/chart_adapter.js`.
+  - Суть: `zone_labels=1` читається також із hash-роутингу; якщо у зони немає `origin_time`, marker ставиться по fallback (invalidated_time або останній бар); zone labels ставимо `belowBar`, щоб не конфліктували з BOS/CHOCH.
+  - Ризики: мінімальні; може додати трохи візуального шуму при `zone_labels=1`, але за замовчуванням вимкнено.
+
+## 2025-12-21 — S6: Stage6 довіра (4.2 vs 4.3) — `UNCLEAR reason` + симетричний анти-фліп
+
+- Файли: `smc_core/stage6_scenario.py`, `app/smc_state_manager.py`, `core/contracts/viewer_state.py`, `UI_v2/viewer_state_builder.py`, `UI/publish_smc_state.py`, `tools/qa_stage6_scenario_stats.py`, `reports/stage6_stats_xauusd_h60_v2.md`.
+- Суть:
+  - Stage6 повертає `UNCLEAR` з явною причиною (`NO_*`, `LOW_SCORE`, `CONFLICT`) як частину телеметрії.
+  - Анти-фліп винесено/залишено поза core (в `SmcStateManager`) і зроблено симетричним: є decay до `UNCLEAR`, сильний override, адаптація порога для `MIXED` HTF bias.
+  - UI отримує одночасно stable/raw/pending + top-3 `why`, щоб трейдер бачив “мапу” і “що зараз” без прихованої липкості.
+- Примітки/ризики:
+  - Поведінка `stable` змінилась: може повертатись до `UNCLEAR` (це свідомий компроміс заради довіри).
+  - Flips можуть зрости на шумних ділянках; QA репорт є SSOT для базового контролю.
+
+## 2025-12-21 — S6.1: Stage6 довіра — P1 асиметричний anti-flip + hard_invalidation
+
+- Файли: `app/smc_state_manager.py`, `tests/test_smc_stage6_hysteresis.py`.
+- Суть:
+  - Додано асиметрію стабілізації: `4_2 → 4_3` може пробивати TTL через hard-факти з core (`hold_above_up`) або strong micro-confirm.
+  - `4_3 → 4_2` зроблено жорсткішим: без явного `failed_hold_up` switch не виконується; при BOS_DOWN після sweep без `failed_hold_up` робимо швидку інвалідацію у `UNCLEAR`.
+  - У `scenario_flip.reason` додано явні причини формату `hard_invalidation:*`.
+- Примітки/ризики:
+  - Поведінка `stable` стала менш симетричною (це свідомо), щоб прибрати «погані фліпи» і не губити справжню інвалідацію.
+  - Для контролю наслідків використовувати `tools/qa_stage6_scenario_stats` (порівнювати flip-rate та розподіл `UNCLEAR` причин).
+
+## 2025-12-21 — S6.2: Stage6 довіра — P0b/P0c (анти-конфліктні факти) + QA лічильники
+
+- Файли: `smc_core/stage6_scenario.py`, `tools/qa_stage6_scenario_stats.py`, `tests/test_smc_stage6_scenario.py`.
+- Суть:
+  - P0b: якщо після sweep одночасно бачимо `BOS_UP` і `BOS_DOWN`, трактуємо як chop/шум: не додаємо обидва внески в скоринг; у телеметрії додаємо `events_after_sweep.chop=true`.
+  - P0c: прибрано подвійний bias у скорингу: `HTF‑Lite bias` більше не додається як окремий внесок, щоб не множити `UNCLEAR(CONFLICT)` при наявному HTF bias з контексту/фреймів.
+  - Рівні: `hold_level_up` тепер відображає інвалідаційний рівень (max з 5m/HTF), але `failed_hold_up` рахується на 5m `range_high`, щоб не ламати логіку sweep→failed_hold коли HTF рівень далеко.
+  - QA: у звіті додаються лічильники `hard_invalidation_count` та розподіл `flip_pairs_by_reason`.
+- Примітки/ризики:
+  - Це навмисно робить `stable 4_3` ще рідшим без жорсткої інвалідації (довіра трейдера > частота сигналів).
+  - Якщо `UNCLEAR(CONFLICT)` не падає на інших символах, наступний крок — ізоляція конфліктних внесків через exemplars (без тюнінгу порогів).
+
+- 2025-12-20 — UI_v2/Web: zone-label markers (видимість/діагностика)
+  - Файли: `UI_v2/web_client/chart_adapter.js`.
+  - Суть: `zone_labels=1` читається також із hash-роутингу; якщо у зони немає `origin_time`, marker ставиться по fallback (invalidated_time або останній бар); zone labels ставимо `belowBar`, щоб не конфліктували з BOS/CHOCH.
+  - Ризики: мінімальні; може додати трохи візуального шуму при `zone_labels=1`, але за замовчуванням вимкнено.

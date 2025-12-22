@@ -11,33 +11,37 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.env import select_env_file
 from config.config import (
     DATASTORE_BASE_DIR as CFG_DATASTORE_BASE_DIR,
+    FXCM_OHLCV_CHANNEL,
     FXCM_PRICE_TICK_CHANNEL,
     FXCM_STATUS_CHANNEL,
     NAMESPACE as CFG_NAMESPACE,
 )
 
-_DEFAULT_DATASTORE_CFG = Path("config/datastore.yaml")
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_DATASTORE_CFG = _PROJECT_ROOT / "config" / "datastore.yaml"
 logger = logging.getLogger("app.settings")
 if not logger.handlers:
     logger.addHandler(logging.NullHandler())
 
-
-load_dotenv()
+_ENV_FILE = select_env_file(_PROJECT_ROOT)
+load_dotenv(_ENV_FILE)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",  # ігноруємо невідомі змінні замість ValidationError
     )
@@ -51,22 +55,13 @@ class Settings(BaseSettings):
     # Додаткові (не критичні) змінні середовища для сумісності зі старою конфігурацією
     log_level: str | None = None
     log_to_file: bool | None = None
-    database_url: str | None = None
-    db_host: str | None = None
-    db_port: int | None = None
-    db_user: str | None = None
-    db_password: str | None = None
-    db_name: str | None = None
-    # Джерело OHLCV-даних для Stage1/Stage2 (у поточній версії лише FXCM)
-    data_source: Literal["fxcm"] = "fxcm"
-    fxcm_access_token: str | None = None
-    fxcm_username: str | None = None
-    fxcm_password: str | None = None
-    fxcm_connection: str | None = "Demo"  # або "Real"
-    fxcm_host_url: str | None = "http://www.fxcorporate.com/Hosts.jsp"
+
+    # FXCM конектор у цьому репо НЕ використовує user/password/access_token напряму.
+    # Єдині налаштування, які потрібні тут — HMAC (для перевірки підписів) і назви каналів.
     fxcm_hmac_secret: str | None = None
     fxcm_hmac_algo: str = "sha256"  # алгоритм HMAC-підпису для FXCM
     fxcm_hmac_required: bool = True  # чи вимагати HMAC-підписи від FXCM
+    fxcm_ohlcv_channel: str = FXCM_OHLCV_CHANNEL
     fxcm_price_tick_channel: str = FXCM_PRICE_TICK_CHANNEL
     fxcm_status_channel: str = FXCM_STATUS_CHANNEL
 
@@ -123,6 +118,7 @@ class Settings(BaseSettings):
         return bool(v)
 
     @field_validator(
+        "fxcm_ohlcv_channel",
         "fxcm_price_tick_channel",
         "fxcm_status_channel",
         mode="before",
@@ -137,6 +133,7 @@ class Settings(BaseSettings):
         if text:
             return text
         default_map = {
+            "fxcm_ohlcv_channel": FXCM_OHLCV_CHANNEL,
             "fxcm_price_tick_channel": FXCM_PRICE_TICK_CHANNEL,
             "fxcm_status_channel": FXCM_STATUS_CHANNEL,
         }
@@ -149,12 +146,11 @@ settings = Settings()  # буде валідовано під час імпор�
 # Уніфіковані значення з config.config
 REDIS_NAMESPACE = CFG_NAMESPACE
 DATASTORE_BASE_DIR = CFG_DATASTORE_BASE_DIR
-RAM_BUFFER_MAX_BARS = (
-    30000  # Максимальна кількість барів у RAMBuffer на symbol/timeframe
-)
+RAM_BUFFER_MAX_BARS = 50000  # Максимальна кількість барів у RAMBuffer на symbol/timeframe (30d 1m ≈ 43_200)
 
-# Дозволені таймфрейми для SMC contract-of-needs
-SMC_SUPPORTED_TFS: tuple[str, ...] = ("1m", "5m")
+# Дозволені таймфрейми для SMC contract-of-needs.
+# Етап 1: робимо TF-правду фізичною — UDS має тримати реальні 5m/1h/4h ряди.
+SMC_SUPPORTED_TFS: tuple[str, ...] = ("1m", "5m", "1h", "4h")
 
 
 class SmcUniverseSymbolCfg(BaseModel):
@@ -193,8 +189,8 @@ class SmcUniverseSymbolCfg(BaseModel):
     def _validate_min_history(cls, v: int) -> int:
         try:
             value = int(v)
-        except (TypeError, ValueError):
-            raise ValueError("min_history_bars має бути цілим числом")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("min_history_bars має бути цілим числом") from exc
         if value < 100:
             raise ValueError("min_history_bars має бути не менше 100")
         # Потрібно для кейсів на кшталт 14 днів 1m історії (~20160 барів).
@@ -351,4 +347,50 @@ def load_datastore_cfg(path: str | Path | None = None) -> DataStoreCfg:
     except yaml.YAMLError as exc:  # pragma: no cover - винятковий випадок
         logger.error("Не вдалося розпарсити %s: %s", cfg_path, exc)
         raise ValueError(f"Некоректний YAML у {cfg_path}") from exc
-    return DataStoreCfg(**payload)
+
+    cfg = DataStoreCfg(**payload)
+
+    # Профілі запуску (prod/local) та ізоляція namespace.
+    # Мета: одним прапорцем уникати ситуації, коли локальний запуск пише у прод Redis.
+    env_mode = str(os.getenv("AI_ONE_MODE") or "").strip().lower()
+    env_ns = os.getenv("AI_ONE_NAMESPACE")
+    chosen_ns: str | None = None
+    if env_ns is not None and str(env_ns).strip():
+        chosen_ns = str(env_ns).strip()
+    elif env_mode in {"local", "dev"}:
+        chosen_ns = "ai_one_local"
+    if chosen_ns:
+        try:
+            cfg = cfg.model_copy(update={"namespace": chosen_ns})
+        except Exception:
+            pass
+
+    # Нормалізація base_dir:
+    # - YAML часто задає відносний шлях (напр. "./datastore"), який залежить від CWD;
+    # - у прод/службах CWD може бути не корінь репозиторію → UI стартує з 1 бару.
+    # Тому:
+    # 1) якщо base_dir абсолютний — лишаємо;
+    # 2) якщо відносний — пробуємо резолвити відносно кореня проєкту,
+    #    а якщо такого каталогу немає — відносно папки YAML.
+    try:
+        raw_base = str(getattr(cfg, "base_dir", "") or "").strip()
+        if raw_base:
+            base_path = Path(raw_base).expanduser()
+            if not base_path.is_absolute():
+                candidate_project = (_PROJECT_ROOT / base_path).resolve()
+                candidate_yaml = (cfg_path.resolve().parent / base_path).resolve()
+                chosen = (
+                    candidate_project
+                    if candidate_project.exists()
+                    else (
+                        candidate_yaml if candidate_yaml.exists() else candidate_project
+                    )
+                )
+                cfg = cfg.model_copy(update={"base_dir": str(chosen)})
+            else:
+                cfg = cfg.model_copy(update={"base_dir": str(base_path.resolve())})
+    except Exception:
+        # best-effort: не ламаємо bootstrap через нормалізацію шляху
+        pass
+
+    return cfg

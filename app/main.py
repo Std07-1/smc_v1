@@ -7,11 +7,13 @@ import errno
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from redis.asyncio import Redis
 
+from app.env import select_env_file
 from app.fxcm_warmup_requester import build_requester_from_config
 from app.runtime import (
     _build_allowed_pairs,
@@ -27,8 +29,10 @@ from app.smc_producer import smc_producer
 from app.smc_state_manager import SmcStateManager
 from app.telemetry import publish_ui_metrics
 from config.config import (
+    AI_ONE_MODE,
     FAST_SYMBOLS_TTL_MANUAL,
     FXCM_FAST_SYMBOLS,
+    NAMESPACE,
     REDIS_CHANNEL_SMC_STATE,
     REDIS_CHANNEL_SMC_VIEWER_EXTENDED,
     REDIS_SNAPSHOT_KEY_SMC,
@@ -55,7 +59,49 @@ if not logger.handlers:
     # вмикаємо propagate лише у тестовому середовищі.
     logger.propagate = "pytest" in sys.modules
 
-load_dotenv()
+
+def _silence_expected_websocket_handshake_noise() -> None:
+    """Прибирає шумні трейсбеки `websockets` для очікуваних кейсів.
+
+    У проді/за проксі клієнт може розірвати TCP під час handshake (або сканер може
+    стукати HTTP запитом у WS порт). `websockets` у таких випадках логує
+    "opening handshake failed" з повним traceback, хоча для нас це не є фатально.
+
+    Важливо:
+    - фільтруємо лише конкретні повідомлення;
+    - інші помилки WS лишаються видимими.
+    """
+
+    class _WsHandshakeNoiseFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+            try:
+                msg = record.getMessage() or ""
+            except Exception:
+                return True
+            msg_l = msg.lower()
+            if "opening handshake failed" in msg_l:
+                return False
+            if "no close frame received or sent" in msg_l:
+                return False
+            return True
+
+    flt = _WsHandshakeNoiseFilter()
+    for name in (
+        "websockets",
+        "websockets.server",
+        "websockets.asyncio.server",
+        "websockets.asyncio.connection",
+    ):
+        try:
+            logging.getLogger(name).addFilter(flt)
+        except Exception:
+            # Не валимо runtime через різні версії websockets/логерів.
+            pass
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(select_env_file(_PROJECT_ROOT))
+_silence_expected_websocket_handshake_noise()
 
 _FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
@@ -88,8 +134,13 @@ def _env_int(name: str, default: int) -> int:
     raw = os.getenv(name)
     if raw is None:
         return default
+
+    raw_s = str(raw).strip()
+    if not raw_s:
+        return default
+
     try:
-        return int(raw.strip())
+        return int(raw_s)
     except ValueError:
         logger.warning(
             "[UI_v2] Некоректне значення %s=%s — використовую %d",
@@ -98,6 +149,13 @@ def _env_int(name: str, default: int) -> int:
             default,
         )
         return default
+
+
+def _default_bind_host() -> str:
+    """Дефолтний host bind для UI залежно від режиму запуску."""
+
+    mode = str(AI_ONE_MODE or "prod").strip().lower()
+    return "127.0.0.1" if mode == "local" else "0.0.0.0"
 
 
 def _validate_fast_symbols_against_universe(
@@ -150,6 +208,16 @@ async def run_pipeline() -> None:
     """Запускає мінімальний SMC пайплайн."""
 
     logger.info("[SMC] Старт run_pipeline()")
+    logger.info(
+        "[Launch] Профіль: AI_ONE_MODE=%s NAMESPACE=%s",
+        AI_ONE_MODE,
+        NAMESPACE,
+    )
+    if str(AI_ONE_MODE or "").strip().lower() == "local" and NAMESPACE == "ai_one":
+        logger.warning(
+            "[Launch] УВАГА: локальний режим використовує prod namespace 'ai_one'. "
+            "Перевірте ENV/.env: приберіть AI_ONE_NAMESPACE або встановіть ai_one_local."
+        )
     tasks: list[asyncio.Task[Any]] = []
     fxcm_tasks: list[asyncio.Task[Any]] = []
     redis_conn: Redis | None = None
@@ -241,7 +309,8 @@ def _launch_ui_v2_tasks(datastore: UnifiedDataStore | None) -> list[asyncio.Task
         ohlcv_provider = UnifiedStoreOhlcvProvider(datastore)
 
     snapshot_key = os.getenv("SMC_VIEWER_SNAPSHOT_KEY", REDIS_SNAPSHOT_KEY_SMC_VIEWER)
-    host = os.getenv("SMC_VIEWER_HTTP_HOST", "127.0.0.1") or "127.0.0.1"
+    default_host = _default_bind_host()
+    host = os.getenv("SMC_VIEWER_HTTP_HOST", default_host) or default_host
     port = _env_int("SMC_VIEWER_HTTP_PORT", 8080)
 
     cfg = SmcViewerBroadcasterConfig(
@@ -488,7 +557,7 @@ async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
             try:
                 server = FxcmOhlcvWsServer(
                     redis=redis,
-                    channel_name="fxcm:ohlcv",
+                    channel_name=settings.fxcm_ohlcv_channel,
                     host=host,
                     port=port,
                 )

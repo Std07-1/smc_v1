@@ -30,15 +30,17 @@ from config.config import (
     SMC_REFRESH_INTERVAL,
     SMC_RUNTIME_PARAMS,
     SMC_S2_STALE_K,
+    SMC_TF_PLAN,
 )
 from config.constants import ASSET_STATE, K_STATS
 from core.serialization import (
+    utc_ms_to_iso_z,
     utc_now_human_utc,
-    utc_now_iso_z,
     utc_seconds_to_human_utc,
 )
 from data.fxcm_status_listener import get_fxcm_feed_state
 from data.unified_store import UnifiedDataStore
+from smc_core.smc_types import SmcHint
 from UI.publish_smc_state import publish_smc_state
 
 if TYPE_CHECKING:  # pragma: no cover - лише для тайпінгів
@@ -54,6 +56,10 @@ if not logger.handlers:
 
 _SMC_ENGINE: SmcCoreEngine | None = None
 _SMC_PLAIN_SERIALIZER: Callable[[Any], dict[str, Any] | None] | None = None
+
+# Case G: тримаємо попередні wick_clusters (WICK_CLUSTER tracker) на рівні app,
+# щоб SMC-core лишався детермінованим відносно context.
+_PREV_WICK_CLUSTERS_BY_SYMBOL: dict[str, list[dict[str, Any]]] = {}
 
 
 def _create_error_signal(symbol: str, error: str) -> dict[str, Any]:
@@ -330,6 +336,100 @@ def _should_run_smc_cycle_by_fxcm_status() -> tuple[bool, str]:
     return True, "fxcm_status_unknown"
 
 
+def _extract_last_open_time_ms(frame: Any) -> int | None:
+    """Повертає open_time останнього бара у мс (best-effort)."""
+
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    try:
+        last_row = frame.iloc[-1]
+        last_open_raw = last_row.get("open_time") or last_row.get("close_time")
+    except Exception:
+        last_open_raw = None
+    try:
+        if last_open_raw is None:
+            return None
+        val = float(last_open_raw)
+        return int(val) if val > 1e12 else int(val * 1000.0)
+    except Exception:
+        return None
+
+
+def _build_tf_health(
+    *,
+    tf_plan: dict[str, Any],
+    ohlc_by_tf: Any,
+    store: Any,
+    symbol: str,
+) -> dict[str, Any]:
+    """Будує compact tf_health для UI/діагностики.
+
+    Мінімальний Stage0 набір: has_data/bars/last_ts/lag_ms.
+    """
+
+    tfs_raw = [
+        str(tf_plan.get("tf_exec", "1m")),
+        str(tf_plan.get("tf_structure", "5m")),
+        *list(tf_plan.get("tf_context", ("1h", "4h")) or ()),
+    ]
+    seen: set[str] = set()
+    tfs: list[str] = []
+    for tf in tfs_raw:
+        if tf and tf not in seen:
+            seen.add(tf)
+            tfs.append(tf)
+
+    now_ms = int(time.time() * 1000.0)
+    out: dict[str, Any] = {}
+    for tf in tfs:
+        frame = None
+        try:
+            frame = ohlc_by_tf.get(tf) if ohlc_by_tf is not None else None
+        except Exception:
+            frame = None
+
+        has_data = bool(frame is not None and not getattr(frame, "empty", True))
+        bars_window = 0
+        if has_data and frame is not None:
+            try:
+                bars_window = int(len(frame))
+            except Exception:
+                bars_window = 0
+
+        # Важливо: `frame` тут зазвичай обмежений `limit` (runtime compute-вікно).
+        # Для прозорості в UI хочемо показувати total історію, яка є в UDS.
+        bars_total = bars_window
+        try:
+            ram = getattr(store, "ram", None)
+            if ram is not None and hasattr(ram, "inspect_entry"):
+                total_count, _last_open_sec = ram.inspect_entry(str(symbol), str(tf))
+                if isinstance(total_count, int) and total_count >= 0:
+                    bars_total = int(total_count)
+        except Exception:
+            # best-effort: не ламаємо hot-path
+            pass
+
+        last_open_time_ms = _extract_last_open_time_ms(frame) if has_data else None
+        last_ts = None
+        lag_ms = None
+        if last_open_time_ms is not None:
+            lag_ms = max(0, now_ms - int(last_open_time_ms))
+            try:
+                last_ts = utc_ms_to_iso_z(int(last_open_time_ms))
+            except Exception:
+                last_ts = None
+
+        out[tf] = {
+            "has_data": bool(has_data),
+            "bars": int(bars_total),
+            "bars_window": int(bars_window),
+            "last_ts": last_ts,
+            "lag_ms": lag_ms,
+        }
+
+    return out
+
+
 async def _build_smc_hint(*, symbol: str, store: UnifiedDataStore) -> SmcHint | None:
     """Формує SmcHint через smc_core.input_adapter."""
 
@@ -337,9 +437,17 @@ async def _build_smc_hint(*, symbol: str, store: UnifiedDataStore) -> SmcHint | 
     if not params.get("enabled", True):
         return None
     try:
-        tf_primary = str(params.get("tf_primary", DEFAULT_TIMEFRAME))
-        tfs_extra_cfg = params.get("tfs_extra", ("5m", "15m", "1h"))
-        tfs_extra = tuple(tfs_extra_cfg)
+        # Stage0 TF-правда: tf_primary завжди дорівнює tf_structure (5m).
+        tf_plan = {
+            "tf_exec": str(SMC_TF_PLAN.get("tf_exec", DEFAULT_TIMEFRAME)),
+            "tf_structure": str(SMC_TF_PLAN.get("tf_structure", "5m")),
+            "tf_context": tuple(SMC_TF_PLAN.get("tf_context", ("1h", "4h"))),
+        }
+        tf_primary = str(tf_plan["tf_structure"])
+        tfs_extra = (
+            str(tf_plan["tf_exec"]),
+            *tuple(tf_plan["tf_context"]),
+        )
         limit = int(params.get("limit", DEFAULT_LOOKBACK))
     except Exception as exc:
         logger.debug("[SMC] Некоректні runtime параметри: %s", exc)
@@ -365,7 +473,227 @@ async def _build_smc_hint(*, symbol: str, store: UnifiedDataStore) -> SmcHint | 
             tfs_extra=tfs_extra,
             limit=limit,
         )
+
+        # Case G: прокидуємо prev_wick_clusters (stateful tracker) в context.
+        try:
+            ctx = smc_input.context
+            if not isinstance(ctx, dict):
+                ctx = {}
+                smc_input.context = ctx
+            sym_norm = str(symbol).lower()
+            prev_wc = _PREV_WICK_CLUSTERS_BY_SYMBOL.get(sym_norm)
+            if isinstance(prev_wc, list) and prev_wc:
+                ctx.setdefault("prev_wick_clusters", prev_wc)
+        except Exception:
+            pass
+
+        tf_health = _build_tf_health(
+            tf_plan=tf_plan,
+            ohlc_by_tf=smc_input.ohlc_by_tf,
+            store=store,
+            symbol=symbol,
+        )
+        primary_frame = None
+        try:
+            primary_frame = smc_input.ohlc_by_tf.get(tf_primary)
+        except Exception:
+            primary_frame = None
+
+        gates: list[dict[str, str]] = []
+        history_state: str = "unknown"
+        last_open_time_ms: int | None = None
+        age_ms: int | None = None
+        last_ts: str | None = None
+        lag_ms: int | None = None
+        bars_5m: int | None = None
+
+        # Stage0 гейт: якщо немає 5m-даних — не рахуємо SMC-core.
+        if primary_frame is None or getattr(primary_frame, "empty", True):
+            history_state = "missing"
+            gates.append(
+                {
+                    "code": "NO_5M_DATA",
+                    "message": "Немає OHLCV по 5m — пропускаємо обчислення SMC.",
+                }
+            )
+        else:
+            bars = 0
+            try:
+                bars = int(len(primary_frame))
+            except Exception:
+                bars = 0
+            bars_5m = bars
+
+            # Мінімальна історія для старту compute: використовуємо runtime limit як target,
+            # але не блокуємося — приймаємо половину як мінімум (best-effort).
+            min_bars = max(5, int(limit) // 2)
+            if bars < min_bars:
+                history_state = "insufficient"
+                gates.append(
+                    {
+                        "code": "INSUFFICIENT_5M",
+                        "message": f"Замало 5m барів ({bars} < {min_bars}) — пропускаємо обчислення SMC.",
+                    }
+                )
+            else:
+                history_state = "ok"
+
+            # Додатковий гейт stale_tail по 5m (узгоджено з S2).
+            try:
+                last_open_raw = primary_frame.iloc[-1].get(
+                    "open_time"
+                ) or primary_frame.iloc[-1].get("close_time")
+            except Exception:
+                last_open_raw = None
+            try:
+                if last_open_raw is None:
+                    last_open_time_ms = None
+                else:
+                    val = float(last_open_raw)
+                    last_open_time_ms = int(val) if val > 1e12 else int(val * 1000.0)
+            except Exception:
+                last_open_time_ms = None
+
+            if last_open_time_ms is not None:
+                now_ms = int(time.time() * 1000.0)
+                age_ms = max(0, now_ms - int(last_open_time_ms))
+                lag_ms = age_ms
+                try:
+                    last_ts = utc_ms_to_iso_z(int(last_open_time_ms))
+                except Exception:
+                    last_ts = None
+
+            if last_open_time_ms is not None:
+                try:
+                    s2 = classify_history(
+                        now_ms=int(time.time() * 1000.0),
+                        bars_count=bars,
+                        last_open_time_ms=last_open_time_ms,
+                        min_history_bars=min_bars,
+                        tf_ms=timeframe_to_ms(tf_primary) or 300_000,
+                        stale_k=float(SMC_S2_STALE_K),
+                    )
+                except Exception:
+                    s2 = None
+                if s2 is not None and getattr(s2, "state", None) == "stale_tail":
+                    history_state = "stale_tail"
+                    gates.append(
+                        {
+                            "code": "STALE_5M",
+                            "message": "5m хвіст протух (stale_tail) — пропускаємо обчислення SMC.",
+                        }
+                    )
+
+        if gates:
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            tf_effective: list[str] = []
+            try:
+                for tf, frame in (smc_input.ohlc_by_tf or {}).items():
+                    if frame is not None and not getattr(frame, "empty", True):
+                        tf_effective.append(str(tf))
+            except Exception:
+                tf_effective = []
+            return SmcHint(
+                structure=None,
+                liquidity=None,
+                zones=None,
+                signals=[],
+                meta={
+                    "snapshot_tf": tf_primary,
+                    "tf_plan": tf_plan,
+                    "tf_effective": tf_effective,
+                    "tf_health": tf_health,
+                    "gates": gates,
+                    "history_state": history_state,
+                    "age_ms": age_ms,
+                    "last_open_time_ms": last_open_time_ms,
+                    "last_ts": last_ts,
+                    "lag_ms": lag_ms,
+                    "bars_5m": bars_5m,
+                    "telemetry": {
+                        "build_input_ms": round(elapsed_ms, 2),
+                        "compute_ms": 0.0,
+                    },
+                },
+            )
+
+        compute_t0 = time.perf_counter()
         hint = engine.process_snapshot(smc_input)
+        compute_ms = (time.perf_counter() - compute_t0) * 1000.0
+
+        # Case G: оновлюємо prev_wick_clusters з close compute (best-effort).
+        try:
+            sym_norm = str(symbol).lower()
+            liq = getattr(hint, "liquidity", None)
+            meta = getattr(liq, "meta", None) if liq is not None else None
+            wc = meta.get("wick_clusters") if isinstance(meta, dict) else None
+            if isinstance(wc, list):
+                _PREV_WICK_CLUSTERS_BY_SYMBOL[sym_norm] = [
+                    dict(x) for x in wc if isinstance(x, dict)
+                ]
+        except Exception:
+            pass
+        # Додаємо Stage0 мету поверх meta з engine.
+        try:
+            tf_effective: list[str] = []
+            for tf, frame in (smc_input.ohlc_by_tf or {}).items():
+                if frame is not None and not getattr(frame, "empty", True):
+                    tf_effective.append(str(tf))
+
+            # Stage0 мета по 5m (факт/вік), навіть коли compute успішний.
+            pframe = smc_input.ohlc_by_tf.get(tf_primary)
+            bars = int(len(pframe)) if pframe is not None else 0
+            last_open_time_ms = None
+            try:
+                if pframe is not None and not getattr(pframe, "empty", True):
+                    last_open_raw = pframe.iloc[-1].get("open_time") or pframe.iloc[
+                        -1
+                    ].get("close_time")
+                else:
+                    last_open_raw = None
+            except Exception:
+                last_open_raw = None
+            try:
+                if last_open_raw is None:
+                    last_open_time_ms = None
+                else:
+                    val = float(last_open_raw)
+                    last_open_time_ms = int(val) if val > 1e12 else int(val * 1000.0)
+            except Exception:
+                last_open_time_ms = None
+            age_ms = None
+            last_ts = None
+            lag_ms = None
+            if last_open_time_ms is not None:
+                now_ms = int(time.time() * 1000.0)
+                age_ms = max(0, now_ms - int(last_open_time_ms))
+                lag_ms = age_ms
+                try:
+                    last_ts = utc_ms_to_iso_z(int(last_open_time_ms))
+                except Exception:
+                    last_ts = None
+
+            hint.meta = dict(hint.meta or {})
+            hint.meta.update(
+                {
+                    "tf_plan": tf_plan,
+                    "tf_effective": tf_effective,
+                    "tf_health": tf_health,
+                    "gates": [],
+                    "history_state": "ok" if bars > 0 else "missing",
+                    "age_ms": age_ms,
+                    "last_open_time_ms": last_open_time_ms,
+                    "last_ts": last_ts,
+                    "lag_ms": lag_ms,
+                    "bars_5m": bars,
+                    "telemetry": {
+                        "build_input_ms": round((compute_t0 - t0) * 1000.0, 2),
+                        "compute_ms": round(compute_ms, 2),
+                    },
+                }
+            )
+        except Exception:
+            pass
     except Exception as exc:
         logger.debug("[SMC] Помилка побудови hint для %s: %s", symbol, exc)
         return None
@@ -477,6 +805,41 @@ async def process_smc_batch(
 
             plain_serializer = _get_smc_plain_serializer()
             plain_hint = plain_serializer(smc_hint) if plain_serializer else smc_hint
+
+            # Stage6: анти-фліп/TTL сценарію (живе поза core).
+            try:
+                stage6_cfg = SMC_RUNTIME_PARAMS.get("stage6") or {}
+                ttl_sec = int(stage6_cfg.get("ttl_sec", 180) or 180)
+                confirm_bars = int(stage6_cfg.get("confirm_bars", 2) or 2)
+                switch_delta = float(stage6_cfg.get("switch_delta", 0.08) or 0.08)
+
+                micro_confirm_enabled = bool(
+                    stage6_cfg.get("micro_confirm_enabled", True)
+                )
+                micro_ttl_sec = int(stage6_cfg.get("micro_ttl_sec", 90) or 90)
+                micro_dmax_atr = float(stage6_cfg.get("micro_dmax_atr", 0.80) or 0.80)
+                micro_boost = float(stage6_cfg.get("micro_boost", 0.05) or 0.05)
+                micro_boost_partial = float(
+                    stage6_cfg.get("micro_boost_partial", 0.02) or 0.02
+                )
+                stage6_stats = state_manager.apply_stage6_hysteresis(
+                    sym,
+                    plain_hint if isinstance(plain_hint, dict) else None,
+                    ttl_sec=ttl_sec,
+                    confirm_bars=confirm_bars,
+                    switch_delta=switch_delta,
+                    micro_confirm_enabled=micro_confirm_enabled,
+                    micro_ttl_sec=micro_ttl_sec,
+                    micro_dmax_atr=micro_dmax_atr,
+                    micro_boost=micro_boost,
+                    micro_boost_partial=micro_boost_partial,
+                )
+                if isinstance(stage6_stats, dict):
+                    stats.update(stage6_stats)
+            except Exception:
+                # best-effort: Stage6 анти-фліп не має ламати hot-path
+                pass
+
             state_manager.update_asset(
                 sym,
                 {

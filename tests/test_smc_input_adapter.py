@@ -68,4 +68,10 @@ def test_build_smc_input_from_store() -> None:
 
     assert smc_input.ohlc_by_tf["5m"].shape[0] == 1
     assert "15m" in smc_input.ohlc_by_tf
-    assert smc_input.context == {}
+    assert isinstance(smc_input.context, dict)
+    assert smc_input.context.get("smc_session_tag") in {"ASIA", "LONDON", "NY"}
+    assert "smc_session_high" in smc_input.context
+    assert "smc_session_low" in smc_input.context
+    sessions = smc_input.context.get("smc_sessions")
+    assert isinstance(sessions, dict)
+    assert set(sessions.keys()) == {"ASIA", "LONDON", "NY"}

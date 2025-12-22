@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 from typing import Any, Literal
 
 import pandas as pd
 
 from core.serialization import safe_float
 from smc_core.config import SmcCoreConfig
-from smc_core.smc_types import SmcStructureState, SmcZone, SmcZoneType
+from smc_core.smc_types import SmcInput, SmcStructureState, SmcZone, SmcZoneType
 
 logger = logging.getLogger("smc_zones.fvg_detector")
 if not logger.handlers:
@@ -20,6 +19,7 @@ if not logger.handlers:
 
 
 def detect_fvg_zones(
+    snapshot: SmcInput,
     structure: SmcStructureState | None,
     cfg: SmcCoreConfig,
 ) -> list[SmcZone]:
@@ -28,7 +28,7 @@ def detect_fvg_zones(
     if structure is None:
         return []
 
-    frame = _primary_frame(structure)
+    frame = _primary_frame(snapshot)
     if frame is None or len(frame) < 3:
         return []
 
@@ -36,6 +36,7 @@ def detect_fvg_zones(
     atr = safe_float(meta.get("atr_last") or meta.get("atr_median"))
     bias_context = _resolve_bias(meta.get("bias"), getattr(structure, "bias", None))
     last_timestamp = _row_timestamp(frame.iloc[-1])
+    primary_tf = (structure.primary_tf or snapshot.tf_primary or "").strip()
 
     zones: list[SmcZone] = []
     for idx in range(len(frame) - 2):
@@ -49,6 +50,7 @@ def detect_fvg_zones(
             atr=atr,
             bias_context=bias_context,
             last_timestamp=last_timestamp,
+            primary_tf=primary_tf,
             cfg=cfg,
         )
         if zone is not None:
@@ -65,6 +67,7 @@ def _build_fvg_zone(
     atr: float | None,
     bias_context: Literal["LONG", "SHORT", "NEUTRAL", "UNKNOWN"],
     last_timestamp: pd.Timestamp | None,
+    primary_tf: str,
     cfg: SmcCoreConfig,
 ) -> SmcZone | None:
     high_first = safe_float(first_row.get("high"))
@@ -119,12 +122,12 @@ def _build_fvg_zone(
     strength = min(max(gap / atr_value, 0.1), 3.0)
     confidence = 0.35 if direction == bias_context else 0.2
 
-    zone_id = f"fvg_{structure.primary_tf or 'primary'}_{origin_time.value}_{idx}"
+    zone_id = f"fvg_{(primary_tf or 'primary')}_{origin_time.value}_{idx}"
     zone = SmcZone(
         zone_type=SmcZoneType.IMBALANCE,
         price_min=min(price_min, price_max),
         price_max=max(price_min, price_max),
-        timeframe=structure.primary_tf or "",
+        timeframe=primary_tf,
         origin_time=origin_time,
         direction=direction,
         role=_role_from_bias(bias_context, direction),
@@ -147,25 +150,12 @@ def _build_fvg_zone(
     return zone
 
 
-def _primary_frame(structure: SmcStructureState) -> pd.DataFrame | None:
-    meta = structure.meta or {}
-    candidates: Sequence[Any] | pd.DataFrame | None = (
-        meta.get("primary_bars")
-        or meta.get("recent_bars")
-        or meta.get("bars")
-        or meta.get("frame")
-    )
-    if candidates is None:
+def _primary_frame(snapshot: SmcInput) -> pd.DataFrame | None:
+    frame = snapshot.ohlc_by_tf.get(snapshot.tf_primary)
+    if frame is None or frame.empty:
         return None
-    if isinstance(candidates, pd.DataFrame):
-        frame = candidates.copy()
-    else:
-        try:
-            frame = pd.DataFrame(list(candidates))
-        except Exception:
-            return None
     required = {"high", "low"}
-    if frame.empty or not required.issubset(frame.columns):
+    if not required.issubset(frame.columns):
         return None
     return frame.reset_index(drop=True)
 
@@ -175,6 +165,14 @@ def _row_timestamp(row: pd.Series) -> pd.Timestamp | None:
         value = row.get(key)
         if value is None:
             continue
+        # Випадок epoch у мілісекундах (snapshot jsonl/open_time/close_time).
+        if isinstance(value, (int, float)):
+            try:
+                if float(value) > 1e12:
+                    ts = pd.to_datetime(float(value), unit="ms", utc=True)
+                    return pd.Timestamp(ts)
+            except Exception:
+                pass
         try:
             ts = pd.Timestamp(value)
         except Exception:

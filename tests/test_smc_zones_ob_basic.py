@@ -128,6 +128,34 @@ def test_active_zone_distance_filter_skips_when_no_atr() -> None:
     assert distance_meta["filtered_out_by_distance"] == 0
 
 
+def test_active_zones_are_capped_per_side_for_ui() -> None:
+    cfg = SmcCoreConfig(ob_max_active_distance_atr=None)
+    frame = _build_close_frame()
+    structure = SmcStructureState(meta={"atr_last": 1.0})
+    origin_time = frame.index[-1]
+
+    zones: list[SmcZone] = []
+    for i in range(10):
+        zones.append(
+            _manual_zone_with_dir(origin_time, 100.0 + i * 0.2, f"l{i}", "LONG")
+        )
+    for i in range(9):
+        zones.append(
+            _manual_zone_with_dir(origin_time, 102.0 + i * 0.2, f"s{i}", "SHORT")
+        )
+
+    filtered, distance_meta = smc_zones._select_active_zones(
+        zones, frame, structure, cfg
+    )
+
+    assert len(filtered) <= 6
+    assert sum(1 for z in filtered if z.direction == "LONG") <= 3
+    assert sum(1 for z in filtered if z.direction == "SHORT") <= 3
+
+    assert distance_meta.get("cap_per_side") == 3
+    assert isinstance(distance_meta.get("cap_dropped"), int)
+
+
 def _build_snapshot_and_structure(
     bias: str, include_event: bool, weaken_prelude: bool = False
 ) -> tuple[SmcInput, SmcStructureState]:
@@ -217,3 +245,11 @@ def _manual_zone(origin_time: pd.Timestamp, center: float, zone_id: str) -> SmcZ
         components=[],
         zone_id=zone_id,
     )
+
+
+def _manual_zone_with_dir(
+    origin_time: pd.Timestamp, center: float, zone_id: str, direction: str
+) -> SmcZone:
+    zone = _manual_zone(origin_time, center, zone_id)
+    zone.direction = direction
+    return zone

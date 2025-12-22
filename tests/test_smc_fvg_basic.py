@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from smc_core.config import SmcCoreConfig
-from smc_core.smc_types import SmcStructureState
+from smc_core.smc_types import SmcInput, SmcStructureState
 from smc_zones.fvg_detector import detect_fvg_zones
 
 
@@ -24,14 +24,18 @@ def test_detects_bullish_fvg_gap() -> None:
             "timestamp": pd.Timestamp("2025-01-01T00:10:00Z"),
         },
     ]
+    frame = pd.DataFrame(bars)
+    snapshot = SmcInput(
+        symbol="TEST", tf_primary="5m", ohlc_by_tf={"5m": frame}, context={}
+    )
     structure = SmcStructureState(
         primary_tf="5m",
         bias="LONG",  # type: ignore[arg-type]
-        meta={"primary_bars": bars, "atr_last": 1.0},
+        meta={"atr_last": 1.0},
     )
     cfg = SmcCoreConfig()
 
-    zones = detect_fvg_zones(structure, cfg)
+    zones = detect_fvg_zones(snapshot, structure, cfg)
 
     assert len(zones) == 1
     zone = zones[0]
@@ -60,14 +64,18 @@ def test_detects_bearish_fvg_gap() -> None:
             "timestamp": pd.Timestamp("2025-01-02T00:10:00Z"),
         },
     ]
+    frame = pd.DataFrame(bars)
+    snapshot = SmcInput(
+        symbol="TEST", tf_primary="5m", ohlc_by_tf={"5m": frame}, context={}
+    )
     structure = SmcStructureState(
         primary_tf="5m",
         bias="LONG",  # type: ignore[arg-type]
-        meta={"primary_bars": bars, "atr_last": 0.8},
+        meta={"atr_last": 0.8},
     )
     cfg = SmcCoreConfig()
 
-    zones = detect_fvg_zones(structure, cfg)
+    zones = detect_fvg_zones(snapshot, structure, cfg)
 
     assert len(zones) == 1
     zone = zones[0]
@@ -96,13 +104,17 @@ def test_skip_small_gap_when_threshold_not_met() -> None:
             "timestamp": pd.Timestamp("2025-01-03T00:10:00Z"),
         },
     ]
+    frame = pd.DataFrame(bars)
+    snapshot = SmcInput(
+        symbol="TEST", tf_primary="5m", ohlc_by_tf={"5m": frame}, context={}
+    )
     structure = SmcStructureState(
         primary_tf="5m",
         bias="NEUTRAL",  # type: ignore[arg-type]
-        meta={"primary_bars": bars, "atr_last": 2.0},
+        meta={"atr_last": 2.0},
     )
     cfg = SmcCoreConfig()
 
-    zones = detect_fvg_zones(structure, cfg)
+    zones = detect_fvg_zones(snapshot, structure, cfg)
 
     assert zones == []

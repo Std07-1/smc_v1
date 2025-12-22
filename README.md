@@ -35,9 +35,11 @@
 
 - Єдине джерело даних (RAM ↔ Redis ↔ JSONL snapshots) через `UnifiedDataStore`.
 - SMC-core з контрактами (Contract-first): `SmcHint` + `schema_version`.
+- Stage6 (4_2 vs 4_3): детермінована класифікація «сценарію після sweep» з чесним `UNCLEAR` + explain (`why[]`), та окремим stable-станом після анти-фліпу (stable/raw/pending для UI).
 - UI_v2: same-origin HTTP+WS (зручний для Cloudflare/nginx).
 - Стійкість до тимчасового падіння Redis (reconnect + backoff) у FXCM listeners та UI_v2 runners.
 - QA-утиліти для локального прогону SMC на історії: `tools/smc_snapshot_runner.py`.
+- QA Stage6 (довіра до 4_2/4_3): `tools/qa_stage6_scenario_stats.py` (Markdown звіт у `reports/`).
 
 ## Потік даних (рантайм)
 
@@ -252,6 +254,15 @@ Audit рейок/SSOT (дефолтно лише production surface): `python to
 - `tests/test_smc_liquidity_basic.py`, `tests/test_smc_sfp_wick.py`,
   `tests/test_smc_amd_phase.py` — ліквідність та AMD FSM.
 - `tests/test_smc_liquidity_bridge.py`, `tests/test_smc_core_contracts.py` — API/bridge.
+- `tests/test_smc_stage6_scenario.py`, `tests/test_smc_stage6_hysteresis.py` — Stage6 рішення + анти-фліп.
+
+QA Stage6 (приклад, PowerShell):
+
+```powershell
+; & "C:/Aione_projects/smc_v1/.venv/Scripts/python.exe" -m tools.qa_stage6_scenario_stats \
+  --path datastore/xauusd_bars_5m_snapshot.jsonl --steps 500 --warmup 220 \
+  --horizon-bars 60 --tp-atr 1.0 --sl-atr 1.0 --out reports/stage6_stats_xauusd_h60_v2.md
+```
 
 ---
 
@@ -286,4 +297,4 @@ Audit рейок/SSOT (дефолтно лише production surface): `python to
 - **GitHub:** [Std07-1](https://github.com/Std07-1)
 - **Telegram:** [@Std07_1](https://t.me/Std07_1)
 
-Оновлено: 18.12.2025
+Оновлено: 21.12.2025

@@ -55,6 +55,23 @@ class FxcmSessionContext(BaseModel):
     current_close_utc: str | None = None
     seconds_to_close: float | None = None
 
+    session_high: float | None = Field(
+        default=None,
+        validation_alias=(
+            AliasChoices("session_high", "high", "high_so_far", "sessionHigh")
+            if AliasChoices is not None
+            else None
+        ),
+    )
+    session_low: float | None = Field(
+        default=None,
+        validation_alias=(
+            AliasChoices("session_low", "low", "low_so_far", "sessionLow")
+            if AliasChoices is not None
+            else None
+        ),
+    )
+
     next_open_seconds: float | None = Field(
         default=None,
         validation_alias=(

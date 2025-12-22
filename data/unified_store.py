@@ -15,7 +15,8 @@
 Особливості реалізації:
     • write-behind черга з адаптивним backpressure (soft/hard пороги);
     • sum‑тип TTL для інтервалів (cfg.intervals_ttl) + профіль гарячості;
-    • агрегація/валідація не виконується тут — лише зберігання та читання.
+        • агрегація не є основною задачею сховища, але для SSOT по TF дозволена
+            on-demand матеріалізація 5m/1h/4h з базових 1m (Етап 1 плану).
 """
 
 from __future__ import annotations
@@ -68,6 +69,32 @@ REQUIRED_OHLCV_COLS = (
     "close_time",
 )
 MIN_COLUMNS: set[str] = set(REQUIRED_OHLCV_COLS)
+
+
+_TF_TO_MS: dict[str, int] = {
+    "1m": 60_000,
+    "5m": 300_000,
+    "1h": 3_600_000,
+    "4h": 14_400_000,
+}
+
+
+def _timeframe_to_ms(tf: str) -> int | None:
+    key = str(tf or "").strip().lower()
+    return _TF_TO_MS.get(key)
+
+
+def _timeframe_to_pandas_freq(tf: str) -> str | None:
+    key = str(tf or "").strip().lower()
+    if key == "1m":
+        return "1min"
+    if key == "5m":
+        return "5min"
+    if key == "1h":
+        return "1h"
+    if key == "4h":
+        return "4h"
+    return None
 
 
 @dataclass
@@ -1129,7 +1156,20 @@ class UnifiedDataStore:
 
         # 3) Disk snapshot
         disk_df = await self.disk.load_bars(symbol, interval)
-        # Уникаємо FutureWarning: concat з порожніми або all‑NA DataFrame
+
+        # Stage1 (TF-правда): якщо для structural TF (5m/1h/4h) немає snapshot-а,
+        # намагаємось матеріалізувати його з нижчого TF (SSOT=1m).
+        if (disk_df is None or disk_df.empty) and interval in ("5m", "1h", "4h"):
+            derived = await self._materialize_tf_from_lower(symbol, interval)
+            if derived is not None and not derived.empty:
+                self.ram.put(symbol, interval, derived)
+                self._publish_hit_ratios()
+                self.metrics.get_latency.labels(layer="derive").observe(
+                    time.perf_counter() - t0
+                )
+                return derived.tail(limit) if limit else derived
+        # Уникаємо FutureWarning (pandas): concat з empty/all-NA колонками може
+        # змінити правила визначення dtype у майбутніх версіях.
         frames: list[pd.DataFrame] = []
         if disk_df is not None and not disk_df.empty:
             frames.append(disk_df)
@@ -1137,7 +1177,21 @@ class UnifiedDataStore:
             frames.append(last_df)
 
         if frames:
-            out = pd.concat(frames, ignore_index=True)
+            cleaned: list[pd.DataFrame] = []
+            for f in frames:
+                if f is None or f.empty:
+                    continue
+                # Викидаємо колонки, які в цьому фреймі повністю NA.
+                # Це зберігає "стару" поведінку dtype та прибирає FutureWarning.
+                cleaned.append(f.dropna(axis=1, how="all"))
+
+            out = pd.concat(cleaned, ignore_index=True) if cleaned else last_df
+
+            # Повертаємо базовий каркас OHLCV, навіть якщо частина колонок
+            # була all-NA і тимчасово випала під час concat.
+            missing_cols = MIN_COLUMNS - set(out.columns)
+            for col in missing_cols:
+                out[col] = pd.NA
             out = self._dedup_sort(out)
         else:
             out = last_df  # обидва порожні → повертаємо порожній каркас
@@ -1149,6 +1203,170 @@ class UnifiedDataStore:
         self._publish_hit_ratios()
         self.metrics.get_latency.labels(layer="disk").observe(time.perf_counter() - t0)
         return out.tail(limit) if limit else out
+
+    async def _materialize_tf_from_lower(
+        self, symbol: str, target_tf: str
+    ) -> pd.DataFrame | None:
+        """Матеріалізує target_tf з нижчого TF і зберігає результат у store.
+
+        Ланцюжок (SSOT): 1m→5m→1h→4h.
+        Повертає DataFrame або None, якщо матеріалізація неможлива.
+        """
+
+        target = str(target_tf or "").strip().lower()
+        if target not in ("5m", "1h", "4h"):
+            return None
+
+        parent: str
+        if target == "5m":
+            parent = "1m"
+        elif target == "1h":
+            parent = "5m"
+        else:  # 4h
+            parent = "1h"
+
+        # Якщо parent сам відсутній — рекурсивно створюємо.
+        if parent != "1m":
+            _ = await self.get_df(symbol, parent)
+
+        source_df = await self.get_df(symbol, parent)
+        if source_df is None or source_df.empty:
+            return None
+
+        aggregated = self._aggregate_ohlcv(
+            source_df, source_tf=parent, target_tf=target
+        )
+        if aggregated is None or aggregated.empty:
+            return None
+
+        # Пишемо у store як snapshot (write_behind або sync save), щоб надалі get_df
+        # працював так само надійно, як і для "1m".
+        try:
+            await self.put_bars(symbol, target, aggregated)
+        except Exception as e:
+            # broad-except: матеріалізація не повинна валити читання; просто повернемо DF
+            logger.warning(
+                "[tf_materialize] Не вдалося зберегти %s %s: %s",
+                symbol,
+                target,
+                e,
+            )
+        return aggregated
+
+    @staticmethod
+    def _aggregate_ohlcv(
+        df: pd.DataFrame, *, source_tf: str, target_tf: str
+    ) -> pd.DataFrame | None:
+        """Агрегує OHLCV з source_tf у target_tf.
+
+        Важливо:
+        - очікуємо `open_time` у мілісекундах;
+        - повертаємо лише complete-бари (без гепів усередині групи).
+        """
+
+        src = str(source_tf or "").strip().lower()
+        tgt = str(target_tf or "").strip().lower()
+
+        src_ms = _timeframe_to_ms(src)
+        tgt_ms = _timeframe_to_ms(tgt)
+        freq = _timeframe_to_pandas_freq(tgt)
+        if not src_ms or not tgt_ms or not freq:
+            return None
+        if tgt_ms % src_ms != 0:
+            return None
+        ratio = int(tgt_ms // src_ms)
+        if ratio <= 1:
+            return None
+        if df is None or df.empty:
+            return pd.DataFrame(columns=list(MIN_COLUMNS))
+        if "open_time" not in df.columns:
+            return pd.DataFrame(columns=list(MIN_COLUMNS))
+
+        work = df.copy()
+        work["open_time"] = pd.to_numeric(work["open_time"], errors="coerce")
+        work = work.dropna(subset=["open_time"]).copy()
+        if work.empty:
+            return pd.DataFrame(columns=list(MIN_COLUMNS))
+        work["open_time"] = work["open_time"].astype("int64")
+        work = work.sort_values("open_time", kind="stable").drop_duplicates(
+            subset=["open_time"], keep="first"
+        )
+
+        ts = pd.to_datetime(work["open_time"], unit="ms", utc=True, errors="coerce")
+        work = work.assign(_bucket=ts.dt.floor(freq))
+        work = work.dropna(subset=["_bucket"]).copy()
+        if work.empty:
+            return pd.DataFrame(columns=list(MIN_COLUMNS))
+
+        # Агрегація з контролем повноти.
+        out_rows: list[dict[str, Any]] = []
+        for bucket, g in work.groupby("_bucket", sort=True):
+            if g is None or g.empty:
+                continue
+            g = g.sort_values("open_time", kind="stable")
+            if len(g) != ratio:
+                continue
+            ot = g["open_time"].astype("int64")
+            # pandas groupby по datetime bucket повертає Timestamp, але типи
+            # в pandas-stubs розширені; тут нам потрібна саме мс-мітка.
+            bucket_ts = pd.Timestamp(bucket)  # type: ignore[arg-type]
+            bucket_ms = int(bucket_ts.value // 1_000_000)
+            first = int(ot.iloc[0])
+            last = int(ot.iloc[-1])
+            if first != bucket_ms:
+                continue
+            if last - first != (ratio - 1) * src_ms:
+                continue
+            deltas = ot.diff().dropna().astype("int64")
+            if not deltas.empty and int(deltas.min()) != src_ms:
+                continue
+            if not deltas.empty and int(deltas.max()) != src_ms:
+                continue
+
+            required_cols = {"open", "high", "low", "close", "volume"}
+            if not required_cols.issubset(set(g.columns)):
+                continue
+
+            open_series = pd.to_numeric(g["open"], errors="coerce")
+            close_series = pd.to_numeric(g["close"], errors="coerce")
+            high_series = pd.to_numeric(g["high"], errors="coerce")
+            low_series = pd.to_numeric(g["low"], errors="coerce")
+            volume_series = pd.to_numeric(g["volume"], errors="coerce")
+
+            try:
+                o = float(open_series.iloc[0])
+                c = float(close_series.iloc[-1])
+                h = float(high_series.max())
+                low_val = float(low_series.min())
+                v = float(volume_series.sum())
+            except Exception:
+                continue
+            if not (
+                math.isfinite(o)
+                and math.isfinite(c)
+                and math.isfinite(h)
+                and math.isfinite(low_val)
+                and math.isfinite(v)
+            ):
+                continue
+
+            row: dict[str, Any] = {
+                "open_time": bucket_ms,
+                "close_time": bucket_ms + int(tgt_ms),
+                "open": o,
+                "high": h,
+                "low": low_val,
+                "close": c,
+                "volume": v,
+                "complete": True,
+            }
+            out_rows.append(row)
+
+        if not out_rows:
+            return pd.DataFrame(columns=list(MIN_COLUMNS))
+
+        out = pd.DataFrame(out_rows)
+        return UnifiedDataStore._dedup_sort(out)
 
     async def put_bars(self, symbol: str, interval: str, bars: pd.DataFrame) -> None:
         """

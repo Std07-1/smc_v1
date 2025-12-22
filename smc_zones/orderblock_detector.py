@@ -240,7 +240,7 @@ def detect_order_blocks(
             )
             continue
 
-        logger.info(
+        logger.debug(
             "OB_v1: створено зону",
             extra={
                 "symbol": snapshot.symbol,

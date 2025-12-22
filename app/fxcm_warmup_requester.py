@@ -84,6 +84,33 @@ def _desired_lookback_bars() -> int:
     return max(1, int(limit))
 
 
+def _ramp_request_bars(
+    *, desired_bars: int, current_bars: int, target_bars: int
+) -> int:
+    """Повертає request_bars для фонового догріву (prefetch) з плавним нарощуванням.
+
+    Мета:
+    - не просити одразу "всю" контрактну історію (напр. 14d),
+      а нарощувати глибину поступово;
+    - не тримати прогрес у пам'яті: опираємось на `current_bars` із UDS.
+
+    Політика:
+    - крок нарощування = desired_bars (типово 300, а на bootstrap може бути 50);
+    - завжди не менше desired_bars;
+    - ніколи більше target_bars.
+    """
+
+    desired = max(1, int(desired_bars))
+    current = max(0, int(current_bars))
+    target = max(0, int(target_bars))
+    if target <= 0:
+        return desired
+    if current <= 0:
+        return min(target, desired)
+    next_bars = current + desired
+    return max(desired, min(target, next_bars))
+
+
 def _bars_for_tf_from_contract(*, tf_ms: int, contract_1m_bars: int) -> int:
     """Перераховує ціль контракту (в 1m барах) у bars для конкретного TF.
 
@@ -169,11 +196,10 @@ class FxcmWarmupRequester:
             # мінімальному desired-limit (типово 300), а більшу історію (напр. 14d)
             # добираємо best-effort у фоні.
             status_min_bars = int(desired_bars)
-            request_bars = (
-                max(int(desired_bars), int(contract_bars_tf))
-                if contract_bars_tf > 0
-                else int(desired_bars)
-            )
+            # request_bars визначає, скільки історії ми просимо у конектора.
+            # Важливо: у prefetch режимі не просимо одразу всю контрактну глибину,
+            # а нарощуємо поступово (щоб UI/система не "стартували" з 14d завантаження).
+            request_bars = int(desired_bars)
 
             status = await compute_history_status(
                 store=self.store,
@@ -192,6 +218,11 @@ class FxcmWarmupRequester:
                 ):
                     cmd_type = "fxcm_warmup"
                     reason = "prefetch_history"
+                    request_bars = _ramp_request_bars(
+                        desired_bars=int(desired_bars),
+                        current_bars=int(status.bars_count),
+                        target_bars=int(contract_bars_tf),
+                    )
                 else:
                     self._clear_active_issue(sym=sym, tf=tf_norm)
                     continue
@@ -201,6 +232,7 @@ class FxcmWarmupRequester:
                 if status.needs_warmup:
                     cmd_type = "fxcm_warmup"
                     reason = "insufficient_history"
+                    request_bars = int(desired_bars)
                 elif status.needs_backfill:
                     # Практика інтеграції: у FXCM конекторі backfill для 1m може бути не
                     # реалізований (позначається як tick TF). Щоб не «стріляти в нікуди»,
@@ -210,6 +242,7 @@ class FxcmWarmupRequester:
                     else:
                         cmd_type = "fxcm_backfill"
                     reason = "stale_tail"
+                    request_bars = int(desired_bars)
 
             if not cmd_type:
                 continue

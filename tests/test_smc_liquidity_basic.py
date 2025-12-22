@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
 import pandas as pd
@@ -31,6 +32,26 @@ def _sample_frame() -> pd.DataFrame:
             "low": [p - 1.5 for p in prices],
             "close": [p + 0.5 for p in prices],
             "volume": [100 + i for i in range(len(prices))],
+        }
+    )
+
+
+def _htf_frame(freq: str, periods: int) -> pd.DataFrame:
+    timestamps = pd.date_range("2024-01-01", periods=periods, freq=freq)
+    base = 100.0
+    # Легка хвиля, щоб були pivot highs/lows по lookback.
+    wave = [base + 3.0 * math.sin(i / 4.0) for i in range(len(timestamps))]
+    highs = [p + 1.2 for p in wave]
+    lows = [p - 1.2 for p in wave]
+    closes = [p + 0.2 for p in wave]
+    return pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "open": wave,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [1000 + i for i in range(len(timestamps))],
         }
     )
 
@@ -68,7 +89,11 @@ def _snapshot(context: dict[str, float] | None = None) -> SmcInput:
     return SmcInput(
         symbol="XAUUSDT",
         tf_primary="5m",
-        ohlc_by_tf={"5m": _sample_frame()},
+        ohlc_by_tf={
+            "5m": _sample_frame(),
+            "1h": _htf_frame("1h", periods=40),
+            "4h": _htf_frame("4h", periods=30),
+        },
         context=context or {"pdh": 115.0, "pdl": 97.0},
     )
 
@@ -121,3 +146,71 @@ def test_liquidity_range_extremes_create_magnets() -> None:
     assert range_magnets
     assert "sfp_events" in liquidity.meta
     assert "wick_clusters" in liquidity.meta
+
+
+def test_liquidity_targets_include_internal_and_external() -> None:
+    structure = _base_structure(bias="NEUTRAL")
+    snapshot = _snapshot()
+
+    liquidity = smc_liquidity.compute_liquidity_state(
+        snapshot=snapshot,
+        structure=structure,
+        cfg=SMC_CORE_CONFIG,
+    )
+
+    targets = liquidity.meta.get("liquidity_targets")
+    assert isinstance(targets, list) and targets
+    roles = {t.get("role") for t in targets if isinstance(t, dict)}
+    assert "internal" in roles
+    assert "external" in roles
+    assert len(targets) <= 6  # 1–3 internal + 1–3 external
+    for t in targets:
+        assert isinstance(t, dict)
+        assert isinstance(t.get("tf"), str)
+        assert t.get("side") in {"above", "below"}
+        assert isinstance(t.get("price"), (int, float))
+        assert isinstance(t.get("type"), str)
+        assert isinstance(t.get("strength"), (int, float))
+        assert isinstance(t.get("reason"), list)
+
+
+def test_liquidity_external_targets_use_context_session_extremes_when_present() -> None:
+    structure = _base_structure(bias="NEUTRAL")
+    base_5m = _sample_frame().copy()
+    # Примусово робимо ref_price ~100.5 (close останнього 5m бару).
+    try:
+        base_5m.loc[base_5m.index[-1], "close"] = 100.5
+    except Exception:
+        pass
+    snapshot = SmcInput(
+        symbol="XAUUSDT",
+        tf_primary="5m",
+        ohlc_by_tf={"5m": base_5m},
+        context={
+            "session_tag": "LONDON",
+            "smc_session_tag": "LONDON",
+            "smc_session_high": 101.0,
+            "smc_session_low": 99.5,
+            "smc_sessions": {
+                "ASIA": {"high": 100.7, "low": 99.2, "start_ms": 1, "end_ms": 2},
+                "LONDON": {"high": 101.0, "low": 99.5, "start_ms": 3, "end_ms": 4},
+                "NY": {"high": 101.4, "low": 99.7, "start_ms": 5, "end_ms": 6},
+            },
+        },
+    )
+
+    liquidity = smc_liquidity.compute_liquidity_state(
+        snapshot=snapshot,
+        structure=structure,
+        cfg=SMC_CORE_CONFIG,
+    )
+
+    targets = liquidity.meta.get("liquidity_targets")
+    assert isinstance(targets, list) and targets
+    external = [
+        t for t in targets if isinstance(t, dict) and t.get("role") == "external"
+    ]
+    assert external
+    types = {t.get("type") for t in external}
+    assert "SESSION_HIGH" in types
+    assert "SESSION_LOW" in types

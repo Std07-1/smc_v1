@@ -32,6 +32,8 @@ class SmcHintPlain(TypedDict, total=False):
     liquidity: dict[str, Any] | None
     zones: dict[str, Any] | None
     signals: list[dict[str, Any]]
+    # Stage5 (non-breaking extension): execution micro-події.
+    execution: dict[str, Any] | None
     meta: dict[str, Any]
 
 
@@ -83,6 +85,13 @@ class UiSmcMeta(TypedDict, total=False):
     pipeline_skipped_assets: int
     cycle_duration_ms: float
     fxcm: FxcmMeta
+
+    # Replay (offline/TV-like): курсор часу, щоб UI міг відтворювати "появу" барів
+    # без lookahead. Якщо задано — /smc-viewer/ohlcv може відсікати бари з time > replay_cursor_ms.
+    replay_mode: str
+    replay_cursor_ms: int
+    replay_timeline_tf: str
+    replay_compute_tf: str
 
 
 class UiSmcAssetPayload(TypedDict, total=False):
@@ -138,6 +147,9 @@ class SmcViewerLiquidity(TypedDict, total=False):
     amd_phase: str | None
     pools: list[dict[str, Any]]
     magnets: list[dict[str, Any]]
+    # Stage3 (non-breaking extension): liquidity targets (internal/external).
+    # Джерело: smc_liquidity.meta.liquidity_targets (публікується smc_liquidity).
+    targets: list[dict[str, Any]]
 
 
 class SmcViewerZones(TypedDict, total=False):
@@ -155,6 +167,41 @@ class SmcViewerPipelineLocal(TypedDict, total=False):
     ready_ratio: float
 
 
+class SmcViewerScenario(TypedDict, total=False):
+    """Stage6 (4.2 vs 4.3) — summary для viewer_state.
+
+    Це не торговий «сигнал», а технічна класифікація сценарію.
+    """
+
+    scenario_id: str
+    direction: str
+    confidence: float
+    why: list[str]
+    key_levels: dict[str, Any]
+    last_change_ts: str | None
+
+    unclear_reason: str | None
+
+    raw_scenario_id: str | None
+    raw_direction: str | None
+    raw_confidence: float | None
+    raw_why: list[str]
+    raw_key_levels: dict[str, Any]
+    raw_inputs_ok: bool | None
+    raw_gates: list[Any]
+    raw_unclear_reason: str | None
+
+    pending_id: str | None
+    pending_count: int
+    ttl_sec: int
+    confirm_bars: int
+    switch_delta: float
+
+    # Non-breaking extension: пояснення анти-фліпу (чому stable не перемикається).
+    anti_flip: dict[str, Any]
+    last_eval: dict[str, Any]
+
+
 class SmcViewerState(TypedDict, total=False):
     """Агрегований стан одного активу для SMC viewer."""
 
@@ -167,9 +214,27 @@ class SmcViewerState(TypedDict, total=False):
     structure: SmcViewerStructure
     liquidity: SmcViewerLiquidity
     zones: SmcViewerZones
+    # Stage5 (non-breaking extension): execution micro-події (стрілочки на графіку).
+    execution: dict[str, Any]
     pipeline_local: SmcViewerPipelineLocal
+    scenario: SmcViewerScenario
     fxcm: FxcmMeta | None
     meta: UiSmcMeta
+
+    # Діагностика TF-правди (Етап 0/1): per-TF готовність, лаг, кількість барів.
+    # Джерело: smc_hint.meta.tf_health (публікується smc_producer).
+    tf_health: dict[str, Any]
+
+    # Stage0/1 мета (TF-план/факт/гейти). Джерело: smc_hint.meta.*
+    tf_plan: dict[str, Any]
+    tf_effective: list[str]
+    gates: list[dict[str, Any]]
+    history_state: str
+    age_ms: int
+    last_open_time_ms: int
+    last_ts: str
+    lag_ms: int
+    bars_5m: int
 
 
 # ── OHLCV HTTP response ──────────────────────────────────────────────────
@@ -207,6 +272,7 @@ __all__ = (
     "SmcViewerLiquidity",
     "SmcViewerZones",
     "SmcViewerPipelineLocal",
+    "SmcViewerScenario",
     "SmcViewerState",
     "OhlcvBar",
     "OhlcvResponse",

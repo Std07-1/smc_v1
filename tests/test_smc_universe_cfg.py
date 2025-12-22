@@ -16,7 +16,7 @@ def test_valid_universe_single_symbol() -> None:
                 "symbols": [
                     {
                         "id": "XAUUSD",
-                        "tfs": ["1m", "5m"],
+                        "tfs": ["1m", "5m", "1h", "4h"],
                         "min_history_bars": 2000,
                         "enabled": True,
                     }
@@ -34,7 +34,7 @@ def test_valid_universe_single_symbol() -> None:
 
     symbol = fxcm.symbols[0]
     assert symbol.id == "xauusd"  # нормалізація до lower
-    assert symbol.tfs == ["1m", "5m"]
+    assert symbol.tfs == ["1m", "5m", "1h", "4h"]
     assert symbol.min_history_bars == 2000
     assert symbol.enabled is True
 

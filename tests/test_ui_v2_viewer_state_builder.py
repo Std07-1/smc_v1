@@ -243,6 +243,109 @@ def test_build_viewer_state_cache_backfills_events_and_zones() -> None:
     assert zones2 == zones1
 
 
+def test_build_viewer_state_includes_tf_meta_and_liquidity_targets() -> None:
+    asset = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {
+                "tf_plan": {
+                    "tf_exec": "1m",
+                    "tf_structure": "5m",
+                    "tf_context": ("1h", "4h"),
+                },
+                "tf_effective": ["1m", "1h"],
+                "gates": [{"code": "NO_5M_DATA", "message": "Немає 5m"}],
+                "history_state": "missing",
+                "age_ms": 12_000,
+                "last_open_time_ms": 1_700_000_000_000,
+                "last_ts": "2025-12-08T08:05:00+00:00",
+                "lag_ms": 12_000,
+                "bars_5m": 0,
+                "tf_health": {
+                    "1m": {
+                        "has_data": True,
+                        "bars": 100,
+                        "last_ts": "-",
+                        "lag_ms": 0,
+                    },
+                    "5m": {
+                        "has_data": False,
+                        "bars": 0,
+                        "last_ts": "-",
+                        "lag_ms": None,
+                    },
+                    "1h": {
+                        "has_data": True,
+                        "bars": 10,
+                        "last_ts": "-",
+                        "lag_ms": 0,
+                    },
+                    "4h": {
+                        "has_data": False,
+                        "bars": 0,
+                        "last_ts": "-",
+                        "lag_ms": None,
+                    },
+                },
+            },
+        },
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": [],
+            "magnets": [],
+            "meta": {
+                "liquidity_targets": [
+                    {
+                        "role": "internal",
+                        "tf": "5m",
+                        "side": "above",
+                        "price": 2415.0,
+                        "type": "EQH",
+                        "strength": 55.5,
+                        "reason": ["test"],
+                    },
+                    {
+                        "role": "external",
+                        "tf": "1h",
+                        "side": "below",
+                        "price": 2400.0,
+                        "type": "PIVOT",
+                        "strength": 44.4,
+                        "reason": ["test"],
+                    },
+                ]
+            },
+        },
+    )
+    meta = _make_basic_meta()
+
+    state: SmcViewerState = build_viewer_state(asset, meta, fxcm_block=None, cache=None)
+
+    assert isinstance(state.get("tf_plan"), dict)
+    assert state["tf_plan"].get("tf_structure") == "5m"  # type: ignore[index]
+    assert state.get("tf_effective") == ["1m", "1h"]
+
+    gates = state.get("gates")
+    assert isinstance(gates, list) and gates
+    assert gates[0].get("code") == "NO_5M_DATA"
+
+    assert state.get("history_state") == "missing"
+    assert state.get("bars_5m") == 0
+    assert state.get("lag_ms") == 12_000
+
+    tf_health = state.get("tf_health")
+    assert isinstance(tf_health, dict)
+    assert set(tf_health.keys()) >= {"1m", "5m", "1h", "4h"}
+
+    liquidity = cast(dict, state["liquidity"])  # type: ignore[index]
+    targets = liquidity.get("targets")
+    assert isinstance(targets, list) and len(targets) == 2
+    assert targets[0].get("role") == "internal"
+
+
 def test_build_viewer_state_fxcm_priority_and_session_override() -> None:
     """FXCM-блок має пріоритет і може переписувати session."""
 
@@ -314,3 +417,155 @@ def test_build_viewer_state_preserves_pipeline_meta() -> None:
     assert meta_block["pipeline_min_ready"] == 3
     assert meta_block["pipeline_assets_total"] == 5
     assert meta_block["pipeline_ready_pct"] == 0.4
+
+
+def test_build_viewer_state_hides_newborn_zones_and_pools_until_next_close() -> None:
+    """Випадок C: нові зони/пули не мають потрапляти в UI одразу.
+
+    Політика за замовчуванням (MIN_CLOSE_STEPS_BEFORE_SHOW=1):
+    - вперше побачили на close -> НЕ показуємо;
+    - на наступному close, якщо все ще присутні -> показуємо.
+    """
+
+    cache = ViewerStateCache()
+
+    asset1 = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": [
+                {
+                    "level": 2415.0,
+                    "liq_type": "WICK_CLUSTER",
+                    "role": "PRIMARY",
+                    "strength": 0.5,
+                    "meta": {"side": "above"},
+                }
+            ],
+            "magnets": [],
+        },
+        smc_zones={
+            "active_zones": [
+                {
+                    "zone_id": "z_test_1",
+                    "zone_type": "OB",
+                    "direction": "LONG",
+                    "role": "PRIMARY",
+                    "timeframe": "5m",
+                    "price_min": 2408.0,
+                    "price_max": 2410.0,
+                }
+            ]
+        },
+    )
+    meta1 = _make_basic_meta(seq=1)
+
+    state1 = build_viewer_state(asset1, meta1, fxcm_block=None, cache=cache)
+
+    # Перший close: новонароджене сховане.
+    liquidity1 = cast(dict, state1["liquidity"])  # type: ignore[index]
+    assert liquidity1.get("pools") == []
+    zones1 = cast(dict, state1["zones"])  # type: ignore[index]
+    raw1 = cast(dict, zones1.get("raw"))
+    assert raw1.get("active_zones") == []
+
+    # Другий close з тими ж сутностями -> мають стати видимими.
+    asset2 = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity=asset1["smc_liquidity"],
+        smc_zones=asset1["smc_zones"],
+    )
+    meta2 = _make_basic_meta(seq=2)
+    state2 = build_viewer_state(asset2, meta2, fxcm_block=None, cache=cache)
+
+    liquidity2 = cast(dict, state2["liquidity"])  # type: ignore[index]
+    pools2 = liquidity2.get("pools")
+    assert isinstance(pools2, list) and len(pools2) == 1
+
+    zones2 = cast(dict, state2["zones"])  # type: ignore[index]
+    raw2 = cast(dict, zones2.get("raw"))
+    active2 = raw2.get("active_zones")
+    assert isinstance(active2, list) and len(active2) == 1
+
+
+def test_build_viewer_state_preview_does_not_promote_newborn() -> None:
+    """Preview не має промоутити нові сутності до "born".
+
+    Якщо сутність з'явилась лише на preview, ми її не показуємо і не рахуємо як born.
+    """
+
+    cache = ViewerStateCache()
+
+    asset_preview = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "preview"},
+        },
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": [
+                {
+                    "level": 2415.0,
+                    "liq_type": "WICK_CLUSTER",
+                    "role": "PRIMARY",
+                    "strength": 0.5,
+                    "meta": {"side": "above"},
+                }
+            ],
+            "magnets": [],
+        },
+        smc_zones={
+            "active_zones": [
+                {
+                    "zone_id": "z_preview_only",
+                    "zone_type": "OB",
+                    "direction": "LONG",
+                    "role": "PRIMARY",
+                    "timeframe": "5m",
+                    "price_min": 2408.0,
+                    "price_max": 2410.0,
+                }
+            ]
+        },
+    )
+    meta1 = _make_basic_meta(seq=1)
+    st1 = build_viewer_state(asset_preview, meta1, fxcm_block=None, cache=cache)
+
+    liq1 = cast(dict, st1["liquidity"])  # type: ignore[index]
+    assert liq1.get("pools") == []
+    raw1 = cast(dict, cast(dict, st1["zones"])["raw"])  # type: ignore[index]
+    assert raw1.get("active_zones") == []
+
+    # Тепер перший close з тими ж сутностями: все ще newborn -> сховано.
+    asset_close = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity=asset_preview["smc_liquidity"],
+        smc_zones=asset_preview["smc_zones"],
+    )
+    meta2 = _make_basic_meta(seq=2)
+    st2 = build_viewer_state(asset_close, meta2, fxcm_block=None, cache=cache)
+    liq2 = cast(dict, st2["liquidity"])  # type: ignore[index]
+    assert liq2.get("pools") == []
+    raw2 = cast(dict, cast(dict, st2["zones"])["raw"])  # type: ignore[index]
+    assert raw2.get("active_zones") == []
