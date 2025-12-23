@@ -69,18 +69,53 @@ class ViewerStateHttpServer:
     host: str = "127.0.0.1"
     port: int = 8080
     web_root: Path | None = None
+    _server: asyncio.base_events.Server | None = None
 
     def __post_init__(self) -> None:
         if self.web_root is None:
             self.web_root = Path(__file__).resolve().parent / "web_client"
 
+    async def start(self) -> None:
+        """Стартує сервер (для тестів/інтеграції) без serve_forever."""
+
+        if self._server is not None:
+            return
+
+        self._server = await asyncio.start_server(
+            self._handle_client, self.host, self.port
+        )
+        addr = ", ".join(str(sock.getsockname()) for sock in self._server.sockets or [])
+        logger.info("[SMC viewer HTTP] Server listening on %s", addr)
+
+    async def stop(self) -> None:
+        """Зупиняє сервер, якщо він був запущений через start()."""
+
+        if self._server is None:
+            return
+
+        self._server.close()
+        try:
+            await self._server.wait_closed()
+        finally:
+            self._server = None
+
+    def get_listen_url(self) -> str | None:
+        """Повертає базовий URL сервера після start() або None."""
+
+        if self._server is None or not self._server.sockets:
+            return None
+
+        sock = self._server.sockets[0]
+        host, port = sock.getsockname()[:2]
+        return f"http://{host}:{port}"
+
     async def run(self) -> None:
         """Стартує HTTP-сервер і тримає його вічно."""
-        server = await asyncio.start_server(self._handle_client, self.host, self.port)
-        addr = ", ".join(str(sock.getsockname()) for sock in server.sockets or [])
-        logger.info("[SMC viewer HTTP] Server listening on %s", addr)
-        async with server:
-            await server.serve_forever()
+
+        await self.start()
+        assert self._server is not None
+        async with self._server:
+            await self._server.serve_forever()
 
     async def _handle_client(
         self,

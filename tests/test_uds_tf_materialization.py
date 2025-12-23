@@ -118,3 +118,26 @@ async def test_materialize_chain_4h_via_5m_1h_and_persist(tmp_path: Any) -> None
     assert (tmp_path / "xauusd_bars_5m_snapshot.jsonl").exists()
     assert (tmp_path / "xauusd_bars_1h_snapshot.jsonl").exists()
     assert (tmp_path / "xauusd_bars_4h_snapshot.jsonl").exists()
+
+
+@pytest.mark.asyncio
+async def test_refresh_derived_tf_when_snapshot_exists(tmp_path: Any) -> None:
+    now_ms = int(time.time() * 1000)
+    base_5m = (now_ms // 300_000) * 300_000
+
+    # 20 хвилин => 4 complete 5m бари
+    frame_1m_a = _make_1m_frame(start_ms=base_5m, bars=20)
+    store = _make_store(base_dir=str(tmp_path))
+    await store.put_bars("xauusd", "1m", frame_1m_a)
+
+    out_5m_a = await store.get_df("xauusd", "5m")
+    assert out_5m_a is not None
+    assert out_5m_a.shape[0] == 4
+
+    # Додаємо ще 10 хвилин => +2 complete 5m бари (20..24, 25..29)
+    frame_1m_b = _make_1m_frame(start_ms=base_5m + 20 * 60_000, bars=10)
+    await store.put_bars("xauusd", "1m", frame_1m_b)
+
+    out_5m_b = await store.get_df("xauusd", "5m")
+    assert out_5m_b is not None
+    assert out_5m_b.shape[0] == 6

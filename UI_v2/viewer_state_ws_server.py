@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -12,6 +12,11 @@ try:  # pragma: no cover - опційна залежність у runtime
     from redis.asyncio import Redis
 except Exception:  # pragma: no cover
     Redis = Any  # type: ignore[assignment]
+
+try:  # pragma: no cover - опційно для типів/обробки помилок
+    from redis.exceptions import ConnectionError as RedisConnectionError
+except Exception:  # pragma: no cover
+    RedisConnectionError = Exception  # type: ignore[assignment]
 
 logger = logging.getLogger("smc_viewer_ws")
 
@@ -55,6 +60,12 @@ class ViewerStateWsServer:
     host: str = "127.0.0.1"
     port: int = 8081
 
+    _stopping: asyncio.Event = field(
+        default_factory=asyncio.Event,
+        init=False,
+        repr=False,
+    )
+
     async def run(self) -> None:
         """Стартує WS-сервер і працює, доки таск не буде завершено."""
 
@@ -76,8 +87,11 @@ class ViewerStateWsServer:
                 )
                 await asyncio.Future()
         except asyncio.CancelledError:
-            logger.info("[SMC viewer WS] Server task cancelled")
+            self._stopping.set()
+            logger.debug("[SMC viewer WS] Server task cancelled")
             raise
+        finally:
+            self._stopping.set()
 
     async def _handle_client(self, websocket: Any) -> None:
         path = getattr(websocket, "path", None) or ""
@@ -131,13 +145,31 @@ class ViewerStateWsServer:
                         ignore_subscribe_messages=True,
                         timeout=1.0,
                     )
+                except asyncio.CancelledError:
+                    raise
                 except ConnectionClosed:
                     raise
-                except Exception:
+                except RedisConnectionError as exc:
+                    # Під час штатного shutdown Redis клієнт може закритись раніше,
+                    # ніж завершаться клієнтські хендлери. Це не є помилкою.
+                    if self._stopping.is_set():
+                        break
                     logger.warning(
-                        "[SMC viewer WS] Redis pubsub error (symbol=%s)",
+                        "[SMC viewer WS] Redis pubsub error (symbol=%s): %s",
                         symbol,
-                        exc_info=True,
+                        str(exc),
+                    )
+                    SMC_VIEWER_WS_ERRORS_TOTAL.labels(stage="redis_poll").inc()
+                    await asyncio.sleep(1.0)
+                    continue
+                except Exception as exc:
+                    if self._stopping.is_set():
+                        break
+                    logger.warning(
+                        "[SMC viewer WS] Redis pubsub error (symbol=%s): %s",
+                        symbol,
+                        str(exc),
+                        exc_info=False,
                     )
                     SMC_VIEWER_WS_ERRORS_TOTAL.labels(stage="redis_poll").inc()
                     await asyncio.sleep(1.0)
@@ -171,7 +203,10 @@ class ViewerStateWsServer:
                 await pubsub.unsubscribe(self.channel_name)
             except Exception:
                 pass
-            await pubsub.close()
+            try:
+                await pubsub.close()
+            except Exception:
+                pass
 
     @staticmethod
     def _extract_symbol(path: str) -> str | None:

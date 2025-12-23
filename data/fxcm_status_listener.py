@@ -394,7 +394,7 @@ async def run_fxcm_status_listener(
                         continue
                     _apply_status_snapshot(combined_status)
         except asyncio.CancelledError:
-            logger.info("[FXCM_STATUS] Отримано CancelledError, завершуємо роботу")
+            logger.debug("[FXCM_STATUS] Отримано CancelledError, завершуємо роботу")
             raise
         except Exception:
             logger.warning(

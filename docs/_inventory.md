@@ -26,6 +26,7 @@
 - docs/uds_smc_update_2025-12-13.md — контракт UDS↔SMC для warmup/backfill (S2/S3 requester).
 - docs/ui_v2_fullscreen_chart_layout.md — UI_v2: причини «дрейфу вниз» у fullscreen та канон фіксу.
 - docs/ui_v2_mobile_chart_drift_fix.md — UI_v2 mobile: канон фіксу дрейфу вниз (visualViewport).
+- docs/ui/ui_v2_chart_invariants_and_boundaries.md — UI_v2: інваріанти та межі відповідальності графіка (wheel/drag/scale), SSOT.
 - docs/runbook_tradingview_like_live_public_domain.md — runbook публічного домену (Cloudflare Tunnel/nginx) для live-барів.
 - docs/runbook_cloudflare_named_tunnel_windows.md — Windows: named tunnel + “3 команди” для швидкого дебагу 502.
 - docs/uds_smc_update_2025-12-13.md — контракт warmup/backfill + S2/S3 правила.

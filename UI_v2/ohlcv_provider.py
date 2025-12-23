@@ -13,6 +13,8 @@ from core.contracts.viewer_state import OhlcvBar
 from core.serialization import safe_float
 from data.unified_store import UnifiedDataStore
 
+_UI_GAP_FILL_MAX_SYNTHETIC_BARS = 5000
+
 
 class OhlcvNotFoundError(Exception):
     """Піднімається, коли OHLCV-даних для symbol/tf немає."""
@@ -61,6 +63,66 @@ def _to_millis(value: Any) -> int | None:
             except ValueError:
                 return None
     return None
+
+
+def _gap_fill_bars_for_ui(
+    bars: list[OhlcvBar], *, step_ms: int, max_synthetic: int
+) -> list[OhlcvBar]:
+    """Заповнює гепи у часовій шкалі синтетичними flat-барами.
+
+    Важливо:
+    - лише для UI-віддачі (не пишемо в UDS);
+    - синтетичні бари мають volume=0 і OHLC = prev_close;
+    - щоб не роздувати відповідь безмежно (наприклад, при дірці на кілька днів),
+      є жорстка межа max_synthetic.
+    """
+
+    if not bars or step_ms <= 0:
+        return bars
+
+    # Гарантуємо сортування по time.
+    bars_sorted = sorted(bars, key=lambda b: int(b["time"]))
+
+    out: list[OhlcvBar] = [bars_sorted[0]]
+    inserted = 0
+
+    for curr in bars_sorted[1:]:
+        prev = out[-1]
+        prev_t = int(prev["time"])
+        curr_t = int(curr["time"])
+
+        # Некоректний/зворотний крок не виправляємо тут.
+        if curr_t <= prev_t:
+            out.append(curr)
+            continue
+
+        delta = curr_t - prev_t
+        if delta == step_ms:
+            out.append(curr)
+            continue
+
+        # Заповнюємо missing слоти: prev+step, prev+2*step, ... < curr
+        # Але з обмеженням на кількість вставок.
+        if delta > step_ms:
+            next_t = prev_t + step_ms
+            prev_close = float(prev["close"])
+            while next_t < curr_t and inserted < max_synthetic:
+                out.append(
+                    {
+                        "time": int(next_t),
+                        "open": prev_close,
+                        "high": prev_close,
+                        "low": prev_close,
+                        "close": prev_close,
+                        "volume": 0.0,
+                    }
+                )
+                inserted += 1
+                next_t += step_ms
+
+        out.append(curr)
+
+    return out
 
 
 @dataclass
@@ -142,5 +204,17 @@ class UnifiedStoreOhlcvProvider:
 
         if not bars:
             raise OhlcvNotFoundError(f"OHLCV недоступний для {symbol} {timeframe}")
+
+        # UI-віддача має бути "щільною" по часу, навіть якщо live пропустив хвилини.
+        # Канонічні дані добираються S3/backfill, а тут лише робимо flat-gap-fill.
+        try:
+            bars = _gap_fill_bars_for_ui(
+                bars,
+                step_ms=_tf_ms(timeframe),
+                max_synthetic=_UI_GAP_FILL_MAX_SYNTHETIC_BARS,
+            )
+        except Exception:
+            # best-effort: якщо щось пішло не так, повертаємо як є.
+            pass
 
         return bars

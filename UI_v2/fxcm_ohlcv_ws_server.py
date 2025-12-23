@@ -151,7 +151,7 @@ class FxcmOhlcvWsServer:
                 )
                 await asyncio.Future()
         except asyncio.CancelledError:
-            logger.info("[FXCM OHLCV WS] Server task cancelled")
+            logger.debug("[FXCM OHLCV WS] Server task cancelled")
             raise
 
     async def _handle_client(self, websocket: WsConnection) -> None:

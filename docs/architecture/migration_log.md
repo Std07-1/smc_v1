@@ -2,6 +2,10 @@
 
 Формат запису: дата → хвиля → файли → що зроблено → примітки/ризики.
 
+## 2025-12-23
+
+- UI_v2: додано офлайн E2E smoke (Playwright) для захисту фіксів першого wheel/tooltip; HTTP сервер отримав `start()/stop()/get_listen_url()` для тестів; у конфігу виправлено kill-switch default (`SMC_LIVE_GAP_BACKFILL_ENABLED=False`) та парсинг ENV false-values. Команди на warmup/backfill — це payload у Redis-канал FXCM-конектора, не прямі FXCM виклики.
+
 ## 2025-12-16 — Хвиля 1
 
 - Файли: додано `core/serialization.py`, `core/formatters.py`, `core/contracts/*`,

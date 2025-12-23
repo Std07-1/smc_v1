@@ -352,7 +352,7 @@ async def run_pipeline() -> None:
         logger.info("[SMC] Запущено %d задач", len(tasks))
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:
-        logger.info("[SMC] Завершення за CancelledError")
+        logger.debug("[SMC] Завершення за CancelledError")
         raise
     finally:
         for task in tasks + fxcm_tasks:
@@ -496,7 +496,7 @@ async def _run_ui_v2_broadcaster(cfg: SmcViewerBroadcasterConfig) -> None:
         broadcaster = SmcViewerBroadcaster(redis=redis, cfg=cfg)
         await broadcaster.run_forever()
     except asyncio.CancelledError:
-        logger.info("[UI_v2] Broadcaster task cancelled")
+        logger.debug("[UI_v2] Broadcaster task cancelled")
         raise
     finally:
         await redis.close()
@@ -530,7 +530,7 @@ async def _run_ui_v2_http_server(
             await server.run()
             return
         except asyncio.CancelledError:
-            logger.info("[UI_v2] HTTP server task cancelled")
+            logger.debug("[UI_v2] HTTP server task cancelled")
             raise
         except OSError as exc:
             if _is_address_in_use_error(exc):
@@ -586,7 +586,7 @@ async def _run_ui_v2_ws_server(
             await server.run()
             return
         except asyncio.CancelledError:
-            logger.info("[UI_v2] WS server task cancelled")
+            logger.debug("[UI_v2] WS server task cancelled")
             raise
         except OSError as exc:
             if _is_address_in_use_error(exc):
@@ -638,7 +638,7 @@ async def _run_fxcm_ohlcv_ws_server(*, host: str, port: int) -> None:
             await server.run()
             return
         except asyncio.CancelledError:
-            logger.info("[UI_v2] FXCM OHLCV WS server task cancelled")
+            logger.debug("[UI_v2] FXCM OHLCV WS server task cancelled")
             raise
         except OSError as exc:
             if _is_address_in_use_error(exc):

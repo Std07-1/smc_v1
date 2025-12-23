@@ -79,6 +79,13 @@ _TF_TO_MS: dict[str, int] = {
 }
 
 
+# Похідні TF (5m/1h/4h) кешуються у snapshot-ах, але під час live-стріму
+# повинні вміти підхоплювати нові complete-бакети без ручного рестарту.
+# Щоб не навантажувати CPU/диск при частих UI-запитах, refresh тротлиться.
+DERIVED_TF_REFRESH_THROTTLE_MS = 5_000
+DERIVED_TF_SOURCE_LIMIT_BARS = 5_000
+
+
 def _timeframe_to_ms(tf: str) -> int | None:
     key = str(tf or "").strip().lower()
     return _TF_TO_MS.get(key)
@@ -826,6 +833,9 @@ class UnifiedDataStore:
         self._mtx = asyncio.Lock()
         self._maint_task = None
 
+        # Локальний throttle для on-demand refresh похідних TF.
+        self._derived_refresh_last_ms: dict[tuple[str, str], int] = {}
+
     # ── Публічний API ───────────────────────────────────────────────────────
 
     async def start_maintenance(self) -> None:
@@ -1138,6 +1148,17 @@ class UnifiedDataStore:
         df = self.ram.get(symbol, interval)
         if df is not None:
             self._ram_hits += 1
+            # Для похідних TF RAM-кеш може застарівати під час live-оновлень 1m.
+            # Робимо best-effort refresh з throttle навіть при RAM-hit.
+            if df is not None and not df.empty and interval in ("5m", "1h", "4h"):
+                refreshed = await self._maybe_refresh_derived_tf(symbol, interval, df)
+                if refreshed:
+                    updated = self.ram.get(symbol, interval)
+                    if updated is not None and not updated.empty:
+                        self.metrics.get_latency.labels(layer="derive_refresh").observe(
+                            time.perf_counter() - t0
+                        )
+                        return updated.tail(limit) if limit else updated
             self.metrics.get_latency.labels(layer="ram").observe(
                 time.perf_counter() - t0
             )
@@ -1156,6 +1177,19 @@ class UnifiedDataStore:
 
         # 3) Disk snapshot
         disk_df = await self.disk.load_bars(symbol, interval)
+
+        # Stage1 (TF-правда): якщо snapshot для похідного TF існує, але parent
+        # уже просунувся настільки, що можна зібрати новий complete-бакет,
+        # пробуємо refresh (інакше 1h/4h можуть залишатися "дірявими" під час стріму).
+        if disk_df is not None and not disk_df.empty and interval in ("5m", "1h", "4h"):
+            refreshed = await self._maybe_refresh_derived_tf(symbol, interval, disk_df)
+            if refreshed:
+                updated = self.ram.get(symbol, interval)
+                if updated is not None and not updated.empty:
+                    self.metrics.get_latency.labels(layer="derive_refresh").observe(
+                        time.perf_counter() - t0
+                    )
+                    return updated.tail(limit) if limit else updated
 
         # Stage1 (TF-правда): якщо для structural TF (5m/1h/4h) немає snapshot-а,
         # намагаємось матеріалізувати його з нижчого TF (SSOT=1m).
@@ -1204,8 +1238,96 @@ class UnifiedDataStore:
         self.metrics.get_latency.labels(layer="disk").observe(time.perf_counter() - t0)
         return out.tail(limit) if limit else out
 
+    @staticmethod
+    def _df_last_open_time_ms(df: pd.DataFrame | None) -> int | None:
+        if df is None or df.empty or "open_time" not in df.columns:
+            return None
+        try:
+            val = df.iloc[-1].get("open_time")
+        except Exception:
+            val = None
+        if val is None:
+            return None
+        try:
+            num = pd.to_numeric(val, errors="coerce")
+        except Exception:
+            return None
+        if pd.isna(num):
+            return None
+        try:
+            return int(float(num))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _derived_parent_tf(target_tf: str) -> str | None:
+        target = str(target_tf or "").strip().lower()
+        if target == "5m":
+            return "1m"
+        if target == "1h":
+            return "5m"
+        if target == "4h":
+            return "1h"
+        return None
+
+    async def _maybe_refresh_derived_tf(
+        self, symbol: str, target_tf: str, disk_df: pd.DataFrame
+    ) -> bool:
+        """Best-effort refresh похідного TF, якщо з'явились нові complete-бакети."""
+
+        target = str(target_tf or "").strip().lower()
+        parent = self._derived_parent_tf(target)
+        if parent is None:
+            return False
+
+        now_ms = int(time.time() * 1000)
+        key = (symbol.lower(), target)
+        last_try = self._derived_refresh_last_ms.get(key, 0)
+        if now_ms - last_try < DERIVED_TF_REFRESH_THROTTLE_MS:
+            return False
+        self._derived_refresh_last_ms[key] = now_ms
+
+        tgt_ms = _timeframe_to_ms(target)
+        parent_ms = _timeframe_to_ms(parent)
+        if not tgt_ms or not parent_ms:
+            return False
+
+        disk_last_open = self._df_last_open_time_ms(disk_df)
+        if disk_last_open is None:
+            return False
+
+        parent_last = await self.get_last(symbol, parent)
+        if not isinstance(parent_last, dict):
+            return False
+        parent_last_open = self._df_last_open_time_ms(pd.DataFrame([parent_last]))
+        if parent_last_open is None:
+            return False
+
+        # Чи можемо зібрати хоча б ОДИН новий complete bucket?
+        # next_open = останній_похідний_open + tgt_ms
+        # потрібен parent до next_open + tgt_ms - parent_ms (останній підбар у групі)
+        next_open = disk_last_open + int(tgt_ms)
+        required_parent_last_open = next_open + int(tgt_ms) - int(parent_ms)
+        if parent_last_open < required_parent_last_open:
+            return False
+
+        try:
+            derived_tail = await self._materialize_tf_from_lower(
+                symbol, target, source_limit=DERIVED_TF_SOURCE_LIMIT_BARS
+            )
+            return bool(derived_tail is not None and not derived_tail.empty)
+        except Exception as e:
+            logger.warning(
+                "[tf_refresh] Не вдалося оновити %s %s з %s: %s",
+                symbol,
+                target,
+                parent,
+                e,
+            )
+            return False
+
     async def _materialize_tf_from_lower(
-        self, symbol: str, target_tf: str
+        self, symbol: str, target_tf: str, *, source_limit: int | None = None
     ) -> pd.DataFrame | None:
         """Матеріалізує target_tf з нижчого TF і зберігає результат у store.
 
@@ -1229,7 +1351,7 @@ class UnifiedDataStore:
         if parent != "1m":
             _ = await self.get_df(symbol, parent)
 
-        source_df = await self.get_df(symbol, parent)
+        source_df = await self.get_df(symbol, parent, limit=source_limit)
         if source_df is None or source_df.empty:
             return None
 

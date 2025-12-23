@@ -36,6 +36,8 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import math
+import time
 from collections.abc import Mapping, Sequence
 from json import JSONDecodeError
 from typing import Any
@@ -44,6 +46,7 @@ import pandas as pd
 from redis.asyncio import Redis
 
 from app.settings import settings
+from config import config as cfg
 from core.serialization import json_dumps, json_loads, safe_int
 from data.fxcm_status_listener import get_fxcm_feed_state, note_fxcm_bar_close
 from data.unified_store import UnifiedDataStore
@@ -114,11 +117,156 @@ _LAST_LIVE_BAR_BY_PAIR: dict[tuple[str, str], dict[str, Any]] = {}
 _LAST_LIVE_SYNTHETIC_BY_PAIR: dict[tuple[str, str], bool] = {}
 _LAST_FINALIZED_OPEN_TIME_BY_PAIR: dict[tuple[str, str], int] = {}
 
+# Останній успішно записаний open_time per (symbol, tf).
+# Використовується для детекту гепів під час live-стріму (data-integrity guard).
+_LAST_INGESTED_OPEN_TIME_BY_PAIR: dict[tuple[str, str], int] = {}
+
+# Rate-limit live gap backfill команд per (symbol, tf).
+_LAST_LIVE_GAP_BACKFILL_MONO_BY_PAIR: dict[tuple[str, str], float] = {}
+
 
 def _reset_live_cache_for_tests() -> None:  # pragma: no cover
     _LAST_LIVE_BAR_BY_PAIR.clear()
     _LAST_LIVE_SYNTHETIC_BY_PAIR.clear()
     _LAST_FINALIZED_OPEN_TIME_BY_PAIR.clear()
+    _LAST_INGESTED_OPEN_TIME_BY_PAIR.clear()
+    _LAST_LIVE_GAP_BACKFILL_MONO_BY_PAIR.clear()
+
+
+def _timeframe_to_ms(tf: str) -> int | None:
+    """Легка конверсія timeframe → ms.
+
+    Важливо: не тягнемо залежності з app/* у data layer.
+    Підтримує формати на кшталт: 1m, 5m, 1h, 4h, 1d.
+    """
+
+    raw = str(tf or "").strip().lower()
+    if not raw:
+        return None
+    unit = raw[-1]
+    num_raw = raw[:-1]
+    try:
+        value = int(num_raw)
+    except Exception:
+        return None
+    if value <= 0:
+        return None
+
+    if unit == "m":
+        return value * 60_000
+    if unit == "h":
+        return value * 3_600_000
+    if unit == "d":
+        return value * 86_400_000
+    return None
+
+
+def _build_fxcm_status_block() -> dict[str, Any]:
+    """Мінімальний status-block для payload команд (діагностика)."""
+
+    try:
+        state = get_fxcm_feed_state()
+        return {
+            "market": (state.market_state or "").strip().lower() or None,
+            "price": (state.price_state or "").strip().lower() or None,
+            "ohlcv": (state.ohlcv_state or "").strip().lower() or None,
+        }
+    except Exception:
+        return {}
+
+
+async def _maybe_publish_live_gap_backfill(
+    redis: Redis | None,
+    *,
+    symbol: str,
+    interval: str,
+    last_open_time_ms: int,
+    next_open_time_ms: int,
+    tf_ms: int,
+) -> None:
+    if not redis:
+        return
+
+    if not bool(getattr(cfg, "SMC_LIVE_GAP_BACKFILL_ENABLED", False)):
+        return
+
+    cooldown_sec = int(getattr(cfg, "SMC_LIVE_GAP_BACKFILL_COOLDOWN_SEC", 120) or 120)
+    cooldown_sec = max(1, cooldown_sec)
+
+    max_gap_min = int(getattr(cfg, "SMC_LIVE_GAP_BACKFILL_MAX_GAP_MINUTES", 180) or 180)
+    max_gap_min = max(1, max_gap_min)
+
+    pair = (symbol, interval)
+    now_mono = time.monotonic()
+    last_mono = _LAST_LIVE_GAP_BACKFILL_MONO_BY_PAIR.get(pair)
+    if last_mono is not None and (now_mono - float(last_mono)) < float(cooldown_sec):
+        return
+
+    delta_ms = int(next_open_time_ms) - int(last_open_time_ms)
+    if delta_ms <= int(tf_ms):
+        return
+
+    gap_ms = delta_ms - int(tf_ms)
+    if gap_ms > max_gap_min * 60_000:
+        # Типовий кейс: закритий ринок/вихідні. Не спамимо конектор.
+        logger.info(
+            "[FXCM_INGEST] Live gap занадто великий для авто-backfill: %s %s gap=%dms (max=%dmin)",
+            symbol,
+            interval,
+            int(gap_ms),
+            int(max_gap_min),
+        )
+        return
+
+    base_lookback = int(getattr(cfg, "SMC_LIVE_GAP_BACKFILL_LOOKBACK_BARS", 800) or 800)
+    base_lookback = max(1, base_lookback)
+
+    # Підвищуємо lookback лише якщо gap реально більший за базове вікно,
+    # але тримаємо верхню межу, щоб не створювати важкий запит у live.
+    missing_bars = max(0, int(delta_ms // int(tf_ms)) - 1)
+    request_bars = max(base_lookback, missing_bars + 5)
+    request_bars = min(1200, request_bars)
+
+    lookback_minutes = max(1, int(math.ceil((request_bars * int(tf_ms)) / 60_000.0)))
+
+    cmd_type = "fxcm_warmup" if interval == "1m" else "fxcm_backfill"
+    payload: dict[str, Any] = {
+        "type": cmd_type,
+        "symbol": symbol.upper(),
+        "tf": interval,
+        "min_history_bars": int(request_bars),
+        "lookback_bars": int(request_bars),
+        "lookback_minutes": int(lookback_minutes),
+        "reason": "live_gap_detected",
+        "s2": {
+            "history_state": "gappy_tail",
+            "last_open_time_ms": int(last_open_time_ms),
+            "next_open_time_ms": int(next_open_time_ms),
+            "expected_step_ms": int(tf_ms),
+            "gap_ms": int(gap_ms),
+            "missing_bars": int(missing_bars),
+        },
+        "fxcm_status": _build_fxcm_status_block(),
+    }
+
+    try:
+        await redis.publish(cfg.FXCM_COMMANDS_CHANNEL, json_dumps(payload))
+        _LAST_LIVE_GAP_BACKFILL_MONO_BY_PAIR[pair] = now_mono
+        logger.info(
+            "[FXCM_INGEST] Live gap → send %s for %s %s (gap=%dms, request_bars=%d, channel=%s)",
+            cmd_type,
+            symbol.upper(),
+            interval,
+            int(gap_ms),
+            int(request_bars),
+            cfg.FXCM_COMMANDS_CHANNEL,
+        )
+    except Exception:
+        logger.warning(
+            "[FXCM_INGEST] Не вдалося publish live-gap команду у %s",
+            cfg.FXCM_COMMANDS_CHANNEL,
+            exc_info=True,
+        )
 
 
 def _is_ingest_allowed_by_status() -> tuple[bool, str]:
@@ -328,6 +476,7 @@ async def _process_payload(
     store: UnifiedDataStore,
     payload: Mapping[str, Any],
     *,
+    redis: Redis | None = None,
     hmac_secret: str | None,
     hmac_algo: str,
     hmac_required: bool,
@@ -485,6 +634,29 @@ async def _process_payload(
     if df.empty:
         return 0, None, None
 
+    pair = (symbol_norm, interval_norm)
+    tf_ms = _timeframe_to_ms(interval_norm)
+    last_ingested = _LAST_INGESTED_OPEN_TIME_BY_PAIR.get(pair)
+    next_open_after_last: int | None = None
+    max_open_in_payload: int | None = None
+
+    try:
+        for raw_open in df["open_time"].tolist():
+            open_ms = safe_int(raw_open)
+            if open_ms is None or open_ms <= 0:
+                continue
+            if max_open_in_payload is None or open_ms > max_open_in_payload:
+                max_open_in_payload = int(open_ms)
+            if (
+                last_ingested is not None
+                and open_ms > int(last_ingested)
+                and next_open_after_last is None
+            ):
+                next_open_after_last = int(open_ms)
+    except Exception:
+        next_open_after_last = None
+        max_open_in_payload = None
+
     try:
         await store.put_bars(symbol_norm, interval_norm, df)
     except Exception as exc:  # noqa: BLE001
@@ -495,6 +667,26 @@ async def _process_payload(
             exc,
         )
         return 0, None, None
+
+    # Оновлюємо last_ingested лише після успішного put_bars.
+    if max_open_in_payload is not None:
+        _LAST_INGESTED_OPEN_TIME_BY_PAIR[pair] = int(max_open_in_payload)
+
+    # Live gap guard: якщо бачимо стрибок open_time, просимо конектор добрати історію.
+    if (
+        last_ingested is not None
+        and next_open_after_last is not None
+        and tf_ms is not None
+        and tf_ms > 0
+    ):
+        await _maybe_publish_live_gap_backfill(
+            redis,
+            symbol=symbol_norm,
+            interval=interval_norm,
+            last_open_time_ms=int(last_ingested),
+            next_open_time_ms=int(next_open_after_last),
+            tf_ms=int(tf_ms),
+        )
 
     # Метрики інкрементуємо лише після успішного запису в UDS.
     for is_synth in synthetic_flags:
@@ -614,6 +806,7 @@ async def run_fxcm_ingestor(
                 rows, symbol, interval = await _process_payload(
                     store,
                     payload,
+                    redis=redis,
                     hmac_secret=normalized_secret,
                     hmac_algo=normalized_algo,
                     hmac_required=hmac_required,
@@ -634,7 +827,7 @@ async def run_fxcm_ingestor(
                     )
         except asyncio.CancelledError:
             # Очікуваний шлях завершення при зупинці пайплайна
-            logger.info("[FXCM_INGEST] Отримано CancelledError, завершуємо роботу.")
+            logger.debug("[FXCM_INGEST] Отримано CancelledError, завершуємо роботу.")
             raise
         except Exception:
             logger.warning(

@@ -138,11 +138,11 @@
 ## 2025-12-23
 
 - **UI_v2: форензика “разовий ривок/розмазування масштабу по Y” на першому wheel**
-	- **Вимога**: нічого не міняти у коді, а спочатку зафіксувати поточний стан максимально детально.
-	- **Симптом (зі слів користувача)**:
-		- Після refresh або зміни TF перший wheel по price-axis дає разовий “ривок/розмазування” (ніби двічі застосувався scale або “підкрутило” range).
-		- Далі wheel працює більш очікувано.
-	- **Контекст реалізації (поточний стан, “як є”)**:
+ 	- **Вимога**: нічого не міняти у коді, а спочатку зафіксувати поточний стан максимально детально.
+ 	- **Симптом (зі слів користувача)**:
+  		- Після refresh або зміни TF перший wheel по price-axis дає разовий “ривок/розмазування” (ніби двічі застосувався scale або “підкрутило” range).
+  		- Далі wheel працює більш очікувано.
+ 	- **Контекст реалізації (поточний стан, “як є”)**:
 		1) **Built-in scaling lightweight-charts увімкнений у дефолтних опціях**
 			- Файл: [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js)
 			- `DEFAULT_CHART_OPTIONS.handleScale.mouseWheel = true`
@@ -179,105 +179,213 @@
 			- Є окремий `container.addEventListener("wheel", onWheel, { passive: true })`, який лише планує перерахунок DOM-лейблів POI через RAF.
 			- Коментар у коді: “wheel у capture-режимі вже обробляється price-axis. Тут — best-effort.”
 			- Цей listener не викликає `preventDefault` і не змінює scale/range напряму.
-	- **Найімовірніший механізм “перший wheel стрибає” (гіпотеза №1, найсильніша по коду)**:
-		- На першому wheel після refresh/зміни TF `getEffectivePriceRange()` інколи повертає `null` (ще немає валідного `lastAutoRange`, або `paneSize/coordinateToPrice` тимчасово не дають чисел).
-		- Через ранній `return` кастомний `handleWheel` НЕ викликає `preventDefault/stop*`.
-		- Built-in wheel-scale бібліотеки (бо `handleScale.mouseWheel=true`) відпрацьовує і змінює scale/range → користувач бачить разовий “ривок”.
-		- На наступних wheel `lastAutoRange` вже ініціалізовано, `getEffectivePriceRange()` стає не-null, і кастомний хендлер починає перехоплювати події в capture-фазі та глушити built-in → “після першого разу норм”.
-	- **Альтернативний механізм (гіпотеза №2, слабша, але можлива)**:
-		- Якщо lightweight-charts підписався на `wheel` у capture на тому ж target раніше, ніж наш `addEventListener`, то його built-in може спрацювати першим.
-		- У цьому випадку навіть `stopImmediatePropagation` у нашому хендлері не зупинить вже виконаний built-in.
-		- Але це гірше пояснює “саме перший wheel”, якщо немає одноразової неготовності (гіпотеза №1).
-	- **Примітка**: `axisPressedMouseMove.price = true` також означає, що drag по price-axis може активувати built-in логіку шкали. Поточний кастомний код блокує лише `handleScroll.pressedMouseMove` під час нашого vertical-pan, але не вимикає `handleScale.axisPressedMouseMove.price` глобально.
-	- **Тести/перевірки**: не запускались (зміна лише документаційна, код не чіпали).
-	- **Ризики/нотатки**:
-		- Цей запис — “зріз стану” перед будь-якими правками.
-		- Якщо будемо робити мін-фікс, треба зберегти UX: wheel у pane лишається за бібліотекою, а wheel у price-axis має бути детерміновано перехоплений без одноразових пропусків.
+ 	- **Найімовірніший механізм “перший wheel стрибає” (гіпотеза №1, найсильніша по коду)**:
+  		- На першому wheel після refresh/зміни TF `getEffectivePriceRange()` інколи повертає `null` (ще немає валідного `lastAutoRange`, або `paneSize/coordinateToPrice` тимчасово не дають чисел).
+  		- Через ранній `return` кастомний `handleWheel` НЕ викликає `preventDefault/stop*`.
+  		- Built-in wheel-scale бібліотеки (бо `handleScale.mouseWheel=true`) відпрацьовує і змінює scale/range → користувач бачить разовий “ривок”.
+  		- На наступних wheel `lastAutoRange` вже ініціалізовано, `getEffectivePriceRange()` стає не-null, і кастомний хендлер починає перехоплювати події в capture-фазі та глушити built-in → “після першого разу норм”.
+ 	- **Альтернативний механізм (гіпотеза №2, слабша, але можлива)**:
+  		- Якщо lightweight-charts підписався на `wheel` у capture на тому ж target раніше, ніж наш `addEventListener`, то його built-in може спрацювати першим.
+  		- У цьому випадку навіть `stopImmediatePropagation` у нашому хендлері не зупинить вже виконаний built-in.
+  		- Але це гірше пояснює “саме перший wheel”, якщо немає одноразової неготовності (гіпотеза №1).
+ 	- **Примітка**: `axisPressedMouseMove.price = true` також означає, що drag по price-axis може активувати built-in логіку шкали. Поточний кастомний код блокує лише `handleScroll.pressedMouseMove` під час нашого vertical-pan, але не вимикає `handleScale.axisPressedMouseMove.price` глобально.
+ 	- **Тести/перевірки**: не запускались (зміна лише документаційна, код не чіпали).
+ 	- **Ризики/нотатки**:
+  		- Цей запис — “зріз стану” перед будь-якими правками.
+  		- Якщо будемо робити мін-фікс, треба зберегти UX: wheel у pane лишається за бібліотекою, а wheel у price-axis має бути детерміновано перехоплений без одноразових пропусків.
 
 - **UI_v2: P0 фікс “перший wheel не проскакує в built-in scale”**
-	- **Проблема**: у `setupPriceScaleInteractions()` подію wheel глушили (preventDefault/stop*) лише після `getEffectivePriceRange()`. Якщо `getEffectivePriceRange()` на першій взаємодії повертає `null`, wheel проходить у built-in масштабування lightweight-charts → разовий “ривок/розмаз”.
-	- **Зміна (мінімальний диф, UX не розширюємо)**:
-		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) wheel-хендлер тепер викликає `preventDefault()` + `stopImmediatePropagation()` + `stopPropagation()` ДО перевірки `getEffectivePriceRange()`.
-		- Якщо range ще не готовий — ми просто виходимо, але built-in вже заблоковано (замість разового стрибка).
-	- **Ризики/нотатки**:
-		- Якщо користувач одразу після refresh крутить wheel по price-axis, а метрики ще не готові, wheel “нічого не зробить” (але це краще за неконтрольований built-in ривок).
-		- Обробка wheel у pane без Shift не змінюється (там ми не перехоплюємо подію).
-	- **Smoke-перевірка (2 хв)**:
-		- Refresh/F5 → одразу wheel по price-axis: не має бути разового ривка/«розмазу».
-		- Wheel у pane без Shift: time-zoom як раніше.
-		- Shift+wheel у pane: manual vertical pan працює, сторінка не скролиться.
-	- **Факт після спроби**:
-		- На практиці у конкретному середовищі користувача це НЕ прибрало симптом і місцями зробило UX гіршим (wheel інколи “глушиться”, але дія не застосовується).
+ 	- **Проблема**: у `setupPriceScaleInteractions()` подію wheel глушили (preventDefault/stop*) лише після `getEffectivePriceRange()`. Якщо `getEffectivePriceRange()` на першій взаємодії повертає `null`, wheel проходить у built-in масштабування lightweight-charts → разовий “ривок/розмаз”.
+ 	- **Зміна (мінімальний диф, UX не розширюємо)**:
+  		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) wheel-хендлер тепер викликає `preventDefault()` + `stopImmediatePropagation()` + `stopPropagation()` ДО перевірки `getEffectivePriceRange()`.
+  		- Якщо range ще не готовий — ми просто виходимо, але built-in вже заблоковано (замість разового стрибка).
+ 	- **Ризики/нотатки**:
+  		- Якщо користувач одразу після refresh крутить wheel по price-axis, а метрики ще не готові, wheel “нічого не зробить” (але це краще за неконтрольований built-in ривок).
+  		- Обробка wheel у pane без Shift не змінюється (там ми не перехоплюємо подію).
+ 	- **Smoke-перевірка (2 хв)**:
+  		- Refresh/F5 → одразу wheel по price-axis: не має бути разового ривка/«розмазу».
+  		- Wheel у pane без Shift: time-zoom як раніше.
+  		- Shift+wheel у pane: manual vertical pan працює, сторінка не скролиться.
+ 	- **Факт після спроби**:
+  		- На практиці у конкретному середовищі користувача це НЕ прибрало симптом і місцями зробило UX гіршим (wheel інколи “глушиться”, але дія не застосовується).
 
 - **UI_v2: P0.1 фікс (стабільний hit-test price-axis + відкладений wheel на 1 кадр)**
-	- **Гіпотеза**:
-		- Після init/зміни TF `chart.paneSize()` і/або `priceScale("right").width()` можуть тимчасово бути 0.
-		- Через це `isPointerInPriceAxis()`/`isPointerInsidePane()` могли повертати `false`, і перехоплення wheel ставало недетермінованим.
-		- Додатково, коли `getEffectivePriceRange()` ще `null`, ми глушили wheel, але дія не виконувалась → “відчуття гірше”.
-	- **Зміна**:
-		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) додано fallback hit-test для price-axis на випадок нульових метрик:
-			- Використовується `PRICE_AXIS_FALLBACK_WIDTH_PX = 56` (узгоджено з CSS-резервом: `styles.css` -> `.chart-overlay-actions { padding-right: 56px; }`).
-			- `isPointerInPriceAxis()`/`isPointerInsidePane()` більше не вимагають `paneWidth/paneHeight` як обов'язкові для роботи.
-		- Якщо `getEffectivePriceRange()` ще не готовий, wheel-дія (zoom/pan) відкладається на 1 кадр через `requestAnimationFrame`, щоб перша взаємодія не “помирала”.
-	- **Очікування**:
-		- Wheel по price-axis після refresh/зміни TF має бути детермінований: без built-in “ривка” і без “глухого” колеса.
+ 	- **Гіпотеза**:
+  		- Після init/зміни TF `chart.paneSize()` і/або `priceScale("right").width()` можуть тимчасово бути 0.
+  		- Через це `isPointerInPriceAxis()`/`isPointerInsidePane()` могли повертати `false`, і перехоплення wheel ставало недетермінованим.
+  		- Додатково, коли `getEffectivePriceRange()` ще `null`, ми глушили wheel, але дія не виконувалась → “відчуття гірше”.
+ 	- **Зміна**:
+  		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) додано fallback hit-test для price-axis на випадок нульових метрик:
+   			- Використовується `PRICE_AXIS_FALLBACK_WIDTH_PX = 56` (узгоджено з CSS-резервом: `styles.css` -> `.chart-overlay-actions { padding-right: 56px; }`).
+   			- `isPointerInPriceAxis()`/`isPointerInsidePane()` більше не вимагають `paneWidth/paneHeight` як обов'язкові для роботи.
+  		- Якщо `getEffectivePriceRange()` ще не готовий, wheel-дія (zoom/pan) відкладається на 1 кадр через `requestAnimationFrame`, щоб перша взаємодія не “помирала”.
+ 	- **Очікування**:
+  		- Wheel по price-axis після refresh/зміни TF має бути детермінований: без built-in “ривка” і без “глухого” колеса.
 
 - **UI_v2: live-оновлення (тик/WS) → зменшення “стрибків” від частих перерендерів**
-	- **Спостереження (з поля)**:
-		- “Стрибки” проявляються саме коли ринок відкритий і live-свічка/ціна рухається.
-		- На закритому ринку (коли свічка не рухається) графік стабільний.
-		- При вимкненні live-volume поведінка volume стабілізується.
-	- **Root-cause (ймовірний, по коду)**:
-		- `setLiveBar()` викликається часто (tick stream throttled ~200 мс) і робив:
-			- `liveVolume.setData([])` практично на кожен тик (бо volume=0 у tick-стрімі) → зайві перерахунки/перемальовки;
-			- `updateCurrentPriceLine()` пересоздавав price-line на кожне оновлення ціни (remove + create) → потенційне “смикання” бейджа/шкали.
-	- **Зміна (мінімальний диф, UX не міняємо)**:
-		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js):
-			- `currentPriceLine` тепер оновлюється через `applyOptions({price,color})`, якщо owner не змінився (замість remove+create на кожен тик).
-			- `liveVolume` тепер НЕ робить `setData([])` на кожен тик: чиститься/малюється лише при зміні видимості або при зміні бару; у межах одного бару використовує `update()`.
-	- **Очікування**:
-		- Менше “дергання” при live-оновленнях, особливо по осі/бейджу ціни та по volume.
+ 	- **Спостереження (з поля)**:
+  		- “Стрибки” проявляються саме коли ринок відкритий і live-свічка/ціна рухається.
+  		- На закритому ринку (коли свічка не рухається) графік стабільний.
+  		- При вимкненні live-volume поведінка volume стабілізується.
+ 	- **Root-cause (ймовірний, по коду)**:
+  		- `setLiveBar()` викликається часто (tick stream throttled ~200 мс) і робив:
+   			- `liveVolume.setData([])` практично на кожен тик (бо volume=0 у tick-стрімі) → зайві перерахунки/перемальовки;
+   			- `updateCurrentPriceLine()` пересоздавав price-line на кожне оновлення ціни (remove + create) → потенційне “смикання” бейджа/шкали.
+ 	- **Зміна (мінімальний диф, UX не міняємо)**:
+  		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js):
+   			- `currentPriceLine` тепер оновлюється через `applyOptions({price,color})`, якщо owner не змінився (замість remove+create на кожен тик).
+   			- `liveVolume` тепер НЕ робить `setData([])` на кожен тик: чиститься/малюється лише при зміні видимості або при зміні бару; у межах одного бару використовує `update()`.
+ 	- **Очікування**:
+  		- Менше “дергання” при live-оновленнях, особливо по осі/бейджу ціни та по volume.
+
+- **UI_v2: SSOT “інваріанти/межі графіка”**
+	- Додано документ [docs/ui/ui_v2_chart_invariants_and_boundaries.md](docs/ui/ui_v2_chart_invariants_and_boundaries.md) з правилами для wheel/drag/manualRange/lastAutoRange.
+
+- **UI_v2: “80% unit/logic” — витяг чистих функцій + тести без Node.js**
+	- Витягнуто чисту логіку в [UI_v2/web_client/chart_adapter_logic.js](UI_v2/web_client/chart_adapter_logic.js): `normalizeRange`, hit-test (price-axis/pane), `computeEffectivePriceRange`, `clamp`.
+	- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) підключено ці функції (через `globalThis.ChartAdapterLogic`) без зміни UX.
+	- Додано pytest-тести, які виконують JS через `quickjs`: [tests/test_ui_v2_chart_adapter_logic.py](tests/test_ui_v2_chart_adapter_logic.py).
+	- **Тести/перевірки**: `pytest -q tests/test_ui_v2_chart_adapter_logic.py`.
+	- Додано чисті wheel-функції: `computeWheelZoomRange`, `computeWheelPanRange` + тести на напрям/зсув/anchor.
 
 - **UI_v2: P2 фікс “перший vertical-pan/axis-drag не дає Y-стрибок при live-свічці”**
-	- **Симптом (з поля)**:
-		- Після refresh/зміни TF: wheel/scroll по часу працюють стабільно.
-		- Але перший легкий drag вгору у pane або взаємодія по правій шкалі ціни дає різкий Y-стрибок (“їжаки”), після чого поведінка стабілізується до наступного refresh/TF change.
-		- На закритому ринку (без live-руху) симптом відсутній.
-	- **Root-cause (ймовірний, по коду)**:
-		- `getEffectivePriceRange()` використовує `priceScaleState.lastAutoRange`, якщо він є.
-		- `lastAutoRange` оновлювався через `autoscaleInfoProvider` і для `candles`, і для `liveCandles`.
-		- Коли liveCandles активний (1 жива свічка, часто оновлюється), `lastAutoRange` міг “перетиратись” діапазоном саме live-серії.
-		- При першому vertical-pan `ensureManualRange(baseRange)` міг стартувати з цього “live-range”, що виглядає як різкий Y-zoom/розмаз.
-	- **Зміна**:
-		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) `lastAutoRange` тепер трекається тільки по основній серії `candles` (liveCandles не перетирає `lastAutoRange`).
-		- При reset датасету (`setBars([])`, `looksLikeNewDataset`, `clearAll`) додатково очищаємо `priceScaleState.lastAutoRange = null`, щоб не брати застарілий діапазон після TF/symbol reset.
-	- **Очікування**:
-		- Перший vertical-pan/axis взаємодія після refresh/TF change не повинна давати різкий Y-стрибок, навіть якщо live-свічка рухається.
-	- **Статус після первинної перевірки (з поля)**:
-		- Користувач підтвердив: “зараз все виглядає чудово та ніби виправили”.
-		- Примітка: потрібен час на польові тести/спостереження (різні TF, різні стани ринку, кілька refresh/перезапусків), щоб підтвердити відсутність регресій.
+ 	- **Симптом (з поля)**:
+  		- Після refresh/зміни TF: wheel/scroll по часу працюють стабільно.
+  		- Але перший легкий drag вгору у pane або взаємодія по правій шкалі ціни дає різкий Y-стрибок (“їжаки”), після чого поведінка стабілізується до наступного refresh/TF change.
+  		- На закритому ринку (без live-руху) симптом відсутній.
+ 	- **Root-cause (ймовірний, по коду)**:
+  		- `getEffectivePriceRange()` використовує `priceScaleState.lastAutoRange`, якщо він є.
+  		- `lastAutoRange` оновлювався через `autoscaleInfoProvider` і для `candles`, і для `liveCandles`.
+  		- Коли liveCandles активний (1 жива свічка, часто оновлюється), `lastAutoRange` міг “перетиратись” діапазоном саме live-серії.
+  		- При першому vertical-pan `ensureManualRange(baseRange)` міг стартувати з цього “live-range”, що виглядає як різкий Y-zoom/розмаз.
+ 	- **Зміна**:
+  		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) `lastAutoRange` тепер трекається тільки по основній серії `candles` (liveCandles не перетирає `lastAutoRange`).
+  		- При reset датасету (`setBars([])`, `looksLikeNewDataset`, `clearAll`) додатково очищаємо `priceScaleState.lastAutoRange = null`, щоб не брати застарілий діапазон після TF/symbol reset.
+ 	- **Очікування**:
+  		- Перший vertical-pan/axis взаємодія після refresh/TF change не повинна давати різкий Y-стрибок, навіть якщо live-свічка рухається.
+ 	- **Статус після первинної перевірки (з поля)**:
+  		- Користувач підтвердив: “зараз все виглядає чудово та ніби виправили”.
+  		- Примітка: потрібен час на польові тести/спостереження (різні TF, різні стани ринку, кілька refresh/перезапусків), щоб підтвердити відсутність регресій.
 
 - **S2/S3: розслідування пропусків хвилин (дірки) + автоматичний repair**
-	- **Симптом (з поля)**: візуально помітні “розрізи” між 1m свічками, які виглядають як гепи; внаслідок цього "биті" також вищі TF (напр. 4h), бо 4h матеріалізується з 1m→5m→1h.
-	- **Root-cause (по коду, підтверджено)**:
-		- S2 `compute_history_status()` рахував `gaps_count/non_monotonic_count` лише на вікні `limit=min_history_bars` (типово 300), тому gap-и, що були глибше в історії (наприклад у видимих ~800 барах UI), могли не детектитись.
-		- S3 при `gappy_tail/non_monotonic_tail` просив у конектора лише `desired_bars` (типово 300), тож навіть коли gap був виявлений глибше, repair міг не перекрити ділянку розриву.
-		- S3 на `market=closed` пропускав команди для будь-якого стану, крім `insufficient`, що блокувало офлайн-добір “дір”, які утворились у відкритий ринок.
-	- **Зміни (мінімальний диф)**:
-		- У [app/fxcm_history_state.py](app/fxcm_history_state.py) додано `diagnostic_bars`: S2 може аналізувати ширше вікно для gaps/non-monotonic, не змінюючи поріг готовності `min_history_bars`.
-		- У [app/fxcm_warmup_requester.py](app/fxcm_warmup_requester.py):
-			- при `gappy_tail/non_monotonic_tail` збільшено `lookback_bars` до `~3x desired` (cap 1200), щоб реально перекривати видимі розриви;
-			- при `market=closed` repair дозволено для `gappy_tail/non_monotonic_tail` (а `stale_tail` як і раніше не шумимо на закритому ринку).
-	- **Тести/перевірки**:
-		- `pytest -q tests/test_s2_history_state.py` (OK)
-		- `pytest -q tests/test_s3_warmup_requester.py` (OK)
-	- **Ризики/нотатки**:
-		- S2 трохи частіше читає з UDS (до 1200 барів на пару), але cap 2000/1200 обмежує навантаження.
-		- Якість 4h напряму залежить від повноти 1m (агрегація зараз сувора: неповні bucket-и пропускаються).
+ 	- **Симптом (з поля)**: візуально помітні “розрізи” між 1m свічками, які виглядають як гепи; внаслідок цього "биті" також вищі TF (напр. 4h), бо 4h матеріалізується з 1m→5m→1h.
+ 	- **Root-cause (по коду, підтверджено)**:
+  		- S2 `compute_history_status()` рахував `gaps_count/non_monotonic_count` лише на вікні `limit=min_history_bars` (типово 300), тому gap-и, що були глибше в історії (наприклад у видимих ~800 барах UI), могли не детектитись.
+  		- S3 при `gappy_tail/non_monotonic_tail` просив у конектора лише `desired_bars` (типово 300), тож навіть коли gap був виявлений глибше, repair міг не перекрити ділянку розриву.
+  		- S3 на `market=closed` пропускав команди для будь-якого стану, крім `insufficient`, що блокувало офлайн-добір “дір”, які утворились у відкритий ринок.
+ 	- **Зміни (мінімальний диф)**:
+  		- У [app/fxcm_history_state.py](app/fxcm_history_state.py) додано `diagnostic_bars`: S2 може аналізувати ширше вікно для gaps/non-monotonic, не змінюючи поріг готовності `min_history_bars`.
+  		- У [app/fxcm_warmup_requester.py](app/fxcm_warmup_requester.py):
+   			- при `gappy_tail/non_monotonic_tail` збільшено `lookback_bars` до `~3x desired` (cap 1200), щоб реально перекривати видимі розриви;
+   			- при `market=closed` repair дозволено для `gappy_tail/non_monotonic_tail` (а `stale_tail` як і раніше не шумимо на закритому ринку).
+ 	- **Тести/перевірки**:
+  		- `pytest -q tests/test_s2_history_state.py` (OK)
+  		- `pytest -q tests/test_s3_warmup_requester.py` (OK)
+ 	- **Ризики/нотатки**:
+  		- S2 трохи частіше читає з UDS (до 1200 барів на пару), але cap 2000/1200 обмежує навантаження.
+  		- Якість 4h напряму залежить від повноти 1m (агрегація зараз сувора: неповні bucket-и пропускаються).
 
 - **UI_v2: стабілізація hover-tooltip на живому графіку**
-	- **Симптом (з поля)**: тултіпи нестабільні — швидко зникають або довго не з’являються; причина — live-оновлення графіка постійно «підбиває» crosshair callback.
-	- **Зміна**: у [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js)
-		- додано короткий grace на hide (250мс) для шумних подій без `time/point`;
-		- зменшено затримку показу з 1000мс до 200мс;
-		- якщо курсор не рухався (та сама точка/час) — не скидаємо show-таймер, щоб tooltip не “ніколи не з’являвся”.
+ 	- **Симптом (з поля)**: тултіпи нестабільні — швидко зникають або довго не з’являються; причина — live-оновлення графіка постійно «підбиває» crosshair callback.
+ 	- **Зміна**: у [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js)
+  		- додано короткий grace на hide (250мс) для шумних подій без `time/point`;
+  		- зменшено затримку показу з 1000мс до 200мс;
+  		- якщо курсор не рухався (та сама точка/час) — не скидаємо show-таймер, щоб tooltip не “ніколи не з’являвся”.
+
+- **UDS: on-demand refresh похідних TF (5m/1h/4h) при live-стрімі**
+ 	- **Симптом (з поля)**: 1h/4h можуть бути “діряві” саме під час стріму; після рестарту інколи виглядає краще.
+ 	- **Root-cause (по коду, підтверджено)**: у [data/unified_store.py](data/unified_store.py) `get_df()` матеріалізував 5m/1h/4h лише коли snapshot порожній; якщо snapshot уже існує, він повертався як є, без спроби дозбирати нові complete-бакети.
+ 	- **Зміна**:
+  		- У [data/unified_store.py](data/unified_store.py) додано best-effort refresh похідних TF при читанні, якщо parent TF просунувся достатньо для нового complete bucket.
+  		- Додано throttle (щоб часті UI-запити не викликали часту агрегацію).
+  		- Матеріалізація для refresh читає лише tail джерельного TF (cap по барах), щоб обмежити навантаження.
+ 	- **Тести/перевірки**: `pytest -q tests/test_uds_tf_materialization.py` (OK).
+ 	- **Ризики/нотатки**:
+  		- Це не “пом’якшує” сувору агрегацію: якщо в 1m є реальні пропуски, 1h/4h все одно можуть мати дірки, доки S3/backfill не добере хвилини.
+  		- Але тепер, коли 1m дотягується, 1h/4h можуть підхопити виправлення без рестарту.
+
+- **Інструмент: “доказовий” аудит гепів у 1m/5m**
+ 	- **Вимога**: почати з 1m та 5m і довести, що в хвості немає жодного гепа/дірки/незаповненого проміжку.
+ 	- **Зміна**: додано утиліту [tools/gap_audit.py](tools/gap_audit.py), яка читає дані через `UnifiedDataStore.get_df()` і строго перевіряє крок `open_time` (Δ має дорівнювати TF).
+ 	- **Тести/перевірки**:
+  		- `pytest -q tests/test_gap_audit_logic.py` (OK)
+ 	- **Нотатки**:
+  		- Рекомендований запуск під час live: `python tools/gap_audit.py --symbol xauusd --timeframes 1m 5m --limit 2000`.
+  		- Гаряче виправлення: для Windows/скрипт-режиму додано підкладання кореня репо в `sys.path`, щоб `import app/...` працював.
+
+- **UI_v2: “щільний” графік при live-гепах (gap-fill тільки у /smc-viewer/ohlcv)**
+ 	- **Проблема (з поля)**: гепи з'являються у live, отже видно й у UI; хочемо, щоб графік малювався без порожніх проміжків.
+ 	- **Зміна**: у [UI_v2/ohlcv_provider.py](UI_v2/ohlcv_provider.py) додано best-effort gap-fill у відповіді:
+  		- пропущені TF-слоти заповнюються синтетичним flat-баром (OHLC=prev_close, volume=0);
+  		- це робиться лише на рівні UI-віддачі, без запису в `UnifiedDataStore`.
+ 	- **Тести/перевірки**: `pytest -q tests/test_ui_v2_ohlcv_provider.py` (OK).
+ 	- **Ризики/нотатки**:
+  		- Це косметичний фікс для UI; канонічну історію все одно має добирати S3/backfill.
+  		- Для дуже великих розривів є ліміт на кількість синтетичних барів у відповіді.
+
+- **FXCM ingest: live auto-backfill при гепі (kill-switch + cooldown)**
+ 	- **Вимога**: авто-backfill при виявленні гепа у live, з kill-switch і мінімальним навантаженням
+		(важливо і для UI, і для SMC аналізу).
+ 	- **Зміна**: у [data/fxcm_ingestor.py](data/fxcm_ingestor.py) додано live gap guard:
+  		- після успішного `put_bars()` інжестор тримає `last_ingested_open_time` per (symbol, tf);
+		- якщо наступний бар має `open_time` зі стрибком (Δ > tf_ms) → publish команду **для FXCM-конектора** у `FXCM_COMMANDS_CHANNEL` (Redis):
+   			- `1m` → `fxcm_warmup`
+   			- `TF>1m` → `fxcm_backfill`
+  		- rate-limit per (symbol, tf) через cooldown.
+ 	- **Конфіг (kill-switch)**: у [config/config.py](config/config.py)
+		- `SMC_LIVE_GAP_BACKFILL_ENABLED` (default: `False`, керується конфігом)
+  		- `SMC_LIVE_GAP_BACKFILL_COOLDOWN_SEC` (default: `120`)
+  		- `SMC_LIVE_GAP_BACKFILL_LOOKBACK_BARS` (default: `800`, внутрішній cap `1200`)
+  		- `SMC_LIVE_GAP_BACKFILL_MAX_GAP_MINUTES` (default: `180`) — щоб не спамити конектор
+			на вихідних/закритому ринку.
+ 	- **Тести/перевірки**: `pytest -q tests/test_ingestor.py` (OK).
+ 	- **Ризики/нотатки**:
+  		- Статус: тему зафіксовано та тимчасово закрито — потрібен час на польову перевірку в live
+			(кілька сесій/TF/перезапусків).
+  		- Великі розриви (наприклад вихідні) спеціально не тригерять live-команди (керується `MAX_GAP_MINUTES`);
+			їх має добирати S3 requester (`gappy_tail`) без live-спаму.
+
+- **Docs/Log: уточнення межі “не напряму FXCM”**
+	- **Контекст**: у цьому репо прямі команди в FXCM заборонені; взаємодія йде лише через FXCM-конектор.
+	- **Зміна**: уточнено формулювання, що “команди” — це публікація payload у Redis канал конектора (`FXCM_COMMANDS_CHANNEL`), а не прямий виклик FXCM.
+	- **Де**: [Log.md](Log.md), [config/config.py](config/config.py), [docs/architecture/migration_log.md](docs/architecture/migration_log.md).
+
+- **Shutdown: менше шуму у логах при зупинці пайплайна**
+ 	- **Проблема (з поля)**: під час штатного завершення (Ctrl+C / Cancel) з'являвся traceback типу
+		`redis.exceptions.ConnectionError: Connection closed by server` у
+		[UI_v2/viewer_state_ws_server.py](UI_v2/viewer_state_ws_server.py).
+ 	- **Зміна**:
+  		- У [UI_v2/viewer_state_ws_server.py](UI_v2/viewer_state_ws_server.py) додано `stopping`-гейт:
+			під час shutdown pubsub помилки більше не логуються як warning+traceback.
+  		- У [app/main.py](app/main.py) та воркерах [data/fxcm_ingestor.py](data/fxcm_ingestor.py),
+			[data/fxcm_price_stream.py](data/fxcm_price_stream.py),
+			[data/fxcm_status_listener.py](data/fxcm_status_listener.py) CancelledError-логи переведено на DEBUG.
+ 	- **Тести/перевірки**:
+  		- `pytest -q tests/test_ui_v2_viewer_state_server.py` (OK)
+  		- `pytest -q tests/test_ingestor.py tests/test_s3_warmup_requester.py` (OK)
+
+- **UI_v2: Playwright E2E smoke (офлайн, без CDN) + тестовий lifecycle для HTTP сервера**
+	- **Мета**: “20% E2E” — зафіксувати регресії UI-фіксів (перший wheel після refresh/TF change без ривка; tooltip стабільний).
+	- **Зміни (мінімальний набір)**:
+		- Додано офлайн harness сторінку: [UI_v2/web_client/e2e_smoke.html](UI_v2/web_client/e2e_smoke.html).
+		- Додано локальний stub lightweight-charts для тестів: [UI_v2/web_client/lightweight_charts_stub.js](UI_v2/web_client/lightweight_charts_stub.js).
+		- Додано драйвер `window.__e2e__`: [UI_v2/web_client/e2e_smoke_driver.js](UI_v2/web_client/e2e_smoke_driver.js).
+		- Додано E2E smoke тести Playwright: [tests/e2e/test_ui_v2_playwright_smoke.py](tests/e2e/test_ui_v2_playwright_smoke.py);
+		  маркер `e2e` зареєстровано у [pytest.ini](pytest.ini).
+		- Для програмного старт/стоп у тестах розширено HTTP сервер:
+		  [UI_v2/viewer_state_server.py](UI_v2/viewer_state_server.py) (`start()`/`stop()`/`get_listen_url()` з `port=0`).
+	- **Тести/перевірки**:
+		- `pytest -q -m e2e` (OK)
+		- `pytest -q tests/e2e/test_ui_v2_playwright_smoke.py` (OK)
+	- **Ризики/нотатки**:
+		- Це smoke-рівень: ловить грубі регресії взаємодій, але не замінює польові live-перевірки.
+		- Таймінги tooltip залежать від реальних `SHOW_DELAY_MS/HIDE_GRACE_MS`, тому у тестах є контрольовані wait-и.
+
+- **Config: виправлення дефолтів kill-switch та ENV false-values (без зміни контрактів)**
+	- **Проблема**:
+		- `_FALSE_ENV_VALUES` у [config/config.py](config/config.py) був некоректним (`{"1"}`), що могло зламати `_env_bool`-гейти.
+		- `SMC_LIVE_GAP_BACKFILL_ENABLED` був увімкнений попри коментар про kill-switch.
+	- **Зміна**: у [config/config.py](config/config.py)
+		- `_FALSE_ENV_VALUES = {"0", "false", "no", "off"}`
+		- `SMC_LIVE_GAP_BACKFILL_ENABLED = False` (default off; вмикати лише явним рішенням)
+	- **Тести/перевірки**: `pytest -q tests/test_ingestor.py` (OK) + E2E smoke (OK)

@@ -81,7 +81,7 @@ async def test_requester_publishes_warmup_once_then_rate_limits(
     assert len(fake_redis.published) == 1
 
     channel, msg = fake_redis.published[0]
-    assert channel == "fxcm:commands"
+    assert channel == requester.commands_channel
     payload = json.loads(msg)
     assert payload["type"] == "fxcm_warmup"
     assert payload["symbol"] == "XAUUSD"
@@ -154,7 +154,7 @@ async def test_requester_publishes_backfill_when_tail_stale(
 
     await requester._run_once()
     assert len(fake_redis.published) == 1
-    assert fake_redis.published[0][0] == "fxcm:commands"
+    assert fake_redis.published[0][0] == requester.commands_channel
     payload = json.loads(fake_redis.published[0][1])
     # Для TF=1m використовуємо fallback на warmup, бо backfill може бути
     # не підтриманий у конекторі (tick TF).

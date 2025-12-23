@@ -139,7 +139,7 @@ def _default_fxcm_channel_prefix(mode: str) -> str:
     return "fxcm"
 
 
-_FALSE_ENV_VALUES = {"1"}
+_FALSE_ENV_VALUES = {"0", "false", "no", "off"}
 
 # ───────────────────────────── Допоміжні типи ─────────────────────────────
 
@@ -300,6 +300,17 @@ SMC_S3_REQUESTER_ENABLED: bool = True
 SMC_S3_POLL_SEC: int = 60
 SMC_S3_COOLDOWN_SEC: int = 900
 SMC_S3_COMMANDS_CHANNEL: str = FXCM_COMMANDS_CHANNEL
+
+# Live auto-repair: негайний backfill/warmup при виявленні гепа у live-стрімі.
+# ВАЖЛИВО:
+# - за замовчуванням вимкнено (kill-switch) — щоб не створити зайве навантаження
+#   на FXCM-конектор/Redis;
+# - це НЕ прямі команди в FXCM: ми лише публікуємо payload у Redis-канал конектора;
+# - використовує той самий FXCM_COMMANDS_CHANNEL, що і S3 requester.
+SMC_LIVE_GAP_BACKFILL_ENABLED: bool = False
+SMC_LIVE_GAP_BACKFILL_COOLDOWN_SEC: int = 120
+SMC_LIVE_GAP_BACKFILL_LOOKBACK_BARS: int = 800
+SMC_LIVE_GAP_BACKFILL_MAX_GAP_MINUTES: int = 180
 
 # Rich status bar у консолі (TTY-гейт залишається в коді).
 SMC_CONSOLE_STATUS_BAR_ENABLED: bool = True

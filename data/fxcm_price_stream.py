@@ -105,7 +105,7 @@ async def run_fxcm_price_stream_listener(
                         channel_name,
                     )
         except asyncio.CancelledError:
-            logger.info("[FXCM_PRICE] Отримано CancelledError, завершуємо роботу")
+            logger.debug("[FXCM_PRICE] Отримано CancelledError, завершуємо роботу")
             raise
         except Exception:
             logger.warning(

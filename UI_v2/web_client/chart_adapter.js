@@ -1,4 +1,9 @@
 (function () {
+    const ChartAdapterLogic =
+        typeof globalThis !== "undefined" && globalThis.ChartAdapterLogic
+            ? globalThis.ChartAdapterLogic
+            : null;
+
     const CANDLE_COLORS = {
         up: "#26a69a",
         down: "#ef5350",
@@ -152,6 +157,9 @@
     }
 
     function clamp(value, min, max) {
+        if (ChartAdapterLogic && typeof ChartAdapterLogic.clamp === "function") {
+            return ChartAdapterLogic.clamp(value, min, max);
+        }
         if (!Number.isFinite(value)) {
             return min;
         }
@@ -286,6 +294,11 @@
         // Дефолт: увімкнено. Override: ?zone_labels=0
         const zoneLabelsParam = readBoolParam("zone_labels");
         const ZONE_LABELS_ENABLED = zoneLabelsParam !== false;
+
+        // Тестові хуки (E2E): дефолт вимкнено. Override: ?test_hooks=1
+        // Важливо: не впливає на UX/логіку, лише додає read-only debug API.
+        const testHooksParam = readBoolParam("test_hooks");
+        const TEST_HOOKS_ENABLED = testHooksParam === true;
 
         // Debug/fallback: старі marker-кружки з підписом (не трейдерський режим).
         // Дефолт: вимкнено. Override: ?zone_label_markers=1
@@ -3862,7 +3875,7 @@
             chartTimeRange = { min: null, max: null };
         }
 
-        return {
+        const api = {
             setBars,
             updateLastBar,
             setLiveBar,
@@ -3900,6 +3913,20 @@
                 chart.remove();
             },
         };
+
+        if (TEST_HOOKS_ENABLED) {
+            api.__debugGetPriceScaleState = () => ({
+                manualRange: priceScaleState.manualRange ? { ...priceScaleState.manualRange } : null,
+                lastAutoRange: priceScaleState.lastAutoRange ? { ...priceScaleState.lastAutoRange } : null,
+            });
+            api.__debugGetEffectivePriceRange = () => getEffectivePriceRange();
+            api.__debugIsVerticalPanActive = () => ({
+                pending: Boolean(verticalPanState.pending),
+                active: Boolean(verticalPanState.active),
+            });
+        }
+
+        return api;
 
         function resizeToContainer() {
             if (!container || typeof container.getBoundingClientRect !== "function") {
@@ -4440,6 +4467,21 @@
                 if (!paneHeight) {
                     return;
                 }
+                if (ChartAdapterLogic && typeof ChartAdapterLogic.computeWheelPanRange === "function") {
+                    const next = ChartAdapterLogic.computeWheelPanRange({
+                        range: priceScaleState.manualRange,
+                        paneHeight,
+                        deltaY: event.deltaY,
+                        panFactor: 0.5,
+                        minPriceSpan: MIN_PRICE_SPAN,
+                    });
+                    if (next) {
+                        applyManualRange(next);
+                        schedulePoiDomLabels();
+                    }
+                    return;
+                }
+
                 const span = priceScaleState.manualRange.max - priceScaleState.manualRange.min;
                 if (!(span > 0)) {
                     return;
@@ -4461,6 +4503,22 @@
                 if (!Number.isFinite(anchor)) {
                     return;
                 }
+                if (ChartAdapterLogic && typeof ChartAdapterLogic.computeWheelZoomRange === "function") {
+                    const next = ChartAdapterLogic.computeWheelZoomRange({
+                        range: currentRange,
+                        anchor,
+                        deltaY: event.deltaY,
+                        intensity: 0.002,
+                        maxDelta: 600,
+                        minPriceSpan: MIN_PRICE_SPAN,
+                    });
+                    if (next) {
+                        applyManualRange(next);
+                        schedulePoiDomLabels();
+                    }
+                    return;
+                }
+
                 const span = currentRange.max - currentRange.min;
                 if (!(span > 0)) {
                     return;
@@ -4535,6 +4593,20 @@
         function isPointerInPriceAxis(event, priceAxisFallbackWidthPx = 56) {
             const pointer = getRelativePointer(event);
             const { paneWidth, paneHeight, priceScaleWidth } = getPaneMetrics();
+            if (ChartAdapterLogic && typeof ChartAdapterLogic.isPointerInPriceAxis === "function") {
+                return ChartAdapterLogic.isPointerInPriceAxis(
+                    {
+                        x: pointer.x,
+                        y: pointer.y,
+                        width: pointer.width,
+                        height: pointer.height,
+                        paneWidth,
+                        paneHeight,
+                        priceScaleWidth,
+                    },
+                    priceAxisFallbackWidthPx
+                );
+            }
             if (!pointer.width || !pointer.height) {
                 return false;
             }
@@ -4549,17 +4621,25 @@
             // Інколи `priceScale("right").width()` може тимчасово бути 0 (під час resize/перемальовки).
             // У такому випадку не ламаємо UX: вважаємо price-axis як «усе правіше paneWidth».
             const axisRight = paneWidth > 0 && priceScaleWidth > 0 ? paneWidth + priceScaleWidth : pointer.width;
-            return (
-                pointer.x >= axisLeft &&
-                pointer.x <= axisRight &&
-                pointer.y >= 0 &&
-                pointer.y <= effectivePaneHeight
-            );
+            return pointer.x >= axisLeft && pointer.x <= axisRight && pointer.y >= 0 && pointer.y <= effectivePaneHeight;
         }
 
         function isPointerInsidePane(event, priceAxisFallbackWidthPx = 56) {
             const pointer = getRelativePointer(event);
             const { paneWidth, paneHeight } = getPaneMetrics();
+            if (ChartAdapterLogic && typeof ChartAdapterLogic.isPointerInsidePane === "function") {
+                return ChartAdapterLogic.isPointerInsidePane(
+                    {
+                        x: pointer.x,
+                        y: pointer.y,
+                        width: pointer.width,
+                        height: pointer.height,
+                        paneWidth,
+                        paneHeight,
+                    },
+                    priceAxisFallbackWidthPx
+                );
+            }
             if (!pointer.width || !pointer.height) {
                 return false;
             }
@@ -4568,12 +4648,7 @@
             const effectivePaneWidth = paneWidth > 0
                 ? paneWidth
                 : Math.max(0, pointer.width - Math.max(0, Number(priceAxisFallbackWidthPx) || 56));
-            return (
-                pointer.x >= 0 &&
-                pointer.x <= effectivePaneWidth &&
-                pointer.y >= 0 &&
-                pointer.y <= effectivePaneHeight
-            );
+            return pointer.x >= 0 && pointer.x <= effectivePaneWidth && pointer.y >= 0 && pointer.y <= effectivePaneHeight;
         }
 
         function getAnchorPriceFromEvent(event) {
@@ -4587,6 +4662,9 @@
         }
 
         function normalizeRange(range) {
+            if (ChartAdapterLogic && typeof ChartAdapterLogic.normalizeRange === "function") {
+                return ChartAdapterLogic.normalizeRange(range, MIN_PRICE_SPAN);
+            }
             if (!range) {
                 return null;
             }
@@ -4625,6 +4703,22 @@
         }
 
         function getEffectivePriceRange() {
+            if (ChartAdapterLogic && typeof ChartAdapterLogic.computeEffectivePriceRange === "function") {
+                const { paneHeight } = getPaneMetrics();
+                const top = Number.isFinite(paneHeight) && paneHeight > 0 ? candles.coordinateToPrice(0) : null;
+                const bottom = Number.isFinite(paneHeight) && paneHeight > 0 ? candles.coordinateToPrice(paneHeight) : null;
+                const res = ChartAdapterLogic.computeEffectivePriceRange({
+                    manualRange: priceScaleState.manualRange,
+                    lastAutoRange: priceScaleState.lastAutoRange,
+                    paneHeight,
+                    topPrice: top,
+                    bottomPrice: bottom,
+                });
+                if (res && res.nextLastAutoRange) {
+                    priceScaleState.lastAutoRange = { ...res.nextLastAutoRange };
+                }
+                return res ? res.range : null;
+            }
             if (priceScaleState.manualRange) {
                 return { ...priceScaleState.manualRange };
             }
