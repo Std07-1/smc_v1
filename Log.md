@@ -132,3 +132,152 @@
   		- У тестах non_monotonic-tail підігнано `base`, щоб хвіст був свіжий і не попадав у `stale_tail`.
   		- Додано регресійний тест: дублікати `open_time` не повинні давати `non_monotonic_tail`.
  	- **Тести/перевірки**: `pytest -q tests/test_s2_history_state.py tests/test_s3_warmup_requester.py`.
+
+---
+
+## 2025-12-23
+
+- **UI_v2: форензика “разовий ривок/розмазування масштабу по Y” на першому wheel**
+	- **Вимога**: нічого не міняти у коді, а спочатку зафіксувати поточний стан максимально детально.
+	- **Симптом (зі слів користувача)**:
+		- Після refresh або зміни TF перший wheel по price-axis дає разовий “ривок/розмазування” (ніби двічі застосувався scale або “підкрутило” range).
+		- Далі wheel працює більш очікувано.
+	- **Контекст реалізації (поточний стан, “як є”)**:
+		1) **Built-in scaling lightweight-charts увімкнений у дефолтних опціях**
+			- Файл: [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js)
+			- `DEFAULT_CHART_OPTIONS.handleScale.mouseWheel = true`
+			- `DEFAULT_CHART_OPTIONS.handleScale.axisPressedMouseMove.price = true`
+			- `DEFAULT_CHART_OPTIONS.handleScroll.mouseWheel = true`
+			- Отже бібліотека має повне право скейлити/скролити на wheel сама.
+		2) **Кастомний wheel-хендлер для price-axis (перехоплення у capture)**
+			- Файл: [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js)
+			- Коментар у коді: “wheel по price-axis перехоплюємо у capture-фазі… інакше lightweight-charts може встигнути застосувати власний scale, а наш manualRange додасться зверху”.
+			- `WHEEL_OPTIONS = { passive: false, capture: true }`.
+			- Listener: `container.addEventListener("wheel", handleWheel, WHEEL_OPTIONS)`.
+			- Ключове: хендлер робить `event.preventDefault()`, `stopImmediatePropagation()` (якщо доступно), потім `stopPropagation()`.
+			- Гейти перед тим, як він зупиняє подію:
+				- `pointerInAxis = isPointerInPriceAxis(event)`.
+				- `pointerInPane = isPointerInsidePane(event)`.
+				- Якщо НЕ `pointerInAxis` і НЕ (`event.shiftKey` && `pointerInPane`) → `return`.
+				- Якщо `getEffectivePriceRange()` повернув `null` → `return` (важливо: у цьому випадку НЕ виконується `preventDefault/stop*`).
+			- Функціональність:
+				- `Shift+wheel` у pane → `applyWheelPan()` (вертикальний pan manualRange).
+				- Wheel у price-axis → `applyWheelZoom()` (zoom навколо anchor-price).
+		3) **Manual price range через autoscaleInfoProvider**
+			- У коді є `priceScaleState = { manualRange, lastAutoRange }`.
+			- `candles` і `liveCandles` мають `autoscaleInfoProvider: priceScaleAutoscaleInfoProvider`.
+			- Логіка:
+				- Якщо `manualRange` не активний → використовується baseImplementation(), а `lastAutoRange` оновлюється з базового autoscale.
+				- Якщо `manualRange` активний → series повертає ОДНАКОВИЙ `priceRange` для всіх серій на правій шкалі (щоб не було “стеля/підлога”).
+		4) **Синхронізація після зміни manualRange: requestPriceScaleSync()**
+			- `applyManualRange(range)` ставить `priceScaleState.manualRange = normalized` і викликає `requestPriceScaleSync()`.
+			- `requestPriceScaleSync()` робить:
+				- `logicalRange = chart.timeScale().getVisibleLogicalRange()`; якщо є — повторно викликає `setVisibleLogicalRange({from,to})`.
+				- інакше бере `scrollPosition()` та викликає `scrollToPosition(position, false)`.
+			- Важливо: тут немає явного guard-а “logicalRange ще не готовий після init/fitContent”, окрім fallback на scrollPosition.
+		5) **Додатковий wheel listener “best-effort” (не для масштабу)**
+			- Є окремий `container.addEventListener("wheel", onWheel, { passive: true })`, який лише планує перерахунок DOM-лейблів POI через RAF.
+			- Коментар у коді: “wheel у capture-режимі вже обробляється price-axis. Тут — best-effort.”
+			- Цей listener не викликає `preventDefault` і не змінює scale/range напряму.
+	- **Найімовірніший механізм “перший wheel стрибає” (гіпотеза №1, найсильніша по коду)**:
+		- На першому wheel після refresh/зміни TF `getEffectivePriceRange()` інколи повертає `null` (ще немає валідного `lastAutoRange`, або `paneSize/coordinateToPrice` тимчасово не дають чисел).
+		- Через ранній `return` кастомний `handleWheel` НЕ викликає `preventDefault/stop*`.
+		- Built-in wheel-scale бібліотеки (бо `handleScale.mouseWheel=true`) відпрацьовує і змінює scale/range → користувач бачить разовий “ривок”.
+		- На наступних wheel `lastAutoRange` вже ініціалізовано, `getEffectivePriceRange()` стає не-null, і кастомний хендлер починає перехоплювати події в capture-фазі та глушити built-in → “після першого разу норм”.
+	- **Альтернативний механізм (гіпотеза №2, слабша, але можлива)**:
+		- Якщо lightweight-charts підписався на `wheel` у capture на тому ж target раніше, ніж наш `addEventListener`, то його built-in може спрацювати першим.
+		- У цьому випадку навіть `stopImmediatePropagation` у нашому хендлері не зупинить вже виконаний built-in.
+		- Але це гірше пояснює “саме перший wheel”, якщо немає одноразової неготовності (гіпотеза №1).
+	- **Примітка**: `axisPressedMouseMove.price = true` також означає, що drag по price-axis може активувати built-in логіку шкали. Поточний кастомний код блокує лише `handleScroll.pressedMouseMove` під час нашого vertical-pan, але не вимикає `handleScale.axisPressedMouseMove.price` глобально.
+	- **Тести/перевірки**: не запускались (зміна лише документаційна, код не чіпали).
+	- **Ризики/нотатки**:
+		- Цей запис — “зріз стану” перед будь-якими правками.
+		- Якщо будемо робити мін-фікс, треба зберегти UX: wheel у pane лишається за бібліотекою, а wheel у price-axis має бути детерміновано перехоплений без одноразових пропусків.
+
+- **UI_v2: P0 фікс “перший wheel не проскакує в built-in scale”**
+	- **Проблема**: у `setupPriceScaleInteractions()` подію wheel глушили (preventDefault/stop*) лише після `getEffectivePriceRange()`. Якщо `getEffectivePriceRange()` на першій взаємодії повертає `null`, wheel проходить у built-in масштабування lightweight-charts → разовий “ривок/розмаз”.
+	- **Зміна (мінімальний диф, UX не розширюємо)**:
+		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) wheel-хендлер тепер викликає `preventDefault()` + `stopImmediatePropagation()` + `stopPropagation()` ДО перевірки `getEffectivePriceRange()`.
+		- Якщо range ще не готовий — ми просто виходимо, але built-in вже заблоковано (замість разового стрибка).
+	- **Ризики/нотатки**:
+		- Якщо користувач одразу після refresh крутить wheel по price-axis, а метрики ще не готові, wheel “нічого не зробить” (але це краще за неконтрольований built-in ривок).
+		- Обробка wheel у pane без Shift не змінюється (там ми не перехоплюємо подію).
+	- **Smoke-перевірка (2 хв)**:
+		- Refresh/F5 → одразу wheel по price-axis: не має бути разового ривка/«розмазу».
+		- Wheel у pane без Shift: time-zoom як раніше.
+		- Shift+wheel у pane: manual vertical pan працює, сторінка не скролиться.
+	- **Факт після спроби**:
+		- На практиці у конкретному середовищі користувача це НЕ прибрало симптом і місцями зробило UX гіршим (wheel інколи “глушиться”, але дія не застосовується).
+
+- **UI_v2: P0.1 фікс (стабільний hit-test price-axis + відкладений wheel на 1 кадр)**
+	- **Гіпотеза**:
+		- Після init/зміни TF `chart.paneSize()` і/або `priceScale("right").width()` можуть тимчасово бути 0.
+		- Через це `isPointerInPriceAxis()`/`isPointerInsidePane()` могли повертати `false`, і перехоплення wheel ставало недетермінованим.
+		- Додатково, коли `getEffectivePriceRange()` ще `null`, ми глушили wheel, але дія не виконувалась → “відчуття гірше”.
+	- **Зміна**:
+		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) додано fallback hit-test для price-axis на випадок нульових метрик:
+			- Використовується `PRICE_AXIS_FALLBACK_WIDTH_PX = 56` (узгоджено з CSS-резервом: `styles.css` -> `.chart-overlay-actions { padding-right: 56px; }`).
+			- `isPointerInPriceAxis()`/`isPointerInsidePane()` більше не вимагають `paneWidth/paneHeight` як обов'язкові для роботи.
+		- Якщо `getEffectivePriceRange()` ще не готовий, wheel-дія (zoom/pan) відкладається на 1 кадр через `requestAnimationFrame`, щоб перша взаємодія не “помирала”.
+	- **Очікування**:
+		- Wheel по price-axis після refresh/зміни TF має бути детермінований: без built-in “ривка” і без “глухого” колеса.
+
+- **UI_v2: live-оновлення (тик/WS) → зменшення “стрибків” від частих перерендерів**
+	- **Спостереження (з поля)**:
+		- “Стрибки” проявляються саме коли ринок відкритий і live-свічка/ціна рухається.
+		- На закритому ринку (коли свічка не рухається) графік стабільний.
+		- При вимкненні live-volume поведінка volume стабілізується.
+	- **Root-cause (ймовірний, по коду)**:
+		- `setLiveBar()` викликається часто (tick stream throttled ~200 мс) і робив:
+			- `liveVolume.setData([])` практично на кожен тик (бо volume=0 у tick-стрімі) → зайві перерахунки/перемальовки;
+			- `updateCurrentPriceLine()` пересоздавав price-line на кожне оновлення ціни (remove + create) → потенційне “смикання” бейджа/шкали.
+	- **Зміна (мінімальний диф, UX не міняємо)**:
+		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js):
+			- `currentPriceLine` тепер оновлюється через `applyOptions({price,color})`, якщо owner не змінився (замість remove+create на кожен тик).
+			- `liveVolume` тепер НЕ робить `setData([])` на кожен тик: чиститься/малюється лише при зміні видимості або при зміні бару; у межах одного бару використовує `update()`.
+	- **Очікування**:
+		- Менше “дергання” при live-оновленнях, особливо по осі/бейджу ціни та по volume.
+
+- **UI_v2: P2 фікс “перший vertical-pan/axis-drag не дає Y-стрибок при live-свічці”**
+	- **Симптом (з поля)**:
+		- Після refresh/зміни TF: wheel/scroll по часу працюють стабільно.
+		- Але перший легкий drag вгору у pane або взаємодія по правій шкалі ціни дає різкий Y-стрибок (“їжаки”), після чого поведінка стабілізується до наступного refresh/TF change.
+		- На закритому ринку (без live-руху) симптом відсутній.
+	- **Root-cause (ймовірний, по коду)**:
+		- `getEffectivePriceRange()` використовує `priceScaleState.lastAutoRange`, якщо він є.
+		- `lastAutoRange` оновлювався через `autoscaleInfoProvider` і для `candles`, і для `liveCandles`.
+		- Коли liveCandles активний (1 жива свічка, часто оновлюється), `lastAutoRange` міг “перетиратись” діапазоном саме live-серії.
+		- При першому vertical-pan `ensureManualRange(baseRange)` міг стартувати з цього “live-range”, що виглядає як різкий Y-zoom/розмаз.
+	- **Зміна**:
+		- У [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) `lastAutoRange` тепер трекається тільки по основній серії `candles` (liveCandles не перетирає `lastAutoRange`).
+		- При reset датасету (`setBars([])`, `looksLikeNewDataset`, `clearAll`) додатково очищаємо `priceScaleState.lastAutoRange = null`, щоб не брати застарілий діапазон після TF/symbol reset.
+	- **Очікування**:
+		- Перший vertical-pan/axis взаємодія після refresh/TF change не повинна давати різкий Y-стрибок, навіть якщо live-свічка рухається.
+	- **Статус після первинної перевірки (з поля)**:
+		- Користувач підтвердив: “зараз все виглядає чудово та ніби виправили”.
+		- Примітка: потрібен час на польові тести/спостереження (різні TF, різні стани ринку, кілька refresh/перезапусків), щоб підтвердити відсутність регресій.
+
+- **S2/S3: розслідування пропусків хвилин (дірки) + автоматичний repair**
+	- **Симптом (з поля)**: візуально помітні “розрізи” між 1m свічками, які виглядають як гепи; внаслідок цього "биті" також вищі TF (напр. 4h), бо 4h матеріалізується з 1m→5m→1h.
+	- **Root-cause (по коду, підтверджено)**:
+		- S2 `compute_history_status()` рахував `gaps_count/non_monotonic_count` лише на вікні `limit=min_history_bars` (типово 300), тому gap-и, що були глибше в історії (наприклад у видимих ~800 барах UI), могли не детектитись.
+		- S3 при `gappy_tail/non_monotonic_tail` просив у конектора лише `desired_bars` (типово 300), тож навіть коли gap був виявлений глибше, repair міг не перекрити ділянку розриву.
+		- S3 на `market=closed` пропускав команди для будь-якого стану, крім `insufficient`, що блокувало офлайн-добір “дір”, які утворились у відкритий ринок.
+	- **Зміни (мінімальний диф)**:
+		- У [app/fxcm_history_state.py](app/fxcm_history_state.py) додано `diagnostic_bars`: S2 може аналізувати ширше вікно для gaps/non-monotonic, не змінюючи поріг готовності `min_history_bars`.
+		- У [app/fxcm_warmup_requester.py](app/fxcm_warmup_requester.py):
+			- при `gappy_tail/non_monotonic_tail` збільшено `lookback_bars` до `~3x desired` (cap 1200), щоб реально перекривати видимі розриви;
+			- при `market=closed` repair дозволено для `gappy_tail/non_monotonic_tail` (а `stale_tail` як і раніше не шумимо на закритому ринку).
+	- **Тести/перевірки**:
+		- `pytest -q tests/test_s2_history_state.py` (OK)
+		- `pytest -q tests/test_s3_warmup_requester.py` (OK)
+	- **Ризики/нотатки**:
+		- S2 трохи частіше читає з UDS (до 1200 барів на пару), але cap 2000/1200 обмежує навантаження.
+		- Якість 4h напряму залежить від повноти 1m (агрегація зараз сувора: неповні bucket-и пропускаються).
+
+- **UI_v2: стабілізація hover-tooltip на живому графіку**
+	- **Симптом (з поля)**: тултіпи нестабільні — швидко зникають або довго не з’являються; причина — live-оновлення графіка постійно «підбиває» crosshair callback.
+	- **Зміна**: у [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js)
+		- додано короткий grace на hide (250мс) для шумних подій без `time/point`;
+		- зменшено затримку показу з 1000мс до 200мс;
+		- якщо курсор не рухався (та сама точка/час) — не скидаємо show-таймер, щоб tooltip не “ніколи не з’являвся”.

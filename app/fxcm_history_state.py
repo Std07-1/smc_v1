@@ -223,10 +223,17 @@ async def compute_history_status(
     symbol: str,
     timeframe: str,
     min_history_bars: int,
+    diagnostic_bars: int | None = None,
     stale_k: float = 3.0,
     now_ms: int | None = None,
 ) -> HistoryStatus:
-    """Зчитує tail з UDS та повертає HistoryStatus для (symbol, tf)."""
+    """Зчитує хвіст з UDS та повертає HistoryStatus для (symbol, tf).
+
+    Важливо:
+    - `min_history_bars` визначає поріг *готовності* (insufficient) і базове вікно.
+    - `diagnostic_bars` (якщо задано) дозволяє рахувати gaps/non-monotonic на ширшому
+      діапазоні, ніж `min_history_bars`, щоб ловити «дірки» не лише в останніх N барах.
+    """
 
     sym = (symbol or "").strip().lower()
     tf = (timeframe or "").strip().lower()
@@ -235,9 +242,18 @@ async def compute_history_status(
     tf_ms = timeframe_to_ms(tf) or 60_000
 
     # Важливо: get_df(limit=N) повертає останні N барів (якщо вони є).
-    # Нам достатньо знати "чи є >=min_history_bars" та last_open_time.
-    limit = max(1, int(min_history_bars))
-    df = await store.get_df(sym, tf, limit=limit)
+    # Для індикатора gaps/non-monotonic нам часто потрібне ширше вікно, ніж поріг готовності.
+    base_limit = max(1, int(min_history_bars))
+    diag_limit = base_limit
+    if diagnostic_bars is not None:
+        try:
+            diag_limit = max(diag_limit, int(diagnostic_bars))
+        except Exception:
+            diag_limit = base_limit
+    # Safety cap: S2 — це діагностика, не повинна тягнути надмірні обсяги.
+    diag_limit = min(max(1, int(diag_limit)), 2000)
+
+    df = await store.get_df(sym, tf, limit=diag_limit)
     bars_count = int(len(df)) if df is not None else 0
 
     last_open_time_ms = None
@@ -255,7 +271,7 @@ async def compute_history_status(
         and bars_count >= 2
     ):
         try:
-            # Працюємо по tail-вікну, яке вже обмежене limit=min_history_bars.
+            # Працюємо по діагностичному вікну (diag_limit), яке може бути ширшим за min_history_bars.
             tail_values = list(df["open_time"].tolist())
             open_times_ms = _series_epoch_to_ms(tail_values)
             if len(open_times_ms) >= 2:

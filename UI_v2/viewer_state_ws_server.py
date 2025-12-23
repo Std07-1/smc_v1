@@ -20,9 +20,9 @@ from websockets.exceptions import ConnectionClosed
 from core.serialization import json_dumps, json_loads
 
 try:
-    from websockets.asyncio.server import ServerConnection as WsConnection, serve
+    from websockets.asyncio.server import serve
 except Exception:  # pragma: no cover - сумісність зі старими версіями
-    from websockets.legacy.server import WebSocketServerProtocol as WsConnection, serve
+    from websockets.legacy.server import serve
 
 from prometheus_client import Counter, Gauge
 

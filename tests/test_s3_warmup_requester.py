@@ -234,6 +234,73 @@ async def test_requester_publishes_warmup_when_tail_has_internal_gaps(
 
 
 @pytest.mark.asyncio
+async def test_requester_still_repairs_gappy_tail_when_market_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_redis = _FakeRedis()
+
+    # Зменшуємо desired-limit, щоб тест був маленьким.
+    monkeypatch.setattr("app.fxcm_warmup_requester.SMC_RUNTIME_PARAMS", {"limit": 3})
+
+    now_ms = 1_700_000_000_000
+    base = now_ms - (5 * 60_000)
+    # Пропуски в open_time (2 хв крок замість 1 хв).
+    df = pd.DataFrame(
+        [
+            {
+                "open_time": (base + 0 * 120_000) / 1000.0,
+                "close_time": (base + 0 * 120_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 1 * 120_000) / 1000.0,
+                "close_time": (base + 1 * 120_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+            {
+                "open_time": (base + 2 * 120_000) / 1000.0,
+                "close_time": (base + 2 * 120_000) / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            },
+        ]
+    )
+    fake_store = _FakeStore(df=df)
+
+    monkeypatch.setattr("app.fxcm_warmup_requester.utc_now_ms", lambda: int(now_ms))
+    monkeypatch.setattr(
+        "app.fxcm_warmup_requester.get_fxcm_feed_state", lambda: _FakeFeed("closed")
+    )
+
+    requester = FxcmWarmupRequester(
+        redis=fake_redis,  # type: ignore[arg-type]
+        store=fake_store,  # type: ignore[arg-type]
+        allowed_pairs={("xauusd", "1m")},
+        min_history_bars_by_symbol={"xauusd": 0},
+        cooldown_sec=1,
+        stale_k=3.0,
+    )
+
+    await requester._run_once()
+    assert len(fake_redis.published) == 1
+    payload = json.loads(fake_redis.published[0][1])
+    assert payload["type"] == "fxcm_warmup"
+    assert payload["reason"] == "gappy_tail"
+    assert payload["s2"]["history_state"] == "gappy_tail"
+
+
+@pytest.mark.asyncio
 async def test_requester_publishes_warmup_when_tail_is_non_monotonic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

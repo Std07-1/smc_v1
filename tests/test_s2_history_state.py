@@ -20,7 +20,15 @@ class _FakeStore:
         self._df = df
 
     async def get_df(self, symbol: str, timeframe: str, limit: int):  # noqa: ANN001
-        return self._df
+        if self._df is None:
+            return None
+        if limit is None:
+            return self._df
+        # Емулюємо поведінку UDS: повертаємо tail(limit).
+        try:
+            return self._df.tail(int(limit))
+        except Exception:
+            return self._df
 
 
 def test_timeframe_to_ms_parses_known_units() -> None:
@@ -165,6 +173,73 @@ async def test_compute_history_status_marks_gappy_tail_when_internal_gaps_exist(
     assert status.gaps_count >= 1
     assert isinstance(status.max_gap_ms, int)
     assert status.non_monotonic_count == 0
+
+
+async def test_compute_history_status_can_detect_gaps_outside_min_history_window_via_diagnostic_bars() -> (
+    None
+):
+    now_ms = 1_700_000_000_000
+    # Важливо: tail має бути "свіжим", щоб кейс gappy не маскувався stale_tail.
+    last_open_time_ms = now_ms - 60_000
+    base = last_open_time_ms - (10 * 60_000)
+
+    # Будуємо 10 барів 1m, але з одним пропуском усередині.
+    # Далі беремо min_history_bars=3, так щоб "tail(3)" був без gap,
+    # але у ширшому вікні він був.
+    open_times = [
+        base + 0 * 60_000,
+        base + 1 * 60_000,
+        base + 2 * 60_000,
+        base + 3 * 60_000,
+        # пропуск 1 хвилини
+        base + 5 * 60_000,
+        base + 6 * 60_000,
+        base + 7 * 60_000,
+        base + 8 * 60_000,
+        base + 9 * 60_000,
+        base + 10 * 60_000,
+    ]
+    df = pd.DataFrame(
+        [
+            {
+                "open_time": ot / 1000.0,
+                "close_time": ot / 1000.0,
+                "open": 1,
+                "high": 1,
+                "low": 1,
+                "close": 1,
+                "volume": 1,
+            }
+            for ot in open_times
+        ]
+    )
+
+    store = _FakeStore(df)
+
+    # Без diagnostic_bars дивимось лише tail(3) -> gap не видно.
+    status_small = await compute_history_status(
+        store=store,
+        symbol="xauusd",
+        timeframe="1m",
+        min_history_bars=3,
+        stale_k=3.0,
+        now_ms=now_ms,
+    )
+    assert status_small.state == "ok"
+
+    # З diagnostic_bars=10 gap має бути виявлений.
+    status_diag = await compute_history_status(
+        store=store,
+        symbol="xauusd",
+        timeframe="1m",
+        min_history_bars=3,
+        diagnostic_bars=10,
+        stale_k=3.0,
+        now_ms=now_ms,
+    )
+    assert status_diag.state == "gappy_tail"
+    assert status_diag.needs_backfill is True
+    assert status_diag.gaps_count >= 1
 
 
 async def test_compute_history_status_marks_non_monotonic_tail_when_bars_go_backwards() -> (

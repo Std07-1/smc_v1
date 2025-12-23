@@ -730,6 +730,8 @@
         let lastBar = null;
         let lastLiveBar = null;
         let lastLiveVolume = 0;
+        let liveVolumeVisible = false;
+        let liveVolumeTime = null;
         let lastCandleDataset = [];
         let lastCandleTimes = [];
         let currentPriceLine = null;
@@ -834,14 +836,17 @@
             candles.setMarkers(combined);
         }
 
-        function priceScaleAutoscaleInfoProvider(baseImplementation) {
+        function makePriceScaleAutoscaleInfoProvider(trackAutoRange) {
+            return (baseImplementation) => {
             if (!priceScaleState.manualRange) {
                 const base = baseImplementation();
                 if (base?.priceRange) {
-                    priceScaleState.lastAutoRange = {
-                        min: base.priceRange.minValue,
-                        max: base.priceRange.maxValue,
-                    };
+                    if (trackAutoRange) {
+                        priceScaleState.lastAutoRange = {
+                            min: base.priceRange.minValue,
+                            max: base.priceRange.maxValue,
+                        };
+                    }
                 }
                 return base;
             }
@@ -858,7 +863,11 @@
                 },
                 margins: base?.margins,
             };
+            };
         }
+
+        const priceScaleAutoscaleInfoProvider = makePriceScaleAutoscaleInfoProvider(true);
+        const livePriceScaleAutoscaleInfoProvider = makePriceScaleAutoscaleInfoProvider(false);
 
         // Для оверлеїв (зони/рамки):
         // - у normal режимі НЕ впливають на autoscale (і не чіпають lastAutoRange);
@@ -931,7 +940,9 @@
         }
 
         candles.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
-        liveCandles.applyOptions({ autoscaleInfoProvider: priceScaleAutoscaleInfoProvider });
+        // Важливо: live-серія не має “перетирати” lastAutoRange — інакше перший vertical-pan
+        // може стартувати з діапазону 1-ї live-свічки і дати різкий Y-стрибок.
+        liveCandles.applyOptions({ autoscaleInfoProvider: livePriceScaleAutoscaleInfoProvider });
         sessionRangeBox.applyOptions({ autoscaleInfoProvider: sessionRangeBoxAutoscaleInfoProvider });
 
         setupPriceScaleInteractions();
@@ -944,7 +955,14 @@
             }
 
             let hoverTimer = null;
+            let hideTimer = null;
             let lastPayload = null;
+            let lastPointKey = null;
+
+            // UX: на live-графіку crosshair callback може викликатись під час update/setData.
+            // Не ховаємо tooltip миттєво і не скидаємо show-timer, якщо курсор не рухався.
+            const SHOW_DELAY_MS = 200;
+            const HIDE_GRACE_MS = 250;
 
             const clearHoverTimer = () => {
                 if (hoverTimer) {
@@ -953,10 +971,26 @@
                 }
             };
 
+            const clearHideTimer = () => {
+                if (hideTimer) {
+                    clearTimeout(hideTimer);
+                    hideTimer = null;
+                }
+            };
+
             const hideTooltip = () => {
                 clearHoverTimer();
+                clearHideTimer();
                 tooltipEl.hidden = true;
                 tooltipEl.textContent = "";
+            };
+
+            const scheduleHideTooltip = () => {
+                clearHoverTimer();
+                clearHideTimer();
+                hideTimer = setTimeout(() => {
+                    hideTooltip();
+                }, HIDE_GRACE_MS);
             };
 
             const formatCompact = (value) => {
@@ -972,7 +1006,7 @@
 
             chart.subscribeCrosshairMove((param) => {
                 if (!param || !param.time || !param.point) {
-                    hideTooltip();
+                    scheduleHideTooltip();
                     return;
                 }
 
@@ -984,7 +1018,7 @@
                     null;
 
                 if (!candle) {
-                    hideTooltip();
+                    scheduleHideTooltip();
                     return;
                 }
 
@@ -994,6 +1028,16 @@
                     candle,
                     volume: volRow?.value ?? null,
                 };
+
+                clearHideTimer();
+
+                // Якщо курсор не рухався (а прийшла подія від live-оновлення) —
+                // не скидаємо таймер показу, інакше tooltip може "ніколи" не з'являтись.
+                const pointKey = `${param.point.x}|${param.point.y}|${String(param.time)}`;
+                if (hoverTimer && lastPointKey === pointKey) {
+                    return;
+                }
+                lastPointKey = pointKey;
 
                 clearHoverTimer();
                 tooltipEl.hidden = true;
@@ -1573,13 +1617,14 @@
 
                     tooltipEl.style.left = `${left}px`;
                     tooltipEl.style.top = `${top}px`;
-                }, 1000);
+                }, SHOW_DELAY_MS);
             });
 
             container.addEventListener("mouseleave", hideTooltip);
             interactionCleanup.push(() => container.removeEventListener("mouseleave", hideTooltip));
             interactionCleanup.push(() => {
                 clearHoverTimer();
+                clearHideTimer();
                 if (tooltipEl) {
                     tooltipEl.hidden = true;
                 }
@@ -1599,6 +1644,7 @@
 
             if (!Array.isArray(bars) || bars.length === 0) {
                 resetManualPriceScale({ silent: true });
+                priceScaleState.lastAutoRange = null;
                 candles.setData([]);
                 liveCandles.setData([]);
                 volume.setData([]);
@@ -1661,6 +1707,7 @@
                 // Якщо датасет реально «перезапустився» (символ/TF/бекфіл/ресет) —
                 // логічно скинути ручний price range.
                 resetManualPriceScale({ silent: true });
+                priceScaleState.lastAutoRange = null;
 
                 // Також скидаємо "липкі" execution-стрілочки, щоб не змішувати різні серії/TF.
                 lastExecutionEvents = [];
@@ -1984,15 +2031,27 @@
             lastLiveBar = normalized;
 
             if (vol > 0) {
-                liveVolume.setData([
-                    {
-                        time: normalized.time,
-                        value: vol,
-                        color: "rgba(250, 204, 21, 0.35)",
-                    },
-                ]);
+                const point = {
+                    time: normalized.time,
+                    value: vol,
+                    color: "rgba(250, 204, 21, 0.35)",
+                };
+                // Важливо: не робимо setData на кожен тик.
+                // Якщо бар той самий — update; якщо новий — setData (щоб тримати рівно 1 точку).
+                if (!liveVolumeVisible || liveVolumeTime === null || normalized.time !== liveVolumeTime) {
+                    liveVolume.setData([point]);
+                } else {
+                    liveVolume.update(point);
+                }
+                liveVolumeVisible = true;
+                liveVolumeTime = normalized.time;
             } else {
-                liveVolume.setData([]);
+                // Якщо live volume вже порожній — не чіпаємо (щоб не смикати графік).
+                if (liveVolumeVisible) {
+                    liveVolume.setData([]);
+                    liveVolumeVisible = false;
+                    liveVolumeTime = null;
+                }
             }
 
             updateCurrentPriceLine();
@@ -2003,6 +2062,8 @@
             liveVolume.setData([]);
             lastLiveBar = null;
             lastLiveVolume = 0;
+            liveVolumeVisible = false;
+            liveVolumeTime = null;
             updateCurrentPriceLine();
         }
 
@@ -2152,7 +2213,22 @@
                 return;
             }
 
-            // Якщо власник змінився або змінився price/color — пересоздаємо.
+            // Важливо для live: не пересоздаємо price line на кожен тик.
+            // Якщо власник не змінився, намагаємось оновити існуючий через applyOptions().
+            if (currentPriceLine && currentPriceLineOwner === owner && typeof currentPriceLine.applyOptions === "function") {
+                try {
+                    currentPriceLine.applyOptions({
+                        price,
+                        color,
+                    });
+                    currentPriceLineState = { price, color, owner };
+                    return;
+                } catch (_e) {
+                    // fallback нижче
+                }
+            }
+
+            // Якщо власник змінився або applyOptions недоступний — пересоздаємо.
             clearCurrentPriceLine();
             const series = owner === "live" ? liveCandles : candles;
             currentPriceLine = series.createPriceLine({
@@ -3781,6 +3857,7 @@
             clearZones();
             clearOteOverlays();
             resetManualPriceScale({ silent: true });
+            priceScaleState.lastAutoRange = null;
             structureTriangles = [];
             chartTimeRange = { min: null, max: null };
         }
@@ -4106,6 +4183,11 @@
                 return;
             }
 
+            // Fallback-ширина правої цінової шкали для hit-test у моменти, коли
+            // lightweight-charts ще не віддав валідні paneSize/priceScale.width().
+            // Вирівняно з UI резервом під праву шкалу: styles.css -> .chart-overlay-actions { padding-right: 56px; }
+            const PRICE_AXIS_FALLBACK_WIDTH_PX = 56;
+
             // Під час нашого vertical-pan тимчасово блокуємо drag-скрол бібліотеки,
             // щоб не було «упирання» і переходу в масштабування.
             const setLibraryDragEnabled = (enabled) => {
@@ -4120,13 +4202,57 @@
                 }
             };
 
-            const handleWheel = (event) => {
-                const pointerInAxis = isPointerInPriceAxis(event);
-                const pointerInPane = isPointerInsidePane(event);
-                if (!pointerInAxis && !(event.shiftKey && pointerInPane)) {
+            let pendingWheelRaf = null;
+            let pendingWheel = null;
+
+            const flushPendingWheel = () => {
+                pendingWheelRaf = null;
+                const payload = pendingWheel;
+                pendingWheel = null;
+                if (!payload) {
                     return;
                 }
-                if (!getEffectivePriceRange()) {
+
+                const effectiveRange = getEffectivePriceRange();
+                if (!effectiveRange) {
+                    return;
+                }
+
+                const ev = {
+                    clientX: payload.clientX,
+                    clientY: payload.clientY,
+                    deltaY: payload.deltaY,
+                    shiftKey: payload.shiftKey,
+                };
+                const pointerInAxis = isPointerInPriceAxis(ev, PRICE_AXIS_FALLBACK_WIDTH_PX);
+                const pointerInPane = isPointerInsidePane(ev, PRICE_AXIS_FALLBACK_WIDTH_PX);
+
+                if (ev.shiftKey && pointerInPane) {
+                    applyWheelPan(ev);
+                    return;
+                }
+                if (pointerInAxis) {
+                    applyWheelZoom(ev);
+                }
+            };
+
+            const schedulePendingWheel = (event) => {
+                pendingWheel = {
+                    clientX: event.clientX,
+                    clientY: event.clientY,
+                    deltaY: event.deltaY,
+                    shiftKey: Boolean(event.shiftKey),
+                };
+                if (pendingWheelRaf !== null) {
+                    return;
+                }
+                pendingWheelRaf = window.requestAnimationFrame(flushPendingWheel);
+            };
+
+            const handleWheel = (event) => {
+                const pointerInAxis = isPointerInPriceAxis(event, PRICE_AXIS_FALLBACK_WIDTH_PX);
+                const pointerInPane = isPointerInsidePane(event, PRICE_AXIS_FALLBACK_WIDTH_PX);
+                if (!pointerInAxis && !(event.shiftKey && pointerInPane)) {
                     return;
                 }
                 event.preventDefault();
@@ -4134,6 +4260,13 @@
                     event.stopImmediatePropagation();
                 }
                 event.stopPropagation();
+                const effectiveRange = getEffectivePriceRange();
+                if (!effectiveRange) {
+                    // Ще не готові метрики/autoRange: не даємо built-in scale “проскакувати”,
+                    // але пробуємо повторити дію в наступному кадрі.
+                    schedulePendingWheel(event);
+                    return;
+                }
                 if (event.shiftKey) {
                     applyWheelPan(event);
                     return;
@@ -4144,6 +4277,17 @@
             };
             container.addEventListener("wheel", handleWheel, WHEEL_OPTIONS);
             interactionCleanup.push(() => container.removeEventListener("wheel", handleWheel, WHEEL_OPTIONS));
+            interactionCleanup.push(() => {
+                if (pendingWheelRaf !== null) {
+                    try {
+                        window.cancelAnimationFrame(pendingWheelRaf);
+                    } catch (_e) {
+                        // noop
+                    }
+                    pendingWheelRaf = null;
+                }
+                pendingWheel = null;
+            });
 
             const stopVerticalPan = () => {
                 if (!verticalPanState.pending) {
@@ -4388,35 +4532,47 @@
             };
         }
 
-        function isPointerInPriceAxis(event) {
+        function isPointerInPriceAxis(event, priceAxisFallbackWidthPx = 56) {
             const pointer = getRelativePointer(event);
             const { paneWidth, paneHeight, priceScaleWidth } = getPaneMetrics();
-            if (!paneHeight || !paneWidth || !pointer.width) {
+            if (!pointer.width || !pointer.height) {
                 return false;
             }
+
+            const effectivePaneHeight = paneHeight || pointer.height;
+
+            // Якщо paneWidth ще 0 (після init/resize), робимо hit-test по “правому краю”.
+            const axisLeft = paneWidth > 0
+                ? paneWidth
+                : Math.max(0, pointer.width - Math.max(0, Number(priceAxisFallbackWidthPx) || 56));
 
             // Інколи `priceScale("right").width()` може тимчасово бути 0 (під час resize/перемальовки).
             // У такому випадку не ламаємо UX: вважаємо price-axis як «усе правіше paneWidth».
-            const axisRight = priceScaleWidth > 0 ? paneWidth + priceScaleWidth : pointer.width;
+            const axisRight = paneWidth > 0 && priceScaleWidth > 0 ? paneWidth + priceScaleWidth : pointer.width;
             return (
-                pointer.x >= paneWidth &&
+                pointer.x >= axisLeft &&
                 pointer.x <= axisRight &&
                 pointer.y >= 0 &&
-                pointer.y <= paneHeight
+                pointer.y <= effectivePaneHeight
             );
         }
 
-        function isPointerInsidePane(event) {
+        function isPointerInsidePane(event, priceAxisFallbackWidthPx = 56) {
             const pointer = getRelativePointer(event);
             const { paneWidth, paneHeight } = getPaneMetrics();
-            if (!paneWidth || !paneHeight) {
+            if (!pointer.width || !pointer.height) {
                 return false;
             }
+
+            const effectivePaneHeight = paneHeight || pointer.height;
+            const effectivePaneWidth = paneWidth > 0
+                ? paneWidth
+                : Math.max(0, pointer.width - Math.max(0, Number(priceAxisFallbackWidthPx) || 56));
             return (
                 pointer.x >= 0 &&
-                pointer.x <= paneWidth &&
+                pointer.x <= effectivePaneWidth &&
                 pointer.y >= 0 &&
-                pointer.y <= paneHeight
+                pointer.y <= effectivePaneHeight
             );
         }
 

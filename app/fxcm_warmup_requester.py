@@ -186,6 +186,9 @@ class FxcmWarmupRequester:
                 continue
 
             desired_bars = _desired_lookback_bars()
+            # Діагностика «дір» має дивитись ширше, ніж базовий desired_bars,
+            # інакше gap може бути видимим в UI (напр. 800 барів), але не потрапляти в S2.
+            diagnostic_bars = min(1200, max(int(desired_bars), int(desired_bars) * 3))
             contract_1m_bars = int(self.min_history_bars_by_symbol.get(sym, 0) or 0)
             tf_ms = timeframe_to_ms(tf_norm) or 60_000
             contract_bars_tf = _bars_for_tf_from_contract(
@@ -206,6 +209,7 @@ class FxcmWarmupRequester:
                 symbol=sym,
                 timeframe=tf_norm,
                 min_history_bars=status_min_bars,
+                diagnostic_bars=int(diagnostic_bars),
                 stale_k=self.stale_k,
                 now_ms=now_ms,
             )
@@ -213,8 +217,13 @@ class FxcmWarmupRequester:
             # Політика на вихідні/закритий ринок:
             # - якщо мінімум історії вже є, не засмічуємо конектор backfill/warmup;
             # - якщо історії не вистачає (cold-start), warmup все одно дозволяємо.
+            # Політика на вихідні/закритий ринок:
+            # - якщо стан ок — не засмічуємо конектор;
+            # - якщо cold-start (insufficient) — warmup дозволяємо;
+            # - якщо є data-integrity проблема (gappy/non-monotonic) — repair дозволяємо,
+            #   бо дірки могли виникнути під час open-market і їх треба добрати офлайн.
             if (fxcm_status.get("market") == "closed") and (
-                status.state != "insufficient"
+                status.state not in {"insufficient", "gappy_tail", "non_monotonic_tail"}
             ):
                 self._clear_active_issue(sym=sym, tf=tf_norm)
                 continue
@@ -255,7 +264,11 @@ class FxcmWarmupRequester:
                         reason = str(status.state)
                     else:
                         reason = "stale_tail"
-                    request_bars = int(desired_bars)
+                    # Для «дір» просимо ширше вікно, щоб реально перекрити видимий розрив.
+                    if status.state in {"gappy_tail", "non_monotonic_tail"}:
+                        request_bars = int(max(int(desired_bars), int(diagnostic_bars)))
+                    else:
+                        request_bars = int(desired_bars)
 
             if not cmd_type:
                 continue
