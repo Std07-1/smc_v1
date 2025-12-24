@@ -132,16 +132,56 @@
         if (!bar) {
             return null;
         }
-        const timeSec = Number(bar.time);
+
+        const toUnixSeconds = (value) => {
+            if (value === null || value === undefined) {
+                return null;
+            }
+            const direct = Number(value);
+            if (!Number.isFinite(direct)) {
+                return null;
+            }
+
+            const abs = Math.abs(direct);
+            // Евристика: FX/крипто час може приходити як sec/ms/us.
+            // sec ~ 1e9, ms ~ 1e12, us ~ 1e15.
+            if (abs > 1e14) {
+                return direct / 1e6;
+            }
+            if (abs > 1e12) {
+                return direct / 1e3;
+            }
+            return direct;
+        };
+
+        const timeRaw =
+            bar.time ??
+            bar.open_time ??
+            bar.openTime ??
+            bar.start_ts ??
+            bar.start_time ??
+            bar.ts ??
+            bar.timestamp ??
+            bar.end_ts;
+        const timeSec = toUnixSeconds(timeRaw);
         if (!Number.isFinite(timeSec)) {
             return null;
         }
+
+        const open = Number(bar.open);
+        const high = Number(bar.high);
+        const low = Number(bar.low);
+        const close = Number(bar.close);
+        if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+            return null;
+        }
+
         return {
             time: Math.floor(timeSec),
-            open: Number(bar.open),
-            high: Number(bar.high),
-            low: Number(bar.low),
-            close: Number(bar.close),
+            open,
+            high,
+            low,
+            close,
         };
     }
 
@@ -2024,6 +2064,24 @@
             if (!normalized) {
                 return;
             }
+
+            // Критично для UX (TradingView-like): коли ринок на паузі (ніч/вихідні/свята),
+            // у датасеті немає нових барів, але тиковий час може «йти по годиннику».
+            // Якщо пустити такий live-бар з часом далеко праворуч, lightweight-charts
+            // розтягне time-scale і покаже порожнє полотно.
+            // Тому: якщо live-час суттєво попереду останнього історичного бару —
+            // вважаємо це паузою і НЕ оновлюємо live-бар (очищаємо його, якщо був).
+            const lastClosedTime = Number(lastBar?.time);
+            const spanSec = Math.max(1, Number(barTimeSpanSeconds) || 60);
+            if (Number.isFinite(lastClosedTime) && Number.isFinite(normalized.time)) {
+                // Дозволяємо максимум 2 бари «вперед» (на випадок лагу/неідеальних таймінгів).
+                const maxAllowed = lastClosedTime + spanSec * 2;
+                if (normalized.time > maxAllowed) {
+                    clearLiveBar();
+                    return;
+                }
+            }
+
             let vol = normalizeVolume(bar);
             // Якщо live volume вже накопичене у межах свічки — не даємо йому миготіти в 0.
             if (vol <= 0 && lastLiveBar && normalized.time === lastLiveBar.time && lastLiveVolume > 0) {
@@ -3923,6 +3981,13 @@
             api.__debugIsVerticalPanActive = () => ({
                 pending: Boolean(verticalPanState.pending),
                 active: Boolean(verticalPanState.active),
+            });
+
+            api.__debugGetTimeAnchors = () => ({
+                lastBarTime: Number.isFinite(Number(lastBar?.time)) ? Number(lastBar.time) : null,
+                lastLiveBarTime: Number.isFinite(Number(lastLiveBar?.time)) ? Number(lastLiveBar.time) : null,
+                chartTimeRangeMax: Number.isFinite(Number(chartTimeRange?.max)) ? Number(chartTimeRange.max) : null,
+                barTimeSpanSeconds: Number.isFinite(Number(barTimeSpanSeconds)) ? Number(barTimeSpanSeconds) : null,
             });
         }
 

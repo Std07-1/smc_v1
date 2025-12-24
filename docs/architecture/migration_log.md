@@ -4,7 +4,19 @@
 
 ## 2025-12-23
 
-- UI_v2: додано офлайн E2E smoke (Playwright) для захисту фіксів першого wheel/tooltip; HTTP сервер отримав `start()/stop()/get_listen_url()` для тестів; у конфігу виправлено kill-switch default (`SMC_LIVE_GAP_BACKFILL_ENABLED=False`) та парсинг ENV false-values. Команди на warmup/backfill — це payload у Redis-канал FXCM-конектора, не прямі FXCM виклики.
+- UI_v2: додано офлайн E2E smoke (Playwright) для захисту фіксів першого wheel/tooltip;
+  HTTP сервер отримав `start()/stop()/get_listen_url()` для тестів;
+  у конфігу виправлено kill-switch default (`SMC_LIVE_GAP_BACKFILL_ENABLED=False`) та парсинг ENV false-values.
+  Команди на warmup/backfill — це payload у Redis-канал FXCM-конектора, не прямі FXCM виклики.
+
+## 2025-12-24
+
+- QA/SMC Journal: виконано фактологічний прогін `tools/smc_journal_report.py` для XAUUSD (5m)
+  з офлайн-аудитом (`--ohlcv-path`) і сформовано SSOT-артефакти в `reports/smc_journal_p0_run5/`:
+  `report_XAUUSD.md`, `audit_todo.md`, `touch_rate.csv`, `zone_overlap_examples.csv`,
+  `case_b_removed_then_late_touch_examples.csv`, `case_c_short_lifetime_examples.csv`,
+  `case_d_widest_zone_examples.csv`.
+  Змін коду/контрактів у цій хвилі не робили.
 
 ## 2025-12-16 — Хвиля 1
 

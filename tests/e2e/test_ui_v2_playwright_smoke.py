@@ -165,3 +165,78 @@ async def test_ui_v2_tooltip_stable_on_crosshair_events() -> None:
             assert tip2["visible"] is False
 
             await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_ui_v2_market_pause_does_not_push_time_scale_to_wall_clock() -> None:
+    """Під час паузи ринку live-тик не має розтягувати шкалу часу вправо.
+
+    Регресія: коли між барами є довга пауза (ніч/вихідні/свята),
+    UI не має показувати порожнє полотно праворуч.
+    """
+
+    async with _running_viewer_http_server() as base_url:
+        url = f"{base_url}/e2e_smoke.html?test_hooks=1"
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch()
+            page = await browser.new_page(viewport={"width": 1100, "height": 700})
+
+            await page.goto(url, wait_until="load")
+            await page.wait_for_function(
+                "window.__e2e__ && window.__e2e__.ready === true"
+            )
+
+            anchors0 = await page.evaluate("window.__e2e__.getTimeAnchors()")
+            assert anchors0 and anchors0.get("lastBarTime") is not None
+
+            anchors1 = await page.evaluate(
+                "window.__e2e__.simulateMarketPauseLiveTick()"
+            )
+            assert anchors1 and anchors1.get("lastBarTime") == anchors0.get(
+                "lastBarTime"
+            )
+
+            # Після "future" live-тіка live-бар має бути очищений (не розтягуємо time-scale).
+            assert anchors1.get("lastLiveBarTime") is None
+            assert anchors1.get("chartTimeRangeMax") == anchors0.get(
+                "chartTimeRangeMax"
+            )
+
+            await browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_ui_v2_ms_timestamp_does_not_create_future_whitespace() -> None:
+    """ms vs s: live-бар з time в мс має нормалізуватись до секунд.
+
+    Регресія: якщо `time` випадково приходить у мс, графік стрибає в "далеке майбутнє",
+    з'являється whitespace та мерехтіння (LWC думає, що це нові бари).
+    """
+
+    async with _running_viewer_http_server() as base_url:
+        url = f"{base_url}/e2e_smoke.html?test_hooks=1"
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch()
+            page = await browser.new_page(viewport={"width": 1100, "height": 700})
+
+            await page.goto(url, wait_until="load")
+            await page.wait_for_function(
+                "window.__e2e__ && window.__e2e__.ready === true"
+            )
+
+            anchors0 = await page.evaluate("window.__e2e__.getTimeAnchors()")
+            assert anchors0 and anchors0.get("lastBarTime") is not None
+
+            anchors1 = await page.evaluate(
+                "window.__e2e__.simulateLiveBarWithMsTimestamp()"
+            )
+            assert anchors1 and anchors1.get("chartTimeRangeMax") == anchors0.get(
+                "chartTimeRangeMax"
+            )
+            assert anchors1.get("lastLiveBarTime") == anchors0.get("lastBarTime")
+
+            await browser.close()

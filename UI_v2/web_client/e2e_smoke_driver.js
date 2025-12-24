@@ -63,6 +63,38 @@
             getEffectiveRange() {
                 return controller.__debugGetEffectivePriceRange ? controller.__debugGetEffectivePriceRange() : null;
             },
+
+            getTimeAnchors() {
+                return controller.__debugGetTimeAnchors ? controller.__debugGetTimeAnchors() : null;
+            },
+
+            simulateMarketPauseLiveTick() {
+                // Симуляція ситуації "ринок на паузі": історичні бари зупинились,
+                // але live-тик приносить час далеко попереду.
+                const anchors = this.getTimeAnchors();
+                const lastBarTime = Number(anchors?.lastBarTime);
+                if (!Number.isFinite(lastBarTime)) {
+                    throw new Error("e2e_smoke: lastBarTime не валідний");
+                }
+                // +1 година вперед від останнього бару (для TF=1m це 60 барів «дірки»).
+                const t = Math.floor(lastBarTime + 3600);
+                controller.setLiveBar({ time: t, open: 101, high: 101.2, low: 100.8, close: 101.1, volume: 0 });
+                return this.getTimeAnchors();
+            },
+
+            simulateLiveBarWithMsTimestamp() {
+                // Регресія: інколи time може прийти в ms замість sec.
+                // Очікування: chart_adapter нормалізує до секунд і НЕ створює "бар у майбутньому".
+                const anchors = this.getTimeAnchors();
+                const lastBarTime = Number(anchors?.lastBarTime);
+                if (!Number.isFinite(lastBarTime)) {
+                    throw new Error("e2e_smoke: lastBarTime не валідний");
+                }
+
+                const tMs = Math.floor(lastBarTime * 1000);
+                controller.setLiveBar({ time: tMs, open: 101, high: 101.2, low: 100.8, close: 101.1, volume: 0 });
+                return this.getTimeAnchors();
+            },
             simulateTfChange() {
                 // Симуляція "зміни таймфрейму": переподаємо нові бари.
                 // Для smoke нам важливо, щоб після цього перша взаємодія не давала "ривка".

@@ -693,7 +693,15 @@ function safeUnixSeconds(value) {
     // 1) Числа та "числові рядки" (sec або ms).
     const direct = Number(value);
     if (Number.isFinite(direct)) {
-        return Math.floor(direct / (direct > 1e12 ? 1000 : 1));
+        const abs = Math.abs(direct);
+        // Евристика: sec ~ 1e9, ms ~ 1e12, us ~ 1e15.
+        if (abs > 1e14) {
+            return Math.floor(direct / 1e6);
+        }
+        if (abs > 1e12) {
+            return Math.floor(direct / 1e3);
+        }
+        return Math.floor(direct);
     }
 
     // 2) ISO-рядки часу (наприклад "2025-12-16T12:34:56Z").
@@ -710,7 +718,17 @@ function normalizeOhlcvBar(bar) {
     if (!bar) {
         return null;
     }
-    const timeCandidate = bar.time ?? bar.ts ?? bar.timestamp ?? bar.end_ts;
+    // ВАЖЛИВО для lightweight-charts: time має бути open time бакету.
+    // Якщо використати close/end time, UI може сприймати це як "новий бар" замість update().
+    const timeCandidate =
+        bar.open_time ??
+        bar.start_ts ??
+        bar.start_time ??
+        bar.open_ts ??
+        bar.time ??
+        bar.ts ??
+        bar.timestamp ??
+        bar.end_ts;
     const openCandidate = bar.open ?? bar.o;
     const highCandidate = bar.high ?? bar.h;
     const lowCandidate = bar.low ?? bar.l;
@@ -724,13 +742,12 @@ function normalizeOhlcvBar(bar) {
     ) {
         return null;
     }
-    const timeNumeric = Number(timeCandidate);
-    if (!Number.isFinite(timeNumeric)) {
+    const timeSec = safeUnixSeconds(timeCandidate);
+    if (timeSec === undefined) {
         return null;
     }
-    const divisor = timeNumeric > 1e12 ? 1000 : 1;
     const normalized = {
-        time: Math.floor(timeNumeric / divisor),
+        time: timeSec,
         open: Number(openCandidate),
         high: Number(highCandidate),
         low: Number(lowCandidate),
@@ -962,6 +979,22 @@ const appState = {
 };
 
 const elements = {};
+
+function resetOverlaySeqCache(symbol = null) {
+    try {
+        if (!appState?.chartState?.overlaySeqBySymbol) {
+            return;
+        }
+        if (symbol) {
+            const key = String(symbol).toUpperCase();
+            delete appState.chartState.overlaySeqBySymbol[key];
+            return;
+        }
+        appState.chartState.overlaySeqBySymbol = Object.create(null);
+    } catch (_e) {
+        // noop
+    }
+}
 
 loadPersistedPreferences();
 
@@ -1727,6 +1760,7 @@ async function fetchOhlcv(symbol, timeframe = appState.currentTimeframe || OHLCV
             renderOhlcvSummary(null);
             if (appState.chart) {
                 appState.chart.clearAll();
+                resetOverlaySeqCache(appState.currentSymbol);
                 if (typeof appState.chart.clearLiveBar === "function") {
                     appState.chart.clearLiveBar();
                 }
@@ -1745,6 +1779,7 @@ async function fetchOhlcv(symbol, timeframe = appState.currentTimeframe || OHLCV
         renderOhlcvSummary(null);
         if (appState.chart) {
             appState.chart.clearAll();
+            resetOverlaySeqCache(appState.currentSymbol);
             if (typeof appState.chart.clearLiveBar === "function") {
                 appState.chart.clearLiveBar();
             }
@@ -2628,7 +2663,15 @@ function normalizeTickTimestampToSeconds(value) {
     if (!Number.isFinite(num)) {
         return null;
     }
-    return num > 1e12 ? num / 1000 : num;
+
+    const abs = Math.abs(num);
+    if (abs > 1e14) {
+        return num / 1e6;
+    }
+    if (abs > 1e12) {
+        return num / 1e3;
+    }
+    return num;
 }
 
 function resetTickLiveState() {
@@ -2894,7 +2937,11 @@ function handleTickWsPayload(payload) {
     const tsSec =
         normalizeTickTimestampToSeconds(payload.tick_ts) ??
         normalizeTickTimestampToSeconds(payload.snap_ts) ??
-        Date.now() / 1000;
+        null;
+    if (tsSec === null) {
+        // Без timestamp не будуємо свічку з wall-clock (це породжує whitespace/"дірки").
+        return;
+    }
     const tfSec = timeframeToSeconds(appState.currentTimeframe);
     const candleStart = Math.floor(tsSec / tfSec) * tfSec;
 

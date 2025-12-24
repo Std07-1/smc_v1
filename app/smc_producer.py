@@ -96,6 +96,125 @@ def _history_ok_for_compute(*, history_state: str, allow_stale_tail: bool) -> bo
     return False
 
 
+def _preserve_previous_hint_if_gated(
+    *,
+    previous_hint: dict[str, Any] | None,
+    new_hint: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, bool]:
+    """Зберігає попередній `smc_hint`, якщо новий є gated-empty.
+
+    Проблема:
+    - Stage0 гейти можуть повертати hint з `structure/liquidity/zones=None`.
+    - Якщо ми безумовно перезаписуємо ним `asset.smc_hint`, UI стає порожнім
+      (Trend/Bias/AMD UNKNOWN), хоча «останній відомий стан» був валідним.
+
+    Політика:
+    - Якщо `new_hint` має gates і всі core-блоки None, але `previous_hint` містить
+      будь-який з блоків (structure/liquidity/zones), то повертаємо previous_hint,
+      оновивши лише `meta` з нового (gates/tf_health/history_state тощо).
+    """
+
+    if not isinstance(previous_hint, dict) or not previous_hint:
+        return new_hint, False
+    if not isinstance(new_hint, dict) or not new_hint:
+        return new_hint, False
+
+    new_meta_any = new_hint.get("meta")
+    new_meta: dict[str, Any] = new_meta_any if isinstance(new_meta_any, dict) else {}
+    gates_any = new_meta.get("gates")
+    has_gates = isinstance(gates_any, list) and any(
+        isinstance(g, dict) for g in gates_any
+    )
+
+    if not has_gates:
+        return new_hint, False
+
+    # gated-empty: core-блоки відсутні
+    if (
+        new_hint.get("structure") is not None
+        or new_hint.get("liquidity") is not None
+        or new_hint.get("zones") is not None
+    ):
+        return new_hint, False
+
+    # previous має хоч щось, що можна показувати
+    if (
+        previous_hint.get("structure") is None
+        and previous_hint.get("liquidity") is None
+        and previous_hint.get("zones") is None
+    ):
+        return new_hint, False
+
+    merged = dict(previous_hint)
+    prev_meta_any = merged.get("meta")
+    prev_meta: dict[str, Any] = prev_meta_any if isinstance(prev_meta_any, dict) else {}
+
+    merged_meta = {**prev_meta, **new_meta, "smc_hint_preserved": True}
+    merged["meta"] = merged_meta
+    return merged, True
+
+
+def _apply_fast_symbols_update(
+    *,
+    state_manager: SmcStateManager,
+    assets_current: list[str],
+    fresh_symbols: list[str] | None,
+) -> list[str]:
+    """Оновлює список активів з `fast_symbols` без затирання стану.
+
+    Причина: список `fast_symbols` може тимчасово повертати неповний набір.
+    Якщо видаляти asset зі `state_manager.state`, UI отримує «порожній» INIT
+    при наступному додаванні → ефект «то все є, то нічого».
+
+    Політика:
+    - Додаємо нові символи (якщо їх немає у state) через `init_asset`.
+    - Символи, які зникли зі списку, НЕ видаляємо зі state; лише позначаємо
+      сигналом `SMC_PAUSED` та підказкою (останній `smc_hint` зберігається).
+    - Повертаємо оновлений `assets_current` для обчислень.
+    """
+
+    if not fresh_symbols:
+        return assets_current
+
+    new_assets = [str(s).lower() for s in fresh_symbols]
+    current_set = set([str(s).lower() for s in (assets_current or [])])
+    new_set = set(new_assets)
+
+    added = new_set - current_set
+    removed = current_set - new_set
+
+    for sym in sorted(added):
+        if sym not in state_manager.state:
+            state_manager.init_asset(sym)
+        else:
+            state_manager.update_asset(
+                sym,
+                {
+                    "hints": [
+                        "SMC: символ повернувся у fast_symbols — очікуємо оновлення"
+                    ],
+                    K_STATS: {"smc_fast_list_member": True},
+                },
+            )
+        logger.info("SMC: символ %s повернувся у fast_symbols", sym)
+
+    for sym in sorted(removed):
+        # Не затираємо `smc_hint`: лише сигналізуємо, що символ зараз не оновлюється.
+        state_manager.update_asset(
+            sym,
+            {
+                "signal": "SMC_PAUSED",
+                "hints": [
+                    "SMC: символ тимчасово відсутній у fast_symbols (стан збережено)"
+                ],
+                K_STATS: {"smc_fast_list_member": False},
+            },
+        )
+        logger.info("SMC: символ %s тимчасово відсутній у fast_symbols", sym)
+
+    return list(new_set)
+
+
 async def _get_smc_engine() -> SmcCoreEngine | None:
     """Ліниво створює SmcCoreEngine з smc_core.engine."""
 
@@ -806,6 +925,20 @@ async def process_smc_batch(
             plain_serializer = _get_smc_plain_serializer()
             plain_hint = plain_serializer(smc_hint) if plain_serializer else smc_hint
 
+            # UX/стабільність: не затираємо останній валідний SMC стан gated-empty hint'ом.
+            try:
+                prev_any = state_manager.state.get(sym, {}).get("smc_hint")
+                prev_hint = prev_any if isinstance(prev_any, dict) else None
+                merged_hint, preserved = _preserve_previous_hint_if_gated(
+                    previous_hint=prev_hint,
+                    new_hint=plain_hint if isinstance(plain_hint, dict) else None,
+                )
+                if preserved and isinstance(merged_hint, dict):
+                    plain_hint = merged_hint
+                    stats["smc_hint_preserved"] = True
+            except Exception:
+                pass
+
             # Stage6: анти-фліп/TTL сценарію (живе поза core).
             try:
                 stage6_cfg = SMC_RUNTIME_PARAMS.get("stage6") or {}
@@ -847,7 +980,13 @@ async def process_smc_batch(
                     "state": ASSET_STATE["NORMAL"],
                     K_STATS: stats,
                     "smc_hint": plain_hint,
-                    "hints": ["SMC: дані оновлено"],
+                    "hints": [
+                        (
+                            "SMC: дані оновлено"
+                            if not stats.get("smc_hint_preserved")
+                            else "SMC: compute пропущено гейтами — показуємо останній відомий стан"
+                        )
+                    ],
                 },
             )
         except Exception as exc:  # pragma: no cover - захист від edge-case
@@ -954,17 +1093,21 @@ async def smc_producer(
 
         try:
             fresh_symbols = await store_fast_symbols.get_fast_symbols()
-            if fresh_symbols:
-                new_assets = [s.lower() for s in fresh_symbols]
-                current_set = set(assets_current)
-                new_set = set(new_assets)
-                added = new_set - current_set
-                removed = current_set - new_set
-                for sym in added:
-                    state_manager.init_asset(sym)
-                for sym in removed:
-                    state_manager.state.pop(sym, None)
-                assets_current = list(new_set)
+            prev_set = set(assets_current)
+            assets_current = _apply_fast_symbols_update(
+                state_manager=state_manager,
+                assets_current=assets_current,
+                fresh_symbols=fresh_symbols,
+            )
+            new_set = set(assets_current)
+            if prev_set != new_set:
+                added = sorted(list(new_set - prev_set))
+                removed = sorted(list(prev_set - new_set))
+                logger.info(
+                    "[SMC] Оновлено fast_symbols: додано=%s прибрано=%s",
+                    added,
+                    removed,
+                )
         except Exception as exc:
             logger.debug("[SMC] Не вдалося оновити список активів: %s", exc)
 
