@@ -22,6 +22,25 @@ MIN_BREAK_PCT = 0.002
 WICK_RATIO = 2.5
 
 
+def _coerce_ts(ts: Any) -> pd.Timestamp | None:
+    """Нормалізує timestamp для внутрішнього використання.
+
+    У трекері `_track_wick_clusters` ми можемо підхопити `first_ts/last_ts` із
+    `prev_wick_clusters` у `snapshot.context`, де timestamp інколи приходить як
+    ISO-рядок. Для `SmcLiquidityPool.first_time/last_time` SSOT — `pd.Timestamp`.
+    """
+
+    if ts is None:
+        return None
+    if isinstance(ts, pd.Timestamp):
+        return ts
+    try:
+        out = pd.Timestamp(ts)
+        return out
+    except Exception:
+        return None
+
+
 def _estimate_life_bars(
     *, first_ts: pd.Timestamp | None, last_ts: pd.Timestamp | None, tf: str
 ) -> int:
@@ -396,6 +415,10 @@ def detect_sfp_and_wicks(
 
     wick_meta: list[dict[str, Any]] = []
     for cluster in clusters_list:
+        first_ts = _coerce_ts(cluster.get("first_ts"))
+        last_ts = _coerce_ts(cluster.get("last_ts"))
+        cluster["first_ts"] = first_ts
+        cluster["last_ts"] = last_ts
         wick_meta.append(
             {
                 "cluster_id": cluster.get("cluster_id"),
@@ -404,12 +427,8 @@ def detect_sfp_and_wicks(
                 "count": cluster["count"],
                 "max_wick": cluster["max_wick"],
                 "source": cluster["source"],
-                "first_ts": (
-                    cluster["first_ts"].isoformat() if cluster["first_ts"] else None
-                ),
-                "last_ts": (
-                    cluster["last_ts"].isoformat() if cluster["last_ts"] else None
-                ),
+                "first_ts": (first_ts.isoformat() if first_ts is not None else None),
+                "last_ts": (last_ts.isoformat() if last_ts is not None else None),
             }
         )
         extra_pools.append(
@@ -418,8 +437,8 @@ def detect_sfp_and_wicks(
                 liq_type=SmcLiquidityType.WICK_CLUSTER,
                 strength=float(cluster["max_wick"]),
                 n_touches=cluster["count"],
-                first_time=cluster["first_ts"],
-                last_time=cluster["last_ts"],
+                first_time=first_ts,
+                last_time=last_ts,
                 role=resolve_role_for_bias(
                     structure.bias, SmcLiquidityType.WICK_CLUSTER, side=cluster["side"]
                 ),

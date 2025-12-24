@@ -1,3 +1,13 @@
+# Log змін (AiOne_t / smc_v1)
+
+Цей файл — журнал змін у репозиторії. Формат записів: дата/час → що зроблено → де зроблено → причина → тести/перевірки → ризики/нотатки.
+
+## 2025-12-24 — Bugfix: replay_snapshot_to_viewer падав на WICK_CLUSTER timestamps
+
+- Симптом: `tools.replay_snapshot_to_viewer` падав з `AttributeError: 'str' object has no attribute 'isoformat'` у `smc_liquidity/sfp_wick.py` під час серіалізації `wick_clusters`.
+- Причина: `_track_wick_clusters` міг підхопити `first_ts/last_ts` із `prev_wick_clusters` у `snapshot.context`, де timestamp інколи був ISO-рядком (JSON-friendly), а не `pd.Timestamp`.
+- Фікс: у [smc_liquidity/sfp_wick.py](smc_liquidity/sfp_wick.py) додано нормалізацію `first_ts/last_ts` до `pd.Timestamp` перед побудовою `wick_meta` та `SmcLiquidityPool`.
+- Тести/перевірки: додано регресійний тест [tests/test_smc_sfp_wick.py](tests/test_smc_sfp_wick.py) (`test_wick_cluster_prev_first_ts_string_does_not_crash`).
 
 ## 2025-12-24 — SMC producer: стабільність стану при `fast_symbols` флапах
 
@@ -7,9 +17,128 @@
  	- removed-символи не `pop()` з state; замість цього ставимо `signal=SMC_PAUSED` + hint, але **зберігаємо останній `smc_hint`**.
  	- додано юніт-тест [tests/test_smc_producer_fast_symbols_update.py](tests/test_smc_producer_fast_symbols_update.py).
 
-# Log змін (AiOne_t / smc_v1)
+## 2025-12-24 — SMC producer: не затирати `smc_hint` gated-empty Stage0 (preserve last known)
 
-Цей файл — журнал змін у репозиторії. Формат записів: дата/час → що зроблено → де зроблено → причина → тести/перевірки → ризики/нотатки.
+- Симптом: при Stage0 gate (наприклад `NO_5M_DATA`/`INSUFFICIENT_5M`/`STALE_5M`) продюсер міг записати `SmcHint` з `structure/liquidity/zones=None`.
+- Наслідок: це перезаписувало попередній валідний стан → UI ставав повністю порожнім (`Trend/Bias/AMD = UNKNOWN`).
+- Фікс: у [app/smc_producer.py](app/smc_producer.py) додано правило `_preserve_previous_hint_if_gated(...)`:
+ 	- якщо новий hint має `meta.gates` і він gated-empty, а попередній hint містить хоча б один блок (`structure`/`liquidity`/`zones`), то зберігаємо попередній, але оновлюємо `meta` з нового та ставимо `meta.smc_hint_preserved=true`.
+- Тести/перевірки: додано [tests/test_smc_producer_preserve_hint_on_gates.py](tests/test_smc_producer_preserve_hint_on_gates.py).
+- Ризики/нотатки:
+ 	- UI може показувати “останній відомий” стан, але це краще за порожній екран; причина прозоро видима через `meta.gates/history_state/tf_health`.
+
+## 2025-12-24 — Рейка процесу: заборона змін без `Log.md` (log-gate)
+
+- Вимога: записи в `Log.md` — правило топ-рівня (вище тестів/чат-відповідей).
+- Зміна: додано рейку-скрипт [tools/check_log_updated.py](tools/check_log_updated.py).
+ 	- Політика: якщо у `git diff` є зміни у системних файлах (код/конфіг/тести/UI/tools), то `Log.md` має бути серед змінених файлів.
+ 	- Артефакти/дані (наприклад `reports/`, `datastore/`, `tmp/`) не вимагають Log.md.
+- Примітка: скрипт використовує лише `git diff` (read-only), без жодних git-операцій.
+ 	- Інтеграція: додано hook `log-md-required` у [.pre-commit-config.yaml](.pre-commit-config.yaml), і додано `pre-commit` у [requirements-dev.txt](requirements-dev.txt).
+
+## 2025-12-24 — Висновки з QA-прогону (XAUUSD): інваріанти та фокус
+
+- Головний шумогенератор: **pools/WICK_CLUSTER**, не zones.
+ 	- Preview vs close по pools нестабільний (низький jaccard, десятки preview_only/close_only на бар).
+ 	- Дуже короткий lifetime у pools (частка lifetime<=1/<=2 висока) → фліккер як системна норма.
+ 	- “Вбивця довіри”: `touched_late` після `invalidated_rule` та `evicted_cap` (semantics remove ≠ правда).
+- Zones: між preview/close стабільні, але є “килим” overlap/dup (потрібен dedup/merge у presentation-layer).
+- Інваріанти/обмеження (обов’язково дотримуватись):
+ 	- **CHOCH не чіпаємо** (це базовий “truth” індикатор).
+ 	- Формування BOS також **не чіпаємо** (допускаємо лише presentation-політики без зміни детекції).
+ 	- Не чіпаємо “успішні” магніти/пули (EQL/EQH тощо) без прямої задачі.
+ 	- Ключова ідея: **розділити “існує в правді” і “видиме в UI”**; `evicted_cap` має ставати hidden/archived, а не removed.
+- План робіт (узгоджений напрямок):
+ 	- Спершу low-risk UI/presentation стабілізація (matured-only/anti-flicker, hidden-евікшн, маркери touched).
+ 	- Далі — lifecycle/ID семантика саме для pools (найвищий ROI по `touched_late`).
+ 	- Після цього — dedup/merge зон по IoU (читабельність, без зміни “truth”).
+
+## 2025-12-24 — UI_v2 presentation: pools close-only + matured-only (age>=2) + лічильники truth/shown
+
+- Ціль: різко зменшити фліккер pools без зміни SMC truth (за результатами QA: pools/WICK_CLUSTER — головний шумогенератор).
+- Зміни:
+ 	- У [UI_v2/viewer_state_builder.py](UI_v2/viewer_state_builder.py) введено різні пороги newborn:
+  		- zones: `MIN_CLOSE_STEPS_BEFORE_SHOW_ZONES=1` (як було за замовчуванням);
+  		- pools: `MIN_CLOSE_STEPS_BEFORE_SHOW_POOLS=2` (matured-only).
+ 	- Pools зроблено **close-only**: на preview pools не віддаємо в `viewer_state.liquidity.pools`.
+ 	- Додано `viewer_state.liquidity.pools_meta` з лічильниками truth vs shown:
+  		- `truth_count`, `shown_count`, `filtered_preview_count`, `filtered_newborn_count`, `dropped_by_cap_count`, `policy`.
+ 	- Контракт розширено non-breaking: [core/contracts/viewer_state.py](core/contracts/viewer_state.py) (`SmcViewerLiquidity.pools_meta`).
+- Тести/перевірки:
+ 	- Оновлено [tests/test_ui_v2_viewer_state_builder.py](tests/test_ui_v2_viewer_state_builder.py) під нову політику (pools стають видимими з 3-го close).
+
+## 2025-12-24 — UI_v2 presentation: cap-evicted pools => hidden (TTL) + причини в `pools_meta`
+
+- Ціль: зняти “вбивцю довіри” для pools — коли сутність «пропадає» через cap/top-K і потім раптом фіксується як touched_late.
+ 	- Важливо: це **лише presentation-логіка**; SMC truth/детекцію не змінюємо.
+- Зміни:
+ 	- У [UI_v2/viewer_state_builder.py](UI_v2/viewer_state_builder.py) додано кеш-політику для pools:
+  		- якщо pool був показаний у UI, а на наступному close вилетів за `MAX_POOLS` (cap), він помічається як `hidden` у кеші на `POOLS_HIDDEN_TTL_CLOSE_STEPS` close-кроків;
+  		- у `viewer_state.liquidity.pools_meta` додано: `hidden_count`, `hidden_reasons`, а також `policy.hidden_ttl_close_steps`.
+- Тести/перевірки:
+ 	- Додано тест cap-евікшну: [tests/test_ui_v2_viewer_state_builder.py](tests/test_ui_v2_viewer_state_builder.py).
+
+## 2025-12-24 — UI_v2 presentation: `touched_while_hidden` для pools (строго з truth)
+
+- Ціль: прибрати “late-touch” як trust-killer на presentation-рівні, не підміняючи правду.
+ 	- Якщо pool прихований через `evicted_cap`, а в truth він отримав нові touch-ознаки, UI має змогу показати це як `touched_while_hidden`, а не як “щось зникло/з’явилось”.
+- Зміни:
+ 	- У [UI_v2/viewer_state_builder.py](UI_v2/viewer_state_builder.py) додано відстеження touch-сигнатури для pools у кеші (лише на close):
+  		- сигнал береться **строго з truth**: `n_touches` та/або зростання `last_time`.
+  		- у `viewer_state.liquidity.pools_meta` додано: `touched_while_hidden_count`, `touched_while_hidden_reasons`.
+- Тести/перевірки:
+ 	- Розширено тест cap-евікшну: [tests/test_ui_v2_viewer_state_builder.py](tests/test_ui_v2_viewer_state_builder.py) (симуляція `n_touches` зростає, поки pool hidden).
+
+## 2025-12-24 — UI_v2 presentation: стабільний top-K pools + canonical keys (менше remove+create)
+
+- Ціль: зменшити churn у списку pools (remove+create/evicted фліккер) через нестабільний порядок у truth.
+ 	- Важливо: це **presentation-only**; SMC truth/детекція/пороги не змінюються.
+- Зміни:
+ 	- У [UI_v2/viewer_state_builder.py](UI_v2/viewer_state_builder.py) selection `MAX_POOLS` тепер детермінований:
+  		- сортування pools за `(strength desc, n_touches desc, pool_key)` перед cap.
+ 	- Розширено canonical key для pools:
+  		- `_pool_key(...)` використовує стабільні `meta` ID (де доступні): `cluster_id`/`wick_cluster_id` (WICK_CLUSTER), `range_extreme_id` (RANGE_EXTREME), `sfp_id` (SFP*).
+- Тести/перевірки:
+ 	- Оновлено тест cap-евікшну під новий детермінований top-K (evict через зміну `strength`): [tests/test_ui_v2_viewer_state_builder.py](tests/test_ui_v2_viewer_state_builder.py).
+
+## 2025-12-24 — UI_v2 presentation: dedup/merge зон по IoU (canonical + stack=N)
+
+- Ціль: прибрати “килим” overlap/dup по zones у UI без зміни SMC truth.
+- Зміни:
+ 	- У [UI_v2/viewer_state_builder.py](UI_v2/viewer_state_builder.py) додано merge зон у presentation:
+  		- кластеризація зон за `(zone_type, direction, role, timeframe)`;
+  		- merge якщо IoU по price-range >= `ZONES_MERGE_IOU_THRESHOLD`;
+  		- для кластерів додаємо `meta.stack=N`; канонічний `price_min/max` **не роздуваємо**, а envelope зберігаємо в `meta.envelope_min/max`.
+- Тести/перевірки:
+ 	- Додано тест overlap-мерджу: [tests/test_ui_v2_viewer_state_builder.py](tests/test_ui_v2_viewer_state_builder.py).
+
+## 2025-12-24 — UI_v2 presentation: `zones_meta` (truth/shown) для QA-гейтів
+
+- Ціль: зробити merge/фільтрацію зон прозорою та вимірюваною (truth vs shown), щоб QA не «покращувався» лише за рахунок приховування.
+- Зміни:
+ 	- Контракт розширено non-breaking: [core/contracts/viewer_state.py](core/contracts/viewer_state.py) (`SmcViewerZones.zones_meta`).
+ 	- У [UI_v2/viewer_state_builder.py](UI_v2/viewer_state_builder.py) додано `zones_meta` з лічильниками:
+  		- `truth_count`, `shown_count`, `merged_clusters_count`, `merged_away_count`, `max_stack`, `filtered_missing_bounds_count`.
+  		- `policy`: `merge_iou_threshold`, `min_close_steps_before_show`, `max_zones_shown` (поки `null`), `scope_key=active_zones`.
+ 	- Для debug/прозорості merge додається `meta.merged_from_ids_sample` (до 3 id).
+- Тести/перевірки:
+ 	- Розширено overlap-мердж тест + додано no-merge тест: [tests/test_ui_v2_viewer_state_builder.py](tests/test_ui_v2_viewer_state_builder.py).
+
+## 2025-12-24 — QA gate (KPI) для кроків 1–5 у `tools/smc_journal_report.py`
+
+- Вимога: після кожного кроку фіксувати не “враження”, а числа (KPI) і мати автоматичний pass/fail.
+- Зміни у [tools/smc_journal_report.py](tools/smc_journal_report.py):
+ 	- Додано режим `--gate`, який друкує таблицю `qa_gate_kpi(steps_1_5)` і повертає **exit code 3** при FAIL.
+ 	- Пороги задаються CLI-аргументами:
+  		- `--gate-min-pools-jaccard-p50`
+  		- `--gate-max-pools-short-lifetime-le1-share`
+  		- `--gate-max-zone-overlap-frames-share-iou-ge-08`
+  		- `--gate-max-shown-counts-rel-range`
+ 	- Фікс CLI: аргумент з `0.8` у назві перейменовано на `...-08`, щоб уникнути крихкого доступу до `argparse` атрибутів.
+ 	- Фікс KPI: `shown_*_counts_rel_range` рахуємо з `frame.active_ids` (довжина set), а не з неіснуючого `frame.counts`.
+- Smoke-команда (м’які пороги, лише для перевірки, що все рахується):
+ 	- `C:/Aione_projects/smc_v1/.venv/Scripts/python.exe tools/smc_journal_report.py --dir reports/smc_journal_p0_run1 --symbol XAUUSD --gate --gate-min-pools-jaccard-p50 0.0 --gate-max-pools-short-lifetime-le1-share 1.0 --gate-max-zone-overlap-frames-share-iou-ge-08 1.0 --gate-max-shown-counts-rel-range 999`
+- Примітка: пороги для “реального” гейту треба калібрувати під наші очікувані пост-фікс KPI (окремою хвилею), щоб gate ловив регресії, а не просто “проходив завжди”.
 
 ---
 
@@ -469,8 +598,13 @@
 
 ## 2025-12-24 (UI_v2: time-scale під час паузи ринку)
 
-- Контекст: під час паузи ринку (ніч/вихідні/свята) конектор віддає `market=CLOSED` і свічки не приходять; UI раніше міг «тягнути» time-scale до wall-clock через live-оновлення з часом далеко попереду останньої відомої свічки, що створювало порожній простір праворуч і «дірку» до першої нової свічки.
-- Зміна: додано guardrail у [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) — `setLiveBar()` відхиляє/очищає live-бар, якщо його `time` занадто далеко попереду `lastBar.time` (порог: `barTimeSpanSeconds * 2`), щоб шкала часу залишалась прив’язаною до останнього бару (поведінка в стилі TradingView).
+- Контекст: під час паузи ринку (ніч/вихідні/свята) конектор віддає `market=CLOSED` і свічки не приходять;
+  UI раніше міг «тягнути» time-scale до wall-clock через live-оновлення з часом далеко попереду останньої відомої
+  свічки, що створювало порожній простір праворуч і «дірку» до першої нової свічки.
+- Зміна: додано guardrail у [UI_v2/web_client/chart_adapter.js](UI_v2/web_client/chart_adapter.js) —
+  `setLiveBar()` відхиляє/очищає live-бар, якщо його `time` занадто далеко попереду `lastBar.time`
+  (порог: `barTimeSpanSeconds * 2`), щоб шкала часу залишалась прив’язаною до останнього бару
+  (поведінка в стилі TradingView).
 - Тест: додано smoke E2E у [tests/e2e/test_ui_v2_playwright_smoke.py](tests/e2e/test_ui_v2_playwright_smoke.py) — симуляція «future» live-тіка не має змінювати `chartTimeRangeMax`, а `lastLiveBarTime` має очищатися.
 
 ## 2025-12-24 (UI_v2: хардени проти whitespace/дір/мерехтіння)
@@ -490,6 +624,9 @@
 ## 2025-12-24 (UI_v2: оверлеї можуть не повертатися після clearAll)
 
 - Контекст: інколи трейдер бачить “то все є, то взагалі нічого немає” по оверлеях (pools/zones), хоча очікується стабільна наявність рівнів.
-- Root-cause (по коду): при тимчасовому фейлі `/smc-viewer/ohlcv` фронтенд викликає `chart.clearAll()` (чистить бари/оверлеї). При цьому `overlaySeqBySymbol` зберігає попередній `seqKey`, і якщо наступний `viewer_state` приходить з тим самим `seqKey`, `updateChartFromViewerState()` скіпає оновлення (seq-gate) → оверлеї можуть не відмалюватися назад.
+- Root-cause (по коду): при тимчасовому фейлі `/smc-viewer/ohlcv` фронтенд викликає `chart.clearAll()` (чистить бари/оверлеї).
+
+- Наслідок: `overlaySeqBySymbol` зберігає попередній `seqKey`; якщо наступний `viewer_state` приходить з тим самим `seqKey`, `updateChartFromViewerState()` скіпає оновлення (seq-gate), тому оверлеї можуть не відмалюватися назад.
+
 - Зміна: у [UI_v2/web_client/app.js](UI_v2/web_client/app.js) додано `resetOverlaySeqCache()` і виклик після `chart.clearAll()`, щоб після очищення графіка наступний `viewer_state` гарантовано перерендерив оверлеї навіть при незмінному `seqKey`.
 - Тести/перевірки: таргетних автотестів саме на цей сценарій поки немає (існуючі Playwright smoke покривають chart_adapter, а не seq-gate у app.js).

@@ -114,3 +114,74 @@ def test_wick_cluster_tracked_near_range() -> None:
         pool.liq_type is SmcLiquidityType.WICK_CLUSTER for pool in liquidity.pools
     )
     assert liquidity.meta.get("wick_clusters")
+
+
+def test_wick_cluster_prev_first_ts_string_does_not_crash() -> None:
+    snapshot = _snapshot(
+        [
+            (109.0, 111.0, 108.8, 109.05),
+            (108.9, 111.2, 108.7, 108.95),
+            (109.1, 111.1, 108.9, 109.0),
+        ]
+    )
+    structure = _structure(bias="LONG", high_price=110.0)
+
+    # Імітуємо `prev_wick_clusters` із JSON-friendly контексту: timestamp як рядки.
+    snapshot.context["prev_wick_clusters"] = [
+        {
+            "cluster_id": "wc:HIGH:111.10",
+            "level": 111.10,
+            "side": "HIGH",
+            "count": 3,
+            "max_wick": 1.2,
+            "source": "range",
+            "first_ts": "2024-01-01T00:00:00+00:00",
+            "last_ts": "2024-01-01T00:10:00+00:00",
+        },
+        {
+            "cluster_id": "wc:HIGH:111.20",
+            "level": 111.20,
+            "side": "HIGH",
+            "count": 2,
+            "max_wick": 1.0,
+            "source": "range",
+            "first_ts": "2024-01-01T00:00:00+00:00",
+            "last_ts": "2024-01-01T00:10:00+00:00",
+        },
+        {
+            "cluster_id": "wc:LOW:108.70",
+            "level": 108.70,
+            "side": "LOW",
+            "count": 2,
+            "max_wick": 1.0,
+            "source": "range",
+            "first_ts": "2024-01-01T00:00:00+00:00",
+            "last_ts": "2024-01-01T00:10:00+00:00",
+        },
+    ]
+
+    liquidity = smc_liquidity.compute_liquidity_state(
+        snapshot=snapshot,
+        structure=structure,
+        cfg=SMC_CORE_CONFIG,
+    )
+
+    # Критично: не падаємо, а timestamp нормалізується.
+    wick_pools = [
+        p for p in liquidity.pools if p.liq_type is SmcLiquidityType.WICK_CLUSTER
+    ]
+    assert wick_pools
+    assert all(
+        p.first_time is None or isinstance(p.first_time, pd.Timestamp)
+        for p in wick_pools
+    )
+    assert all(
+        p.last_time is None or isinstance(p.last_time, pd.Timestamp) for p in wick_pools
+    )
+
+    wick_meta = liquidity.meta.get("wick_clusters")
+    assert isinstance(wick_meta, list) and wick_meta
+    assert all(
+        (m.get("first_ts") is None or isinstance(m.get("first_ts"), str))
+        for m in wick_meta
+    )

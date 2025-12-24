@@ -50,13 +50,9 @@
 
 **Що змінено**
 
-
 **Де**
 
-
 **Тести/перевірка**
-
-
 
 ## 2025-12-22 — QA: Випадок C (short-lived / flicker) + UI min-age гейт
 
@@ -80,6 +76,7 @@
 - `python -m pytest -q tests/test_ui_v2_viewer_state_builder.py` → passed
 
 ## 2025-12-16 — Dev process: введено `UPDATE_CORE.md` для змін core-логіки
+
 **Що змінено**
 
 - Додано окремий журнал `UPDATE_CORE.md` для змін у core-логіці (SMC core / liquidity / structure / zones / core-пайплайни).

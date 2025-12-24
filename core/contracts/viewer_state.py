@@ -146,6 +146,9 @@ class SmcViewerLiquidity(TypedDict, total=False):
 
     amd_phase: str | None
     pools: list[dict[str, Any]]
+    # Presentation meta (non-breaking extension): лічильники truth vs shown.
+    # Джерело: UI_v2.viewer_state_builder (не впливає на SMC truth).
+    pools_meta: dict[str, Any]
     magnets: list[dict[str, Any]]
     # Stage3 (non-breaking extension): liquidity targets (internal/external).
     # Джерело: smc_liquidity.meta.liquidity_targets (публікується smc_liquidity).
@@ -156,6 +159,9 @@ class SmcViewerZones(TypedDict, total=False):
     """Стан зон для viewer_state."""
 
     raw: dict[str, Any]
+    # Presentation meta (non-breaking extension): лічильники truth vs shown.
+    # Джерело: UI_v2.viewer_state_builder (не впливає на SMC truth).
+    zones_meta: dict[str, Any]
 
 
 class SmcViewerPipelineLocal(TypedDict, total=False):

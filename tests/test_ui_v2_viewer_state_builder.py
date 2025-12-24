@@ -422,9 +422,9 @@ def test_build_viewer_state_preserves_pipeline_meta() -> None:
 def test_build_viewer_state_hides_newborn_zones_and_pools_until_next_close() -> None:
     """Випадок C: нові зони/пули не мають потрапляти в UI одразу.
 
-    Політика за замовчуванням (MIN_CLOSE_STEPS_BEFORE_SHOW=1):
-    - вперше побачили на close -> НЕ показуємо;
-    - на наступному close, якщо все ще присутні -> показуємо.
+    Політика:
+    - zones: MIN_CLOSE_STEPS_BEFORE_SHOW=1 (вперше на close -> сховано; наступний close -> видно)
+    - pools: close-only + MIN_CLOSE_STEPS_BEFORE_SHOW=2 (видно починаючи з 3-го close, якщо стабільні)
     """
 
     cache = ViewerStateCache()
@@ -471,11 +471,16 @@ def test_build_viewer_state_hides_newborn_zones_and_pools_until_next_close() -> 
     # Перший close: новонароджене сховане.
     liquidity1 = cast(dict, state1["liquidity"])  # type: ignore[index]
     assert liquidity1.get("pools") == []
+    pools_meta1 = cast(dict, liquidity1.get("pools_meta") or {})
+    assert pools_meta1.get("truth_count") == 1
+    assert pools_meta1.get("shown_count") == 0
     zones1 = cast(dict, state1["zones"])  # type: ignore[index]
     raw1 = cast(dict, zones1.get("raw"))
     assert raw1.get("active_zones") == []
 
-    # Другий close з тими ж сутностями -> мають стати видимими.
+    # Другий close з тими ж сутностями:
+    # - zones мають стати видимими
+    # - pools все ще newborn (age=1 < 2) -> сховано
     asset2 = _make_basic_asset(
         smc_hint={
             "structure": {},
@@ -492,12 +497,30 @@ def test_build_viewer_state_hides_newborn_zones_and_pools_until_next_close() -> 
 
     liquidity2 = cast(dict, state2["liquidity"])  # type: ignore[index]
     pools2 = liquidity2.get("pools")
-    assert isinstance(pools2, list) and len(pools2) == 1
+    assert pools2 == []
 
     zones2 = cast(dict, state2["zones"])  # type: ignore[index]
     raw2 = cast(dict, zones2.get("raw"))
     active2 = raw2.get("active_zones")
     assert isinstance(active2, list) and len(active2) == 1
+
+    # Третій close: pools мають стати видимими (age=2).
+    asset3 = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity=asset1["smc_liquidity"],
+        smc_zones=asset1["smc_zones"],
+    )
+    meta3 = _make_basic_meta(seq=3)
+    state3 = build_viewer_state(asset3, meta3, fxcm_block=None, cache=cache)
+    liquidity3 = cast(dict, state3["liquidity"])  # type: ignore[index]
+    pools3 = liquidity3.get("pools")
+    assert isinstance(pools3, list) and len(pools3) == 1
 
 
 def test_build_viewer_state_preview_does_not_promote_newborn() -> None:
@@ -569,3 +592,226 @@ def test_build_viewer_state_preview_does_not_promote_newborn() -> None:
     assert liq2.get("pools") == []
     raw2 = cast(dict, cast(dict, st2["zones"])["raw"])  # type: ignore[index]
     assert raw2.get("active_zones") == []
+
+    # Другий close: zones можуть стати видимими (age>=1), але pools все ще сховані (age<2).
+    asset_close2 = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity=asset_preview["smc_liquidity"],
+        smc_zones=asset_preview["smc_zones"],
+    )
+    meta3 = _make_basic_meta(seq=3)
+    st3 = build_viewer_state(asset_close2, meta3, fxcm_block=None, cache=cache)
+    liq3 = cast(dict, st3["liquidity"])  # type: ignore[index]
+    assert liq3.get("pools") == []
+
+
+def test_build_viewer_state_merges_overlapping_zones_into_stack() -> None:
+    """Крок 5: zones overlap "килим" -> merge у presentation.
+
+    Якщо дві зони однакового типу/напряму/ролі/TF мають високий IoU по діапазону,
+    у viewer_state має лишитись одна канонічна зона з `meta.stack=N`.
+    """
+
+    asset = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity={"amd_phase": "MANIP", "pools": [], "magnets": []},
+        smc_zones={
+            "active_zones": [
+                {
+                    "zone_id": "z1",
+                    "zone_type": "OB",
+                    "direction": "LONG",
+                    "role": "PRIMARY",
+                    "timeframe": "5m",
+                    "price_min": 100.0,
+                    "price_max": 110.0,
+                },
+                {
+                    "zone_id": "z2",
+                    "zone_type": "OB",
+                    "direction": "LONG",
+                    "role": "PRIMARY",
+                    "timeframe": "5m",
+                    "price_min": 101.0,
+                    "price_max": 109.0,
+                },
+            ]
+        },
+    )
+
+    st = build_viewer_state(asset, _make_basic_meta(seq=1), fxcm_block=None, cache=None)
+    zones = cast(dict, st["zones"])  # type: ignore[index]
+    assert "zones_meta" in zones
+    zones_meta = cast(dict, zones.get("zones_meta") or {})
+    assert zones_meta.get("truth_count") == 2
+    assert zones_meta.get("shown_count") == 1
+    assert zones_meta.get("merged_clusters_count") == 1
+    assert zones_meta.get("merged_away_count") == 1
+    assert zones_meta.get("max_stack") == 2
+    assert zones_meta.get("filtered_missing_bounds_count") == 0
+
+    raw = cast(dict, zones["raw"])
+    active = cast(list, raw.get("active_zones"))
+    assert isinstance(active, list) and len(active) == 1
+    z = cast(dict, active[0])
+    assert z.get("price_min") == 100.0
+    assert z.get("price_max") == 110.0
+    meta = cast(dict, z.get("meta") or {})
+    assert meta.get("stack") == 2
+
+
+def test_build_viewer_state_zones_meta_no_merge_counts_are_zero() -> None:
+    asset = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity={"amd_phase": "MANIP", "pools": [], "magnets": []},
+        smc_zones={
+            "active_zones": [
+                {
+                    "zone_id": "z1",
+                    "zone_type": "OB",
+                    "direction": "LONG",
+                    "role": "PRIMARY",
+                    "timeframe": "5m",
+                    "price_min": 100.0,
+                    "price_max": 110.0,
+                },
+                {
+                    "zone_id": "z2",
+                    "zone_type": "OB",
+                    "direction": "LONG",
+                    "role": "PRIMARY",
+                    "timeframe": "5m",
+                    "price_min": 120.0,
+                    "price_max": 130.0,
+                },
+            ]
+        },
+    )
+
+    st = build_viewer_state(asset, _make_basic_meta(seq=1), fxcm_block=None, cache=None)
+    zones = cast(dict, st["zones"])  # type: ignore[index]
+    zones_meta = cast(dict, zones.get("zones_meta") or {})
+    assert zones_meta.get("truth_count") == 2
+    assert zones_meta.get("shown_count") == 2
+    assert zones_meta.get("merged_clusters_count") == 0
+    assert zones_meta.get("merged_away_count") == 0
+    assert zones_meta.get("max_stack") == 1
+
+
+def test_build_viewer_state_marks_cap_evicted_pools_as_hidden_ttl() -> None:
+    """Крок 2: cap-евікшн не має виглядати як «зникнення».
+
+    Якщо pool був показаний (у топ-K), а на наступному close вилетів за MAX_POOLS,
+    ми маємо позначити його як hidden (reason=evicted_cap) на TTL кроків.
+    """
+
+    def _make_pool(level: float) -> dict[str, Any]:
+        return {
+            "level": level,
+            "liq_type": "WICK_CLUSTER",
+            "role": "PRIMARY",
+            "strength": 0.5,
+            "n_touches": 1,
+            "meta": {"side": "above", "cluster_id": f"cid_{level:.0f}"},
+        }
+
+    cache = ViewerStateCache()
+
+    pools_all = [_make_pool(2400.0 + i) for i in range(10)]
+
+    # Детермінований top-K у presentation: фіксуємо ranking через strength,
+    # щоб на 3-му close показувались саме pools_all[0..7].
+    for i in range(10):
+        pools_all[i]["strength"] = 100.0 - float(i) if i < 8 else 0.0
+
+    asset = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": pools_all,
+            "magnets": [],
+        },
+        smc_zones={"active_zones": []},
+    )
+
+    # Доведемо pools до matured-only стадії: на 3-му close вони стають видимими.
+    st1 = build_viewer_state(
+        asset, _make_basic_meta(seq=1), fxcm_block=None, cache=cache
+    )
+    st2 = build_viewer_state(
+        asset, _make_basic_meta(seq=2), fxcm_block=None, cache=cache
+    )
+    st3 = build_viewer_state(
+        asset, _make_basic_meta(seq=3), fxcm_block=None, cache=cache
+    )
+
+    liq3 = cast(dict, st3["liquidity"])  # type: ignore[index]
+    pools3 = liq3.get("pools")
+    assert isinstance(pools3, list) and len(pools3) == 8
+    meta3 = cast(dict, liq3.get("pools_meta") or {})
+    assert meta3.get("hidden_count") == 0
+
+    # Крок 4: selection pools у UI тепер детерміновано сортується за strength/n_touches,
+    # тому для cap-евікшну робимо його через зміну truth-поля strength.
+    # Піднімаємо strength для двох «хвостових» пулів, щоб вони витіснили 2 з top-K.
+    # Очікуємо, що вилетять найслабші з показаних: pools_all[6] і pools_all[7].
+    pools_all[8]["strength"] = 200.0
+    pools_all[9]["strength"] = 199.0
+
+    # Симулюємо «дотик під час hidden» для витіснених (колишніх top-K):
+    pools_all[6]["n_touches"] = 2
+    pools_all[7]["n_touches"] = 2
+
+    pools_reordered = list(pools_all)
+    asset4 = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": pools_reordered,
+            "magnets": [],
+        },
+        smc_zones={"active_zones": []},
+    )
+
+    st4 = build_viewer_state(
+        asset4, _make_basic_meta(seq=4), fxcm_block=None, cache=cache
+    )
+    liq4 = cast(dict, st4["liquidity"])  # type: ignore[index]
+    meta4 = cast(dict, liq4.get("pools_meta") or {})
+    assert meta4.get("hidden_count") == 2
+    hidden_reasons = cast(dict, meta4.get("hidden_reasons") or {})
+    assert hidden_reasons.get("evicted_cap") == 2
+
+    assert meta4.get("touched_while_hidden_count") == 2
+    touched_reasons = cast(dict, meta4.get("touched_while_hidden_reasons") or {})
+    assert touched_reasons.get("evicted_cap") == 2

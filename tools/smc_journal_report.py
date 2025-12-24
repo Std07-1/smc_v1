@@ -1026,6 +1026,113 @@ def _report_preview_vs_close_summary(
     return headers, data
 
 
+def _extract_preview_vs_close_jaccard_p50(
+    frames: list[_Frame], *, entity: str
+) -> float | None:
+    """Повертає jaccard_p50 для entity з preview-vs-close summary.
+
+    Це helper для QA-gate: не парсимо markdown/CSV, а беремо значення зі
+    внутрішньої таблиці.
+    """
+
+    _h, d = _report_preview_vs_close_summary(frames)
+    target = str(entity or "").strip().lower()
+    for row in d:
+        if not row:
+            continue
+        ent = str(row[0] or "").strip().lower()
+        if ent != target:
+            continue
+        raw = str(row[3] or "").strip()  # jaccard_p50
+        try:
+            return float(raw)
+        except Exception:
+            return None
+    return None
+
+
+def _pool_short_lifetime_share_le(
+    rows: list[_Row], *, lifetime_le: int = 1, compute_kind: str = "close"
+) -> float | None:
+    """Частка removed pool з lifetime_bars<=X серед removed pool з lifetime_bars.
+
+    KPI для flicker: якщо багато pools живуть <=1 бар — у UI буде «пилка».
+    """
+
+    le = int(lifetime_le)
+    denom = 0
+    num = 0
+    ck = str(compute_kind or "-")
+    for r in rows:
+        if r.entity != "pool" or r.event != "removed":
+            continue
+        if str(r.ctx.get("compute_kind") or "-") != ck:
+            continue
+        lb_any = r.ctx.get("lifetime_bars")
+        try:
+            lb = int(float(lb_any))
+        except Exception:
+            continue
+        denom += 1
+        if lb <= le:
+            num += 1
+    if denom <= 0:
+        return None
+    return float(num) / float(denom)
+
+
+def _frames_with_zone_overlap_share(
+    frames: list[_Frame], *, kind: str, thr: str
+) -> float | None:
+    """Частка frames із >=1 парою зон з IoU>=thr (на основі zone_overlap_active)."""
+
+    k = str(kind)
+    t = str(thr)
+    denom = 0
+    num = 0
+    for fr in frames:
+        if str(fr.kind) != k:
+            continue
+        denom += 1
+        v = int(fr.zone_overlap_pairs_iou_ge.get(t, 0) or 0)
+        if v > 0:
+            num += 1
+    if denom <= 0:
+        return None
+    return float(num) / float(denom)
+
+
+def _frames_counts_rel_range(
+    frames: list[_Frame], *, kind: str, entity: str
+) -> float | None:
+    """Відносна «пилка» по shown counts: (p90 - p10) / mean.
+
+    Для стабільності показу важливо, щоб показані counts не коливались
+    на порядок.
+    """
+
+    k = str(kind)
+    e = str(entity)
+    xs: list[float] = []
+    for fr in frames:
+        if str(fr.kind) != k:
+            continue
+        try:
+            xs.append(float(len(fr.active_ids.get(e, set()))))
+        except Exception:
+            continue
+    if not xs:
+        return None
+    mean = _mean(xs)
+    if mean is None or mean <= 0:
+        return None
+    p10 = _percentile(xs, 0.10)
+    p90 = _percentile(xs, 0.90)
+    if p10 is None or p90 is None:
+        return None
+    return float(p90 - p10) / float(mean)
+
+
 def _report_removed_reason_sub(rows: list[_Row]) -> tuple[list[str], list[list[str]]]:
     """Розріз removed по reason / reason_sub.
 
@@ -2440,6 +2547,43 @@ def main() -> int:
         ),
     )
     ap.add_argument("--symbol", default="", help="Фільтр по symbol (наприклад XAUUSD)")
+
+    # QA gate для кроків 1–5 (працює по journal+frames).
+    ap.add_argument(
+        "--gate",
+        action="store_true",
+        help=(
+            "Увімкнути QA-gate (pass/fail) по ключових KPI. "
+            "Якщо будь-який KPI не проходить пороги — повертає exit code 3."
+        ),
+    )
+    ap.add_argument(
+        "--gate-min-pools-jaccard-p50",
+        default="0.0",
+        help="Мінімальний preview-vs-close jaccard_p50 для entity=pool (0..1).",
+    )
+    ap.add_argument(
+        "--gate-max-pools-short-lifetime-le1-share",
+        default="1.0",
+        help=(
+            "Максимальна частка removed pool з lifetime_bars<=1 (0..1) "
+            "серед removed pool з lifetime_bars."
+        ),
+    )
+    ap.add_argument(
+        "--gate-max-zone-overlap-frames-share-iou-ge-08",
+        default="1.0",
+        help=(
+            "Максимальна частка close-frames із >=1 парою активних зон з IoU>=0.8 (0..1)."
+        ),
+    )
+    ap.add_argument(
+        "--gate-max-shown-counts-rel-range",
+        default="10.0",
+        help=(
+            "Максимальний (p90-p10)/mean для shown counts на close (чим менше — тим стабільніше)."
+        ),
+    )
     ap.add_argument(
         "--run-dir",
         default="",
@@ -2644,7 +2788,7 @@ def main() -> int:
     frames, zone_overlap_examples = _compute_zone_overlap_for_frames(
         frames=frames,
         rows=rows,
-        thresholds=("0.2", "0.4", "0.6"),
+        thresholds=("0.2", "0.4", "0.6", "0.8"),
     )
 
     # active_count_distribution (frame-based)
@@ -2660,7 +2804,9 @@ def main() -> int:
         _write_csv(csv_dir / "active_count_distribution.csv", h, d)
 
     # zone_overlap_matrix_active (case E, frame-based)
-    h, d = _report_zone_overlap_matrix_active(frames)
+    h, d = _report_zone_overlap_matrix_active(
+        frames, thresholds=("0.2", "0.4", "0.6", "0.8")
+    )
     parts.append("\n## zone_overlap_matrix_active\n")
     if d:
         parts.append(_md_table(h, d))
@@ -2977,6 +3123,137 @@ def main() -> int:
         parts.append("(нема даних)\n")
     if csv_dir is not None:
         _write_csv(csv_dir / "flicker_short_lived_by_type.csv", h, d)
+
+    # ── QA gate (кроки 1–5): KPI, які мають бути числами, а не «враженням». ──
+    gate_enabled = bool(getattr(args, "gate", False))
+    if gate_enabled:
+        try:
+            min_pools_j_p50 = float(getattr(args, "gate_min_pools_jaccard_p50", 0.0))
+        except Exception:
+            min_pools_j_p50 = 0.0
+        try:
+            max_short_le1 = float(
+                getattr(args, "gate_max_pools_short_lifetime_le1_share", 1.0)
+            )
+        except Exception:
+            max_short_le1 = 1.0
+        try:
+            max_zone_iou_ge_08 = float(
+                getattr(args, "gate_max_zone_overlap_frames_share_iou_ge_08", 1.0)
+            )
+        except Exception:
+            max_zone_iou_ge_08 = 1.0
+        try:
+            max_rel_range = float(
+                getattr(args, "gate_max_shown_counts_rel_range", 10.0)
+            )
+        except Exception:
+            max_rel_range = 10.0
+
+        pools_j_p50 = _extract_preview_vs_close_jaccard_p50(frames, entity="pool")
+        pools_short_le1 = _pool_short_lifetime_share_le(
+            rows, lifetime_le=1, compute_kind="close"
+        )
+        zones_overlap_frames_share = _frames_with_zone_overlap_share(
+            frames, kind="close", thr="0.8"
+        )
+        shown_pools_rel_range = _frames_counts_rel_range(
+            frames, kind="close", entity="pool"
+        )
+        shown_zones_rel_range = _frames_counts_rel_range(
+            frames, kind="close", entity="zone"
+        )
+
+        parts.append("\n## qa_gate_kpi(steps_1_5)\n")
+        parts.append(
+            _md_table(
+                ["kpi", "value", "threshold", "ok"],
+                [
+                    [
+                        "pools_preview_vs_close_jaccard_p50",
+                        _fmt_float(pools_j_p50, nd=3),
+                        f">= {min_pools_j_p50:.3f}",
+                        (
+                            "OK"
+                            if pools_j_p50 is not None
+                            and pools_j_p50 >= min_pools_j_p50
+                            else "FAIL"
+                        ),
+                    ],
+                    [
+                        "pools_removed_short_lifetime_share_le1(close)",
+                        _fmt_float(pools_short_le1, nd=4),
+                        f"<= {max_short_le1:.4f}",
+                        (
+                            "OK"
+                            if pools_short_le1 is not None
+                            and pools_short_le1 <= max_short_le1
+                            else "FAIL"
+                        ),
+                    ],
+                    [
+                        "zones_overlap_share_frames_with_any_pair_iou_ge_0.8(close)",
+                        _fmt_float(zones_overlap_frames_share, nd=4),
+                        f"<= {max_zone_iou_ge_08:.4f}",
+                        (
+                            "OK"
+                            if zones_overlap_frames_share is not None
+                            and zones_overlap_frames_share <= max_zone_iou_ge_08
+                            else "FAIL"
+                        ),
+                    ],
+                    [
+                        "shown_pools_counts_rel_range(close)",
+                        _fmt_float(shown_pools_rel_range, nd=3),
+                        f"<= {max_rel_range:.3f}",
+                        (
+                            "OK"
+                            if shown_pools_rel_range is not None
+                            and shown_pools_rel_range <= max_rel_range
+                            else "FAIL"
+                        ),
+                    ],
+                    [
+                        "shown_zones_counts_rel_range(close)",
+                        _fmt_float(shown_zones_rel_range, nd=3),
+                        f"<= {max_rel_range:.3f}",
+                        (
+                            "OK"
+                            if shown_zones_rel_range is not None
+                            and shown_zones_rel_range <= max_rel_range
+                            else "FAIL"
+                        ),
+                    ],
+                ],
+            )
+        )
+
+        failures: list[str] = []
+        if pools_j_p50 is None or pools_j_p50 < min_pools_j_p50:
+            failures.append("pools_preview_vs_close_jaccard_p50")
+        if pools_short_le1 is None or pools_short_le1 > max_short_le1:
+            failures.append("pools_removed_short_lifetime_share_le1")
+        if (
+            zones_overlap_frames_share is None
+            or zones_overlap_frames_share > max_zone_iou_ge_08
+        ):
+            failures.append("zones_overlap_share_frames_iou_ge_0.8")
+        if shown_pools_rel_range is None or shown_pools_rel_range > max_rel_range:
+            failures.append("shown_pools_counts_rel_range")
+        if shown_zones_rel_range is None or shown_zones_rel_range > max_rel_range:
+            failures.append("shown_zones_counts_rel_range")
+
+        if failures:
+            parts.append(
+                "\n**QA GATE: FAIL** — не пройшли KPI: " + ", ".join(failures) + "\n"
+            )
+            out = "\n".join(parts) + "\n"
+            sys.stdout.write(out)
+            if run_dir is not None:
+                report_name = f"report_{symbol_filter or 'ALL'}.md"
+                (run_dir / report_name).write_text(out, encoding="utf-8")
+            return 3
+        parts.append("\n**QA GATE: OK**\n")
 
     out = "\n".join(parts) + "\n"
     sys.stdout.write(out)
