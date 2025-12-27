@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
+import pandas as pd
 from redis.asyncio import Redis
 
 from app.fxcm_history_state import classify_history, timeframe_to_ms
@@ -31,9 +32,12 @@ from config.config import (
     SMC_RUNTIME_PARAMS,
     SMC_S2_STALE_K,
     SMC_TF_PLAN,
+    SMC_VIEWER_OHLCV_FRAMES_BY_TF_ENABLED,
+    SMC_VIEWER_OHLCV_FRAMES_MIN_BARS_BY_TF,
 )
 from config.constants import ASSET_STATE, K_STATS
 from core.serialization import (
+    safe_float,
     utc_ms_to_iso_z,
     utc_now_human_utc,
     utc_seconds_to_human_utc,
@@ -60,6 +64,108 @@ _SMC_PLAIN_SERIALIZER: Callable[[Any], dict[str, Any] | None] | None = None
 # Case G: тримаємо попередні wick_clusters (WICK_CLUSTER tracker) на рівні app,
 # щоб SMC-core лишався детермінованим відносно context.
 _PREV_WICK_CLUSTERS_BY_SYMBOL: dict[str, list[dict[str, Any]]] = {}
+
+
+def _df_to_ohlcv_bars_for_viewer(df: pd.DataFrame, *, tf: str) -> list[dict[str, Any]]:
+    """Конвертує DataFrame OHLCV у bars-форму для UI_v2 viewer_state_builder.
+
+    Важливо:
+    - `time` кодуємо як close_time (ms), якщо він є; інакше як open_time+tf_ms;
+    - додаємо `complete=True`, щоб policy у presentation шарі була однозначною.
+    """
+
+    if df is None or df.empty:
+        return []
+
+    tf_ms_raw = timeframe_to_ms(str(tf))
+    tf_ms = int(tf_ms_raw) if tf_ms_raw is not None else 0
+
+    # Рахуємо close_time як окремий Series (best-effort), щоб не мутувати df.
+    close_time_ms: pd.Series | None = None
+    if "close_time" in df.columns:
+        close_time_ms = pd.to_numeric(df["close_time"], errors="coerce")
+    elif "open_time" in df.columns:
+        open_time = pd.to_numeric(df["open_time"], errors="coerce")
+        close_time_ms = open_time + tf_ms
+    elif "timestamp" in df.columns:
+        ts = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+        open_ns = ts.astype("int64")
+        open_ms = (open_ns // 1_000_000).where(open_ns > 0)
+        close_time_ms = open_ms + tf_ms
+
+    records = df.to_dict("records")
+    out: list[dict[str, Any]] = []
+    for idx, r in enumerate(records):
+        if not isinstance(r, dict):
+            continue
+
+        t_any = None
+        if close_time_ms is not None and idx < len(close_time_ms):
+            try:
+                t_any = close_time_ms.iloc[idx]
+            except Exception:
+                t_any = None
+        if t_any is None:
+            t_any = r.get("close_time") or r.get("open_time")
+
+        if t_any is None:
+            continue
+        try:
+            t_ms = int(float(t_any))
+        except (TypeError, ValueError):
+            continue
+
+        o = safe_float(r.get("open"))
+        h = safe_float(r.get("high"))
+        low = safe_float(r.get("low"))
+        c = safe_float(r.get("close"))
+        v = safe_float(r.get("volume")) or 0.0
+        if o is None or h is None or low is None or c is None:
+            continue
+
+        out.append(
+            {
+                "time": int(t_ms),
+                "open": float(o),
+                "high": float(h),
+                "low": float(low),
+                "close": float(c),
+                "volume": float(v),
+                "complete": True,
+            }
+        )
+    return out
+
+
+async def _build_ohlcv_frames_by_tf_for_viewer(
+    *,
+    symbol: str,
+    store: UnifiedDataStore,
+) -> dict[str, list[dict[str, Any]]]:
+    """Формує `asset["ohlcv_frames_by_tf"]` для live payload.
+
+    Це presentation input для Levels-V1 (PDH/PDL та ін.), не для SMC-core.
+    """
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    for tf, min_bars in (SMC_VIEWER_OHLCV_FRAMES_MIN_BARS_BY_TF or {}).items():
+        if not isinstance(tf, str):
+            continue
+        try:
+            limit = int(min_bars)
+        except Exception:
+            continue
+        if limit <= 0:
+            continue
+        try:
+            df = await store.get_df(symbol, tf, limit=limit)
+        except Exception:
+            df = None
+        if df is None or df.empty:
+            out[tf] = []
+            continue
+        out[tf] = _df_to_ohlcv_bars_for_viewer(df, tf=tf)
+    return out
 
 
 def _create_error_signal(symbol: str, error: str) -> dict[str, Any]:
@@ -875,6 +981,16 @@ async def process_smc_batch(
                 )
                 continue
 
+            ohlcv_frames_by_tf: dict[str, list[dict[str, Any]]] | None = None
+            if SMC_VIEWER_OHLCV_FRAMES_BY_TF_ENABLED:
+                try:
+                    ohlcv_frames_by_tf = await _build_ohlcv_frames_by_tf_for_viewer(
+                        symbol=sym,
+                        store=store,
+                    )
+                except Exception:
+                    ohlcv_frames_by_tf = None
+
             try:
                 stats["current_price"] = float(df["close"].iloc[-1])
             except Exception:
@@ -894,16 +1010,20 @@ async def process_smc_batch(
 
             # Якщо історії замало — не намагаємось рахувати SMC hint, але публікуємо stats.
             if len(df) < max(5, lookback // 2):
+                payload_any: dict[str, Any] = {
+                    "signal": "SMC_WARMUP",
+                    "state": ASSET_STATE["NORMAL"],
+                    K_STATS: stats,
+                    "hints": [
+                        "SMC: недостатньо історії для підказок — очікуємо warmup"
+                    ],
+                }
+                if isinstance(ohlcv_frames_by_tf, dict):
+                    payload_any["ohlcv_frames_by_tf"] = ohlcv_frames_by_tf
+
                 state_manager.update_asset(
                     sym,
-                    {
-                        "signal": "SMC_WARMUP",
-                        "state": ASSET_STATE["NORMAL"],
-                        K_STATS: stats,
-                        "hints": [
-                            "SMC: недостатньо історії для підказок — очікуємо warmup"
-                        ],
-                    },
+                    payload_any,
                 )
                 continue
 
@@ -911,14 +1031,18 @@ async def process_smc_batch(
             smc_hint = await _build_smc_hint(symbol=sym, store=store)
             stats["smc_latency_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
             if smc_hint is None:
+                payload_any = {
+                    "signal": "SMC_PENDING",
+                    "state": ASSET_STATE["NORMAL"],
+                    K_STATS: stats,
+                    "hints": ["SMC: очікуємо оновлення snapshot"],
+                }
+                if isinstance(ohlcv_frames_by_tf, dict):
+                    payload_any["ohlcv_frames_by_tf"] = ohlcv_frames_by_tf
+
                 state_manager.update_asset(
                     sym,
-                    {
-                        "signal": "SMC_PENDING",
-                        "state": ASSET_STATE["NORMAL"],
-                        K_STATS: stats,
-                        "hints": ["SMC: очікуємо оновлення snapshot"],
-                    },
+                    payload_any,
                 )
                 continue
 
@@ -973,21 +1097,25 @@ async def process_smc_batch(
                 # best-effort: Stage6 анти-фліп не має ламати hot-path
                 pass
 
+            payload_any = {
+                "signal": "SMC_HINT",
+                "state": ASSET_STATE["NORMAL"],
+                K_STATS: stats,
+                "smc_hint": plain_hint,
+                "hints": [
+                    (
+                        "SMC: дані оновлено"
+                        if not stats.get("smc_hint_preserved")
+                        else "SMC: compute пропущено гейтами — показуємо останній відомий стан"
+                    )
+                ],
+            }
+            if isinstance(ohlcv_frames_by_tf, dict):
+                payload_any["ohlcv_frames_by_tf"] = ohlcv_frames_by_tf
+
             state_manager.update_asset(
                 sym,
-                {
-                    "signal": "SMC_HINT",
-                    "state": ASSET_STATE["NORMAL"],
-                    K_STATS: stats,
-                    "smc_hint": plain_hint,
-                    "hints": [
-                        (
-                            "SMC: дані оновлено"
-                            if not stats.get("smc_hint_preserved")
-                            else "SMC: compute пропущено гейтами — показуємо останній відомий стан"
-                        )
-                    ],
-                },
+                payload_any,
             )
         except Exception as exc:  # pragma: no cover - захист від edge-case
             logger.error("[SMC] Помилка обробки %s: %s", sym, exc, exc_info=True)

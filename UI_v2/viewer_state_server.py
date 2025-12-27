@@ -39,7 +39,7 @@ from UI_v2.viewer_state_store import ViewerStateStore
 
 logger = logging.getLogger("smc_viewer_http")
 
-DEFAULT_OHLCV_LIMIT = 500
+DEFAULT_OHLCV_LIMIT = 600
 MAX_OHLCV_LIMIT = 2000
 
 SMC_VIEWER_HTTP_REQUESTS_TOTAL = Counter(

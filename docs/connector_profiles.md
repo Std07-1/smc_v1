@@ -20,7 +20,11 @@
   - якщо задано `AI_ONE_NAMESPACE` → він має пріоритет
   - інакше визначається з `AI_ONE_MODE`:
     - `local` → `ai_one_local`
-    - `prod` → `ai_one`
+    - `prod` → `ai_one_prod`
+
+Примітка:
+
+- `ai_one` вважається legacy namespace; для live/деплою використовуємо `ai_one_prod`.
 
 Рекомендація:
 

@@ -11,7 +11,9 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
+
+from .levels_v1 import LevelKindV1, LevelLabelV1, LevelSource, LevelTfV1
 
 # ── Версіонування контракту viewer_state ───────────────────────────────────
 
@@ -164,6 +166,108 @@ class SmcViewerZones(TypedDict, total=False):
     zones_meta: dict[str, Any]
 
 
+# ── Levels (shadow contract) ─────────────────────────────────────────────
+
+
+class LevelViewRenderHintV1(TypedDict, total=False):
+    """Підказки рендеру для shadow-рівнів (as-is).
+
+    Це тимчасовий контракт для Кроку 2 (shadow). UI поки не використовує це поле.
+    """
+
+    title: str
+    axis_label: bool
+    line_visible: bool
+
+
+class LevelViewShadowV1(TypedDict, total=False):
+    """Канонічна форма рівня для Levels-V1 (shadow, без cutover).
+
+    Призначення Кроку 2:
+    - зафіксувати форму сутності "level" у viewer_state;
+    - віддзеркалити поточну (as-is) UI-проєкцію з liquidity.pools.
+    """
+
+    id: str
+    tf: Literal["1m", "5m", "1h", "4h"]
+    kind: Literal["line", "band"]
+    label: str
+    style_hint: Literal["dotted", "band_thin"]
+
+    # Line
+    price: float | None
+
+    # Band
+    top: float | None
+    bot: float | None
+
+    source: str
+    asof_ts: str
+
+    # Shadow-only: для порівняння з baseline (geometry_hash) і дебагу.
+    role: str | None
+    render_hint: LevelViewRenderHintV1
+
+
+# ── Levels-V1 candidates (Крок 3.2) ───────────────────────────────────────
+
+
+class LevelCandidateV1(TypedDict, total=False):
+    """Кандидат рівня (raw), без caps/distance/merge.
+
+    Важливо:
+    - це НЕ “відібраний” рівень для UI;
+    - 1m тут не допускаємо (див. scope Levels-V1).
+    """
+
+    id: str
+    owner_tf: LevelTfV1
+    kind: LevelKindV1
+    label: LevelLabelV1
+    source: LevelSource
+
+    # Line
+    price: float | None
+
+    # Band
+    top: float | None
+    bot: float | None
+
+    # Для дебагу/валідації, поки не close-only.
+    asof_ts: float
+    window_ts: tuple[float, float] | None
+
+
+class LevelSelectedV1(TypedDict, total=False):
+    """Відібраний рівень (selected), який UI зможе рендерити як SSOT.
+
+    Контекст (3.3):
+    - формується з candidates через merge/caps/distance/prio/freeze;
+    - UI-проєкція (levels as-is) не змінюється до завершення 3.3d.
+
+    На етапі 3.3a список може бути відсутнім або порожнім — це валідно.
+    """
+
+    id: str
+    owner_tf: LevelTfV1
+    kind: LevelKindV1
+    label: LevelLabelV1
+    source: LevelSource
+
+    # Line
+    price: float | None
+
+    # Band
+    top: float | None
+    bot: float | None
+
+    # Selection meta
+    rank: int
+    reason: list[str]
+    distance_at_select: float | None
+    selected_at_close_ts: float
+
+
 class SmcViewerPipelineLocal(TypedDict, total=False):
     """Локальний (per-symbol) pipeline-стан з asset.stats."""
 
@@ -242,6 +346,18 @@ class SmcViewerState(TypedDict, total=False):
     lag_ms: int
     bars_5m: int
 
+    # Levels-V1 (Крок 2): тіньовий список рівнів у канонічному форматі.
+    # UI поки не використовує; це контрольна точка для harness/порівнянь.
+    levels_shadow_v1: list[LevelViewShadowV1]
+
+    # Levels-V1 (Крок 3.2): raw-кандидати з джерел (без відбору).
+    # UI поки не використовує; додаємо лише якщо список не порожній.
+    levels_candidates_v1: list[LevelCandidateV1]
+
+    # Levels-V1 (Крок 3.3): відібрані рівні (SSOT selection).
+    # UI поки не використовує; додаємо лише якщо список не порожній.
+    levels_selected_v1: list[LevelSelectedV1]
+
 
 # ── OHLCV HTTP response ──────────────────────────────────────────────────
 
@@ -279,6 +395,10 @@ __all__ = (
     "SmcViewerZones",
     "SmcViewerPipelineLocal",
     "SmcViewerScenario",
+    "LevelViewRenderHintV1",
+    "LevelViewShadowV1",
+    "LevelCandidateV1",
+    "LevelSelectedV1",
     "SmcViewerState",
     "OhlcvBar",
     "OhlcvResponse",

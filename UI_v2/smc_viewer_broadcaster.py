@@ -25,13 +25,13 @@ except Exception:  # pragma: no cover
 from prometheus_client import Counter, Histogram
 
 from core.contracts import normalize_smc_schema_version
-from core.serialization import json_dumps, json_loads, to_jsonable
 from core.contracts.viewer_state import (
     SmcViewerState,
     UiSmcAssetPayload,
     UiSmcMeta,
     UiSmcStatePayload,
 )
+from core.serialization import json_dumps, json_loads, to_jsonable
 from UI_v2.viewer_state_builder import ViewerStateCache, build_viewer_state
 
 SMC_VIEWER_SMC_MESSAGES_TOTAL = Counter(
@@ -117,7 +117,7 @@ class SmcViewerBroadcasterConfig:
         """Формує дефолтні імена каналів/ключів для заданого namespace.
 
         Приклад:
-            cfg = SmcViewerBroadcasterConfig.from_namespace("ai_one")
+            cfg = SmcViewerBroadcasterConfig.from_namespace("ai_one_local")
         """
         prefix = f"{namespace}:ui"
         return cls(

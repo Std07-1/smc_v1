@@ -363,6 +363,18 @@ def load_datastore_cfg(path: str | Path | None = None) -> DataStoreCfg:
         chosen_ns = str(env_ns).strip()
     elif env_mode in {"local", "dev"}:
         chosen_ns = "ai_one_local"
+    elif env_mode in {"prod", "production"}:
+        chosen_ns = "ai_one_prod"
+    else:
+        # Якщо env-профіль не заданий, не хочемо випадково лишатися на legacy
+        # namespace `ai_one` з YAML, бо це веде до плутанини в QA/replay.
+        # Водночас поважаємо явний кастомний namespace у YAML.
+        try:
+            raw_yaml_ns = str(getattr(cfg, "namespace", "") or "").strip()
+        except Exception:
+            raw_yaml_ns = ""
+        if raw_yaml_ns in {"", "ai_one"}:
+            chosen_ns = str(CFG_NAMESPACE or "").strip() or None
     if chosen_ns:
         try:
             cfg = cfg.model_copy(update={"namespace": chosen_ns})

@@ -1,0 +1,452 @@
+# 3.2.2b strict issues
+
+- i=0 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=0 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=0 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=0 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=0 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=0 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=0 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=0 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=0 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=1 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=1 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=1 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=1 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=1 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=1 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=1 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=1 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=1 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=2 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=2 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=2 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=2 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=2 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=2 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=2 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=2 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=2 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=3 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=3 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=3 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=3 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=3 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=3 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=3 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=3 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=3 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=4 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=4 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=4 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=4 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=4 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=4 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=4 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=4 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=4 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=5 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=5 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=5 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=5 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=5 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=5 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=5 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=5 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=5 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=6 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=6 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=6 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=6 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=6 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=6 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=6 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=6 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=6 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=7 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=7 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=7 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=7 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=7 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=7 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=7 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=7 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=7 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=8 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=8 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=8 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=8 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=8 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=8 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=8 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=8 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=8 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=9 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=9 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=9 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=9 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=9 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=9 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=9 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=9 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=9 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=10 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=10 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=10 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=10 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=10 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=10 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=10 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=10 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=10 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=11 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=11 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=11 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=11 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=11 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=11 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=11 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=11 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=11 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=12 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=12 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=12 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=12 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=12 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=12 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=12 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=12 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=12 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=13 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=13 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=13 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=13 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=13 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=13 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=13 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=13 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=13 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=14 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=14 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=14 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=14 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=14 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=14 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=14 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=14 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=14 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=15 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=15 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=15 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=15 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=15 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=15 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=15 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=15 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=15 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=16 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=16 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=16 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=16 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=16 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=16 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=16 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=16 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=16 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=17 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=17 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=17 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=17 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=17 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=17 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=17 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=17 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=17 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=18 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=18 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=18 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=18 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=18 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=18 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=18 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=18 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=18 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=19 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=19 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=19 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=19 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=19 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=19 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=19 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=19 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=19 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=20 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=20 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=20 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=20 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=20 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=20 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=20 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=20 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=20 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=21 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=21 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=21 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=21 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=21 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=21 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=21 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=21 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=21 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=22 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=22 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=22 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=22 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=22 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=22 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=22 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=22 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=22 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=23 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=23 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=23 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=23 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=23 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=23 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=23 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=23 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=23 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=24 tf=5m: ASH/ASL: candidates відсутні (require_present=true)
+- i=24 tf=5m: LSH/LSL: candidates відсутні (require_present=true)
+- i=24 tf=5m: NYH/NYL: candidates відсутні (require_present=true)
+- i=24 tf=1h: ASH/ASL: candidates відсутні (require_present=true)
+- i=24 tf=1h: LSH/LSL: candidates відсутні (require_present=true)
+- i=24 tf=1h: NYH/NYL: candidates відсутні (require_present=true)
+- i=24 tf=4h: ASH/ASL: candidates відсутні (require_present=true)
+- i=24 tf=4h: LSH/LSL: candidates відсутні (require_present=true)
+- i=24 tf=4h: NYH/NYL: candidates відсутні (require_present=true)
+- i=0 tf=5m: ASH/ASL відсутні
+- i=1 tf=5m: ASH/ASL відсутні
+- i=2 tf=5m: ASH/ASL відсутні
+- i=3 tf=5m: ASH/ASL відсутні
+- i=4 tf=5m: ASH/ASL відсутні
+- i=5 tf=5m: ASH/ASL відсутні
+- i=6 tf=5m: ASH/ASL відсутні
+- i=7 tf=5m: ASH/ASL відсутні
+- i=8 tf=5m: ASH/ASL відсутні
+- i=9 tf=5m: ASH/ASL відсутні
+- i=10 tf=5m: ASH/ASL відсутні
+- i=11 tf=5m: ASH/ASL відсутні
+- i=12 tf=5m: ASH/ASL відсутні
+- i=13 tf=5m: ASH/ASL відсутні
+- i=14 tf=5m: ASH/ASL відсутні
+- i=15 tf=5m: ASH/ASL відсутні
+- i=16 tf=5m: ASH/ASL відсутні
+- i=17 tf=5m: ASH/ASL відсутні
+- i=18 tf=5m: ASH/ASL відсутні
+- i=19 tf=5m: ASH/ASL відсутні
+- i=20 tf=5m: ASH/ASL відсутні
+- i=21 tf=5m: ASH/ASL відсутні
+- i=22 tf=5m: ASH/ASL відсутні
+- i=23 tf=5m: ASH/ASL відсутні
+- i=24 tf=5m: ASH/ASL відсутні
+- i=0 tf=5m: LSH/LSL відсутні
+- i=1 tf=5m: LSH/LSL відсутні
+- i=2 tf=5m: LSH/LSL відсутні
+- i=3 tf=5m: LSH/LSL відсутні
+- i=4 tf=5m: LSH/LSL відсутні
+- i=5 tf=5m: LSH/LSL відсутні
+- i=6 tf=5m: LSH/LSL відсутні
+- i=7 tf=5m: LSH/LSL відсутні
+- i=8 tf=5m: LSH/LSL відсутні
+- i=9 tf=5m: LSH/LSL відсутні
+- i=10 tf=5m: LSH/LSL відсутні
+- i=11 tf=5m: LSH/LSL відсутні
+- i=12 tf=5m: LSH/LSL відсутні
+- i=13 tf=5m: LSH/LSL відсутні
+- i=14 tf=5m: LSH/LSL відсутні
+- i=15 tf=5m: LSH/LSL відсутні
+- i=16 tf=5m: LSH/LSL відсутні
+- i=17 tf=5m: LSH/LSL відсутні
+- i=18 tf=5m: LSH/LSL відсутні
+- i=19 tf=5m: LSH/LSL відсутні
+- i=20 tf=5m: LSH/LSL відсутні
+- i=21 tf=5m: LSH/LSL відсутні
+- i=22 tf=5m: LSH/LSL відсутні
+- i=23 tf=5m: LSH/LSL відсутні
+- i=24 tf=5m: LSH/LSL відсутні
+- i=0 tf=5m: NYH/NYL відсутні
+- i=1 tf=5m: NYH/NYL відсутні
+- i=2 tf=5m: NYH/NYL відсутні
+- i=3 tf=5m: NYH/NYL відсутні
+- i=4 tf=5m: NYH/NYL відсутні
+- i=5 tf=5m: NYH/NYL відсутні
+- i=6 tf=5m: NYH/NYL відсутні
+- i=7 tf=5m: NYH/NYL відсутні
+- i=8 tf=5m: NYH/NYL відсутні
+- i=9 tf=5m: NYH/NYL відсутні
+- i=10 tf=5m: NYH/NYL відсутні
+- i=11 tf=5m: NYH/NYL відсутні
+- i=12 tf=5m: NYH/NYL відсутні
+- i=13 tf=5m: NYH/NYL відсутні
+- i=14 tf=5m: NYH/NYL відсутні
+- i=15 tf=5m: NYH/NYL відсутні
+- i=16 tf=5m: NYH/NYL відсутні
+- i=17 tf=5m: NYH/NYL відсутні
+- i=18 tf=5m: NYH/NYL відсутні
+- i=19 tf=5m: NYH/NYL відсутні
+- i=20 tf=5m: NYH/NYL відсутні
+- i=21 tf=5m: NYH/NYL відсутні
+- i=22 tf=5m: NYH/NYL відсутні
+- i=23 tf=5m: NYH/NYL відсутні
+- i=24 tf=5m: NYH/NYL відсутні
+- i=0 tf=1h: ASH/ASL відсутні
+- i=1 tf=1h: ASH/ASL відсутні
+- i=2 tf=1h: ASH/ASL відсутні
+- i=3 tf=1h: ASH/ASL відсутні
+- i=4 tf=1h: ASH/ASL відсутні
+- i=5 tf=1h: ASH/ASL відсутні
+- i=6 tf=1h: ASH/ASL відсутні
+- i=7 tf=1h: ASH/ASL відсутні
+- i=8 tf=1h: ASH/ASL відсутні
+- i=9 tf=1h: ASH/ASL відсутні
+- i=10 tf=1h: ASH/ASL відсутні
+- i=11 tf=1h: ASH/ASL відсутні
+- i=12 tf=1h: ASH/ASL відсутні
+- i=13 tf=1h: ASH/ASL відсутні
+- i=14 tf=1h: ASH/ASL відсутні
+- i=15 tf=1h: ASH/ASL відсутні
+- i=16 tf=1h: ASH/ASL відсутні
+- i=17 tf=1h: ASH/ASL відсутні
+- i=18 tf=1h: ASH/ASL відсутні
+- i=19 tf=1h: ASH/ASL відсутні
+- i=20 tf=1h: ASH/ASL відсутні
+- i=21 tf=1h: ASH/ASL відсутні
+- i=22 tf=1h: ASH/ASL відсутні
+- i=23 tf=1h: ASH/ASL відсутні
+- i=24 tf=1h: ASH/ASL відсутні
+- i=0 tf=1h: LSH/LSL відсутні
+- i=1 tf=1h: LSH/LSL відсутні
+- i=2 tf=1h: LSH/LSL відсутні
+- i=3 tf=1h: LSH/LSL відсутні
+- i=4 tf=1h: LSH/LSL відсутні
+- i=5 tf=1h: LSH/LSL відсутні
+- i=6 tf=1h: LSH/LSL відсутні
+- i=7 tf=1h: LSH/LSL відсутні
+- i=8 tf=1h: LSH/LSL відсутні
+- i=9 tf=1h: LSH/LSL відсутні
+- i=10 tf=1h: LSH/LSL відсутні
+- i=11 tf=1h: LSH/LSL відсутні
+- i=12 tf=1h: LSH/LSL відсутні
+- i=13 tf=1h: LSH/LSL відсутні
+- i=14 tf=1h: LSH/LSL відсутні
+- i=15 tf=1h: LSH/LSL відсутні
+- i=16 tf=1h: LSH/LSL відсутні
+- i=17 tf=1h: LSH/LSL відсутні
+- i=18 tf=1h: LSH/LSL відсутні
+- i=19 tf=1h: LSH/LSL відсутні
+- i=20 tf=1h: LSH/LSL відсутні
+- i=21 tf=1h: LSH/LSL відсутні
+- i=22 tf=1h: LSH/LSL відсутні
+- i=23 tf=1h: LSH/LSL відсутні
+- i=24 tf=1h: LSH/LSL відсутні
+- i=0 tf=1h: NYH/NYL відсутні
+- i=1 tf=1h: NYH/NYL відсутні
+- i=2 tf=1h: NYH/NYL відсутні
+- i=3 tf=1h: NYH/NYL відсутні
+- i=4 tf=1h: NYH/NYL відсутні
+- i=5 tf=1h: NYH/NYL відсутні
+- i=6 tf=1h: NYH/NYL відсутні
+- i=7 tf=1h: NYH/NYL відсутні
+- i=8 tf=1h: NYH/NYL відсутні
+- i=9 tf=1h: NYH/NYL відсутні
+- i=10 tf=1h: NYH/NYL відсутні
+- i=11 tf=1h: NYH/NYL відсутні
+- i=12 tf=1h: NYH/NYL відсутні
+- i=13 tf=1h: NYH/NYL відсутні
+- i=14 tf=1h: NYH/NYL відсутні
+- i=15 tf=1h: NYH/NYL відсутні
+- i=16 tf=1h: NYH/NYL відсутні
+- i=17 tf=1h: NYH/NYL відсутні
+- i=18 tf=1h: NYH/NYL відсутні
+- i=19 tf=1h: NYH/NYL відсутні
+- i=20 tf=1h: NYH/NYL відсутні
+- i=21 tf=1h: NYH/NYL відсутні
+- i=22 tf=1h: NYH/NYL відсутні
+- i=23 tf=1h: NYH/NYL відсутні
+- i=24 tf=1h: NYH/NYL відсутні
+- i=0 tf=4h: ASH/ASL відсутні
+- i=1 tf=4h: ASH/ASL відсутні
+- i=2 tf=4h: ASH/ASL відсутні
+- i=3 tf=4h: ASH/ASL відсутні
+- i=4 tf=4h: ASH/ASL відсутні
+- i=5 tf=4h: ASH/ASL відсутні
+- i=6 tf=4h: ASH/ASL відсутні
+- i=7 tf=4h: ASH/ASL відсутні
+- i=8 tf=4h: ASH/ASL відсутні
+- i=9 tf=4h: ASH/ASL відсутні
+- i=10 tf=4h: ASH/ASL відсутні
+- i=11 tf=4h: ASH/ASL відсутні
+- i=12 tf=4h: ASH/ASL відсутні
+- i=13 tf=4h: ASH/ASL відсутні
+- i=14 tf=4h: ASH/ASL відсутні
+- i=15 tf=4h: ASH/ASL відсутні
+- i=16 tf=4h: ASH/ASL відсутні
+- i=17 tf=4h: ASH/ASL відсутні
+- i=18 tf=4h: ASH/ASL відсутні
+- i=19 tf=4h: ASH/ASL відсутні
+- i=20 tf=4h: ASH/ASL відсутні
+- i=21 tf=4h: ASH/ASL відсутні
+- i=22 tf=4h: ASH/ASL відсутні
+- i=23 tf=4h: ASH/ASL відсутні
+- i=24 tf=4h: ASH/ASL відсутні
+- i=0 tf=4h: LSH/LSL відсутні
+- i=1 tf=4h: LSH/LSL відсутні
+- i=2 tf=4h: LSH/LSL відсутні
+- i=3 tf=4h: LSH/LSL відсутні
+- i=4 tf=4h: LSH/LSL відсутні
+- i=5 tf=4h: LSH/LSL відсутні
+- i=6 tf=4h: LSH/LSL відсутні
+- i=7 tf=4h: LSH/LSL відсутні
+- i=8 tf=4h: LSH/LSL відсутні
+- i=9 tf=4h: LSH/LSL відсутні
+- i=10 tf=4h: LSH/LSL відсутні
+- i=11 tf=4h: LSH/LSL відсутні
+- i=12 tf=4h: LSH/LSL відсутні
+- i=13 tf=4h: LSH/LSL відсутні
+- i=14 tf=4h: LSH/LSL відсутні
+- i=15 tf=4h: LSH/LSL відсутні
+- i=16 tf=4h: LSH/LSL відсутні
+- i=17 tf=4h: LSH/LSL відсутні
+- i=18 tf=4h: LSH/LSL відсутні
+- i=19 tf=4h: LSH/LSL відсутні
+- i=20 tf=4h: LSH/LSL відсутні
+- i=21 tf=4h: LSH/LSL відсутні
+- i=22 tf=4h: LSH/LSL відсутні
+- i=23 tf=4h: LSH/LSL відсутні
+- i=24 tf=4h: LSH/LSL відсутні
+- i=0 tf=4h: NYH/NYL відсутні
+- i=1 tf=4h: NYH/NYL відсутні
+- i=2 tf=4h: NYH/NYL відсутні
+- i=3 tf=4h: NYH/NYL відсутні
+- i=4 tf=4h: NYH/NYL відсутні
+- i=5 tf=4h: NYH/NYL відсутні
+- i=6 tf=4h: NYH/NYL відсутні
+- i=7 tf=4h: NYH/NYL відсутні
+- i=8 tf=4h: NYH/NYL відсутні
+- i=9 tf=4h: NYH/NYL відсутні
+- i=10 tf=4h: NYH/NYL відсутні
+- i=11 tf=4h: NYH/NYL відсутні
+- i=12 tf=4h: NYH/NYL відсутні
+- i=13 tf=4h: NYH/NYL відсутні
+- i=14 tf=4h: NYH/NYL відсутні
+- i=15 tf=4h: NYH/NYL відсутні
+- i=16 tf=4h: NYH/NYL відсутні
+- i=17 tf=4h: NYH/NYL відсутні
+- i=18 tf=4h: NYH/NYL відсутні
+- i=19 tf=4h: NYH/NYL відсутні
+- i=20 tf=4h: NYH/NYL відсутні
+- i=21 tf=4h: NYH/NYL відсутні
+- i=22 tf=4h: NYH/NYL відсутні
+- i=23 tf=4h: NYH/NYL відсутні
+- i=24 tf=4h: NYH/NYL відсутні

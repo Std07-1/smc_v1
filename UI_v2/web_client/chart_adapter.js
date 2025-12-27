@@ -801,6 +801,9 @@
         let zoneLabelsLogged = false;
         let poolLines = [];
         let poolSegments = [];
+        let selectedLevelLines = [];
+        let selectedLevelSegments = [];
+        let selectedLevelBands = [];
         let rangeAreas = [];
         let zoneLines = [];
         let zoneAreas = [];
@@ -816,6 +819,10 @@
         let chartTimeRange = { min: null, max: null };
         let lastBarsSignature = null;
         let autoFitDone = false;
+
+        // Levels-V1 (4.1): legacy selection/рендер pools-рівнів у фронтенді вимкнено.
+        // Єдине джерело істини для рівнів — `levels_selected_v1` з бекенду.
+        const LEGACY_POOL_LEVELS_ENABLED = false;
 
         // Формат нижньої часової шкали: вирівнюємо підпис по кроку барів.
         // Це прибирає артефакти на кшталт 23:04 для TF=5m, якщо в даних трапляються
@@ -2345,6 +2352,29 @@
             poolSegments = [];
         }
 
+        function clearLevelsSelectedV1() {
+            selectedLevelLines.forEach((line) => candles.removePriceLine(line));
+            selectedLevelLines = [];
+
+            selectedLevelSegments.forEach((series) => {
+                try {
+                    chart.removeSeries(series);
+                } catch (err) {
+                    console.warn("chart_adapter: не вдалося прибрати level segment", err);
+                }
+            });
+            selectedLevelSegments = [];
+
+            selectedLevelBands.forEach((series) => {
+                try {
+                    chart.removeSeries(series);
+                } catch (err) {
+                    console.warn("chart_adapter: не вдалося прибрати level band", err);
+                }
+            });
+            selectedLevelBands = [];
+        }
+
         function clearRanges() {
             rangeAreas.forEach((series) => chart.removeSeries(series));
             rangeAreas = [];
@@ -2938,19 +2968,28 @@
         }
 
         function setLiquidityPools(pools) {
+            // Legacy path: вимкнено (4.1). Залишається лише як safe no-op,
+            // щоб інші частини UI могли викликати setLiquidityPools([]) для очистки.
             clearPools();
             try {
                 lastLiquidityPools = Array.isArray(pools) ? pools.slice(0) : [];
             } catch (_e) {
                 lastLiquidityPools = [];
             }
-            if (!Array.isArray(pools) || !pools.length) {
+            if (!LEGACY_POOL_LEVELS_ENABLED) {
                 return;
             }
+        }
 
-            const selection = selectPoolsForRender(pools);
-            const local = selection.local;
-            const global = selection.global;
+        function setLevelsSelectedV1(levels, renderTf) {
+            clearLevelsSelectedV1();
+            const tf = String(renderTf || "").toLowerCase();
+            if (!Array.isArray(levels) || !levels.length || !tf) {
+                if (tf) {
+                    console.log(`levels_selected_v1_rendered: lines=0 bands=0 tf=${tf}`);
+                }
+                return;
+            }
 
             const pickSegmentRange = () => {
                 const span = Math.max(1, Number(barTimeSpanSeconds) || 60);
@@ -2959,8 +2998,6 @@
                 if (!Number.isFinite(to)) {
                     return null;
                 }
-
-                // Сегмент достатньо довгий, щоб бути помітним, але не «на весь екран».
                 const segmentSpan = span * 140;
                 const fromRaw = to - segmentSpan;
                 const from = Number.isFinite(fromMin) ? Math.max(fromMin, fromRaw) : fromRaw;
@@ -2972,30 +3009,34 @@
 
             const segmentRange = pickSegmentRange();
 
-            const renderOne = (pool) => {
-                const price = Number(pool.price);
-                if (!Number.isFinite(price)) return;
-                const role = (pool.role || "").toUpperCase();
+            const isPdhPdl = (label) => {
+                const v = String(label || "").toUpperCase();
+                return v === "PDH" || v === "PDL";
+            };
 
-                const color = role === "PRIMARY" ? "rgba(249, 199, 79, 0.65)" : "#577590";
-                const title = shortPoolTitle(pool);
+            const lineColorFor = (label) => {
+                return isPdhPdl(label) ? "rgba(249, 199, 79, 0.65)" : "#577590";
+            };
 
-                // Бейдж на шкалі (компактно). Горизонтальну лінію тут не малюємо.
-                if (pool._axisLabel) {
-                    const badge = candles.createPriceLine({
-                        price,
-                        color,
-                        lineWidth: 1,
-                        lineStyle: LightweightCharts.LineStyle.Dashed,
-                        axisLabelVisible: true,
-                        lineVisible: false,
-                        title,
-                    });
-                    poolLines.push(badge);
-                }
+            const renderLine = (price, label) => {
+                const p = Number(price);
+                if (!Number.isFinite(p)) return;
 
-                // Сегмент на полі — лише для «локальних» рівнів.
-                if (pool._lineVisible !== false && segmentRange) {
+                const title = String(label || "LVL").toUpperCase();
+                const color = lineColorFor(title);
+
+                const badge = candles.createPriceLine({
+                    price: p,
+                    color,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    axisLabelVisible: true,
+                    lineVisible: false,
+                    title,
+                });
+                selectedLevelLines.push(badge);
+
+                if (segmentRange) {
                     const seg = chart.addLineSeries({
                         color,
                         lineWidth: 1,
@@ -3003,19 +3044,84 @@
                         lastValueVisible: false,
                         priceLineVisible: false,
                         crosshairMarkerVisible: false,
-                        // Важливо: pools не мають впливати на autoscale.
                         autoscaleInfoProvider: () => null,
                     });
                     seg.setData([
-                        { time: segmentRange.from, value: price },
-                        { time: segmentRange.to, value: price },
+                        { time: segmentRange.from, value: p },
+                        { time: segmentRange.to, value: p },
                     ]);
-                    poolSegments.push(seg);
+                    selectedLevelSegments.push(seg);
                 }
             };
 
-            local.forEach(renderOne);
-            global.forEach(renderOne);
+            const renderBand = (top, bot, label) => {
+                const toFiniteOrNull = (value) => {
+                    if (value === null || value === undefined) return null;
+                    const num = typeof value === "number" ? value : Number(value);
+                    return Number.isFinite(num) ? num : null;
+                };
+
+                const a = toFiniteOrNull(top);
+                const b = toFiniteOrNull(bot);
+                if (a === null || b === null) return;
+
+                const zMin = Math.min(a, b);
+                const zMax = Math.max(a, b);
+                const title = String(label || "BAND").toUpperCase();
+
+                // UX: band як "коридор" показуємо без заливки (щоб не перекривати графік).
+                // Малюємо 2 лінії (нижня/верхня межа) з тим самим label.
+                renderLine(zMin, `${title} L`);
+                renderLine(zMax, `${title} H`);
+            };
+
+            const byTf = levels.filter((lvl) => String(lvl?.owner_tf || "").toLowerCase() === tf);
+
+            // Safety net: dedup по id (якщо раптом в payload є дублікати).
+            const seenIds = new Set();
+            const deduped = [];
+            for (const lvl of byTf) {
+                const id = String(lvl?.id || "");
+                if (!id) continue;
+                if (seenIds.has(id)) continue;
+                seenIds.add(id);
+                deduped.push(lvl);
+            }
+
+            const lines = [];
+            const bands = [];
+            for (const lvl of deduped) {
+                const kind = String(lvl?.kind || "").toLowerCase();
+                if (kind === "band") {
+                    bands.push(lvl);
+                } else {
+                    lines.push(lvl);
+                }
+            }
+
+            // Інваріант UX: на 5m максимум 3 lines + 2 bands.
+            let renderLines = lines;
+            let renderBands = bands;
+            if (tf === "5m") {
+                renderLines = lines.slice(0, 3);
+                renderBands = bands.slice(0, 2);
+                if (lines.length > 3 || bands.length > 2) {
+                    console.warn(
+                        `levels_selected_v1_render_cap: tf=5m lines=${lines.length} bands=${bands.length} -> lines=3 bands=2`,
+                    );
+                }
+            }
+
+            for (const lvl of renderLines) {
+                renderLine(lvl?.price, lvl?.label);
+            }
+            for (const lvl of renderBands) {
+                renderBand(lvl?.top, lvl?.bot, lvl?.label);
+            }
+
+            console.log(
+                `levels_selected_v1_rendered: lines=${renderLines.length} bands=${renderBands.length} tf=${tf}`,
+            );
         }
 
         function setRanges(ranges) {
@@ -3924,6 +4030,7 @@
             clearPoiDomLabels();
             clearEvents();
             clearPools();
+            clearLevelsSelectedV1();
             clearRanges();
             clearZones();
             clearOteOverlays();
@@ -3942,6 +4049,7 @@
             setExecutionEvents,
             setOteZones,
             setLiquidityPools,
+            setLevelsSelectedV1,
             setRanges,
             setZones,
             setViewTimeframe: (tf) => {

@@ -276,10 +276,14 @@ async def run_pipeline() -> None:
         AI_ONE_MODE,
         NAMESPACE,
     )
-    if str(AI_ONE_MODE or "").strip().lower() == "local" and NAMESPACE == "ai_one":
+    if str(AI_ONE_MODE or "").strip().lower() == "local" and NAMESPACE in {
+        "ai_one",
+        "ai_one_prod",
+    }:
         logger.warning(
-            "[Launch] УВАГА: локальний режим використовує prod namespace 'ai_one'. "
-            "Перевірте ENV/.env: приберіть AI_ONE_NAMESPACE або встановіть ai_one_local."
+            "[Launch] УВАГА: локальний режим використовує prod/legacy namespace '%s'. "
+            "Перевірте ENV/.env: приберіть AI_ONE_NAMESPACE або встановіть ai_one_local.",
+            NAMESPACE,
         )
     tasks: list[asyncio.Task[Any]] = []
     fxcm_tasks: list[asyncio.Task[Any]] = []

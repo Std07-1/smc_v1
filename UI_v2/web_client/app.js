@@ -360,6 +360,52 @@ function mapPoolsFromViewerState(state) {
     return [...mappedPools, ...mappedTargets];
 }
 
+function mapLevelsSelectedV1FromViewerState(state) {
+    const toFiniteOrNull = (value) => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === "number") {
+            return Number.isFinite(value) ? value : null;
+        }
+        if (typeof value === "string" && !value.trim()) {
+            return null;
+        }
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+    };
+
+    const raw = state?.levels_selected_v1 || [];
+    return (Array.isArray(raw) ? raw : [])
+        .map((lvl) => {
+            const kind = String(lvl?.kind || "").toLowerCase();
+            const out = {
+                ...lvl,
+                kind,
+                owner_tf: String(lvl?.owner_tf || ""),
+                label: String(lvl?.label || ""),
+                price: toFiniteOrNull(lvl?.price),
+                top: toFiniteOrNull(lvl?.top),
+                bot: toFiniteOrNull(lvl?.bot),
+                rank: toFiniteOrNull(lvl?.rank),
+            };
+            return out;
+        })
+        .filter((lvl) => {
+            if (lvl.kind === "band") {
+                return lvl.top !== null && lvl.bot !== null;
+            }
+            return lvl.price !== null;
+        });
+}
+
+function pickSelectedLevelsRenderTf(viewTf) {
+    const tf = normalizeTimeframe(viewTf);
+    // Дизайн Levels-V1: 1m selected у нас вимкнений, тому на 1m рендеримо selected від 5m.
+    if (tf === "1m") {
+        return "5m";
+    }
+    return tf;
+}
+
 function mapRangesFromViewerState(state) {
     const ranges = state?.structure?.ranges || [];
     return ranges.map((range) => ({
@@ -3141,7 +3187,7 @@ function updateChartFromViewerState(state, options = {}) {
 
     const events = mapEventsFromViewerState(state);
     const execEvents = mapExecutionEventsFromViewerState(state);
-    const pools = mapPoolsFromViewerState(state);
+    const levelsSelectedV1 = mapLevelsSelectedV1FromViewerState(state);
     const ranges = mapRangesFromViewerState(state);
     const oteZones = mapOteZonesFromViewerState(state);
     const zones = mapZonesFromViewerState(state);
@@ -3159,7 +3205,18 @@ function updateChartFromViewerState(state, options = {}) {
     if (typeof appState.chart.setExecutionEvents === "function") {
         appState.chart.setExecutionEvents(layersVisibility.events ? execEvents : []);
     }
-    appState.chart.setLiquidityPools(layersVisibility.pools ? pools : []);
+
+    const selectedRenderTf = pickSelectedLevelsRenderTf(appState.currentTimeframe);
+
+    // Крок 4.1: one-layer truth у UI. Legacy-рівні з pools більше НЕ рендеримо.
+    // Якщо selected тимчасово порожній — показуємо 0 рівнів (але без «подвійної правди»).
+    appState.chart.setLiquidityPools([]);
+    if (typeof appState.chart.setLevelsSelectedV1 === "function") {
+        appState.chart.setLevelsSelectedV1(
+            layersVisibility.pools ? levelsSelectedV1 : [],
+            selectedRenderTf,
+        );
+    }
     appState.chart.setRanges(layersVisibility.ranges ? ranges : []);
     appState.chart.setOteZones(layersVisibility.ote ? oteZones : []);
     appState.chart.setZones(layersVisibility.zones ? zones : []);

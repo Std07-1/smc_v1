@@ -37,6 +37,27 @@ def test_ai_one_mode_local_sets_default_namespace_when_env_namespace_missing() -
         _reload_config()
 
 
+def test_ai_one_mode_prod_sets_default_namespace_when_env_namespace_missing() -> None:
+    prev_mode = os.environ.get("AI_ONE_MODE")
+    prev_ns = os.environ.get("AI_ONE_NAMESPACE")
+    try:
+        os.environ["AI_ONE_MODE"] = "prod"
+        os.environ.pop("AI_ONE_NAMESPACE", None)
+        cfg = _reload_config()
+        assert cfg.AI_ONE_MODE == "prod"
+        assert cfg.NAMESPACE == "ai_one_prod"
+    finally:
+        if prev_mode is None:
+            os.environ.pop("AI_ONE_MODE", None)
+        else:
+            os.environ["AI_ONE_MODE"] = prev_mode
+        if prev_ns is None:
+            os.environ.pop("AI_ONE_NAMESPACE", None)
+        else:
+            os.environ["AI_ONE_NAMESPACE"] = prev_ns
+        _reload_config()
+
+
 def test_ai_one_namespace_env_override_wins_over_mode() -> None:
     prev_mode = os.environ.get("AI_ONE_MODE")
     prev_ns = os.environ.get("AI_ONE_NAMESPACE")

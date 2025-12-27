@@ -22,6 +22,7 @@ from core.contracts.viewer_state import (
 from UI_v2.viewer_state_builder import (
     ViewerStateCache,
     build_viewer_state,
+    select_levels_for_tf_v1,
 )
 
 
@@ -204,6 +205,327 @@ def test_build_viewer_state_includes_pipeline_local_from_stats() -> None:
     assert pipeline_local["ready_bars"] == 120
     assert pipeline_local["required_bars"] == 200
     assert pipeline_local["ready_ratio"] == pytest.approx(0.6)
+
+
+def test_build_viewer_state_levels_selected_v1_respects_caps_on_3_3c() -> None:
+    """3.3c: `levels_selected_v1` має тримати caps по TF (без шуму)."""
+
+    # Даємо OHLCV frames, щоб distance-gate мав ATR/DR і selected не був порожнім.
+    replay_cursor_ms = 1_766_612_700_000
+    base_ms = int(replay_cursor_ms - (25 * 5 * 60 * 1000))
+    bars_5m: list[dict[str, Any]] = []
+    for i in range(25):
+        t = base_ms + i * (5 * 60 * 1000)
+        # Конструкція з великим TR, щоб ATR був достатній для gate.
+        bars_5m.append(
+            {
+                "time": int(t),
+                "open": 2410.0,
+                "high": 2420.0,
+                "low": 2400.0,
+                "close": 2412.0,
+                "complete": True,
+            }
+        )
+
+    bars_4h: list[dict[str, Any]] = [
+        {
+            "time": int(replay_cursor_ms - (4 * 60 * 60 * 1000)),
+            "open": 2400.0,
+            "high": 2500.0,
+            "low": 2300.0,
+            "close": 2410.0,
+            "complete": True,
+        }
+    ]
+
+    asset = _make_basic_asset(
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": [],
+            "magnets": [
+                {
+                    "kind": "MAG",
+                    "level": 0.0,
+                    "meta": {"symbol": "xauusd"},
+                    "pools": [
+                        {"liq_type": "RANGE_EXTREME", "level": 2415.0},
+                        {"liq_type": "RANGE_EXTREME", "level": 2400.0},
+                        {
+                            "liq_type": "EQH",
+                            "source_swings": [
+                                {"price": 2410.0},
+                                {"price": 2412.0},
+                            ],
+                        },
+                        {
+                            "liq_type": "EQL",
+                            "source_swings": [
+                                {"price": 2405.0},
+                                {"price": 2407.0},
+                            ],
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+
+    asset["ohlcv_frames_by_tf"] = {"5m": bars_5m, "4h": bars_4h}
+    meta = _make_basic_meta(replay_cursor_ms=replay_cursor_ms)
+
+    state: SmcViewerState = build_viewer_state(asset, meta, fxcm_block=None, cache=None)
+
+    selected = state.get("levels_selected_v1")
+
+    assert isinstance(selected, list) and selected
+
+    close_ts_expected = float(replay_cursor_ms) / 1000.0
+
+    # Перевіряємо caps/rank/selected_at_close_ts.
+    by_tf: dict[str, list[dict[str, Any]]] = {}
+    for s in selected:
+        assert isinstance(s, dict)
+        tf = str(s.get("owner_tf") or "").lower()
+        by_tf.setdefault(tf, []).append(s)
+
+        reasons = s.get("reason")
+        assert isinstance(reasons, list) and reasons
+        assert float(s.get("selected_at_close_ts") or 0.0) == pytest.approx(
+            close_ts_expected
+        )
+
+    assert "1m" not in by_tf or not by_tf.get("1m")
+
+    def _counts(rows: list[dict[str, Any]]) -> tuple[int, int]:
+        lines = 0
+        bands = 0
+        for r in rows:
+            k = str(r.get("kind") or "").lower()
+            if k == "line":
+                lines += 1
+            elif k == "band":
+                bands += 1
+        return lines, bands
+
+    for tf, rows in by_tf.items():
+        ranks = sorted([int(r.get("rank") or 0) for r in rows])
+        assert ranks == list(range(1, len(rows) + 1)), f"tf={tf} ranks={ranks}"
+        lines, bands = _counts(rows)
+        if tf == "5m":
+            assert lines <= 3
+            assert bands <= 2
+        if tf in {"1h", "4h"}:
+            assert lines <= 6
+            assert bands <= 2
+
+
+def test_levels_selected_v1_distance_soft_allows_session_pair_3_3g() -> None:
+    """3.3g: distance-гейт має бути м'яким, але детермінованим.
+
+    Якщо SESSION пара (H+L) знаходиться поза hard-gate, але в межах soft-gate,
+    вона має потрапити у selection і отримати reason `DISTANCE_SOFT_OK`.
+    """
+
+    # ATR(5m) ~= 1.0 (TR=1 на кожному барі), тоді:
+    # hard=2.5*ATR=2.5, soft=4.0*ATR=4.0
+    # Сесійну пару ставимо на відстані 3.0 (SOFT), RANGE на 1.0 (IN).
+    ref_price = 100.0
+    # Важливо: timestamp має потрапляти у LONDON (07–13 UTC), інакше active session буде ASIA/NY.
+    close_ts = 1_700_036_000.0
+
+    bars_5m: list[dict[str, Any]] = []
+    base_ms = int(close_ts * 1000) - (20 * 5 * 60 * 1000)
+    for i in range(20):
+        t = base_ms + i * (5 * 60 * 1000)
+        bars_5m.append(
+            {
+                "time": int(t),
+                "open": 100.0,
+                "high": 101.0,
+                "low": 100.0,
+                "close": 100.0,
+                "complete": True,
+            }
+        )
+
+    frames_by_tf = {"5m": bars_5m}
+
+    merged: list[dict[str, Any]] = [
+        {
+            "id": "5m_lsh",
+            "owner_tf": "5m",
+            "kind": "line",
+            "label": "LSH",
+            "source": "SESSION",
+            "price": ref_price + 3.0,
+            "top": None,
+            "bot": None,
+        },
+        {
+            "id": "5m_lsl",
+            "owner_tf": "5m",
+            "kind": "line",
+            "label": "LSL",
+            "source": "SESSION",
+            "price": ref_price - 3.0,
+            "top": None,
+            "bot": None,
+        },
+        {
+            "id": "5m_rng_h",
+            "owner_tf": "5m",
+            "kind": "line",
+            "label": "RANGE_H",
+            "source": "RANGE",
+            "price": ref_price + 1.0,
+            "top": None,
+            "bot": None,
+        },
+    ]
+
+    selected = select_levels_for_tf_v1(
+        "5m",
+        cast(list, merged),
+        ref_price,
+        close_ts,
+        frames_by_tf=frames_by_tf,
+        symbol="XAUUSD",
+    )
+
+    by_id = {str(x.get("id") or ""): x for x in selected}
+    assert "5m_lsh" in by_id
+    assert "5m_lsl" in by_id
+
+    r1 = set(cast(list, by_id["5m_lsh"].get("reason") or []))
+    r2 = set(cast(list, by_id["5m_lsl"].get("reason") or []))
+    assert "PINNED_SESSION_ACTIVE" in r1
+    assert "PINNED_SESSION_ACTIVE" in r2
+    assert "DISTANCE_SOFT_OK" in r1
+    assert "DISTANCE_SOFT_OK" in r2
+
+
+def test_build_viewer_state_levels_selected_v1_freezes_on_close_3_3d() -> None:
+    """3.3d: на preview не змінюємо selected (freeze-on-close), на close — оновлюємо."""
+
+    cache = ViewerStateCache()
+
+    # Бар-рамки потрібні, щоб selection не був порожнім (distance-gate має ATR).
+    replay_cursor_ms_1 = 1_766_612_700_000
+    base_ms = int(replay_cursor_ms_1 - (25 * 5 * 60 * 1000))
+    bars_5m: list[dict[str, Any]] = []
+    for i in range(25):
+        t = base_ms + i * (5 * 60 * 1000)
+        bars_5m.append(
+            {
+                "time": int(t),
+                "open": 2410.0,
+                "high": 2420.0,
+                "low": 2400.0,
+                "close": 2412.0,
+                "complete": True,
+            }
+        )
+
+    bars_4h: list[dict[str, Any]] = [
+        {
+            "time": int(replay_cursor_ms_1 - (4 * 60 * 60 * 1000)),
+            "open": 2400.0,
+            "high": 2500.0,
+            "low": 2300.0,
+            "close": 2410.0,
+            "complete": True,
+        }
+    ]
+
+    # Close#1: базовий RANGE.
+    asset_close_1 = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "close"},
+        },
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": [],
+            "magnets": [
+                {
+                    "kind": "MAG",
+                    "level": 0.0,
+                    "meta": {"symbol": "xauusd"},
+                    "pools": [
+                        {"liq_type": "RANGE_EXTREME", "level": 2415.0},
+                        {"liq_type": "RANGE_EXTREME", "level": 2400.0},
+                    ],
+                }
+            ],
+        },
+    )
+    asset_close_1["ohlcv_frames_by_tf"] = {"5m": bars_5m, "4h": bars_4h}
+    meta_1 = _make_basic_meta(replay_cursor_ms=replay_cursor_ms_1, seq=1)
+
+    state_close_1 = build_viewer_state(
+        asset_close_1, meta_1, fxcm_block=None, cache=cache
+    )
+    selected_close_1 = state_close_1.get("levels_selected_v1")
+    assert isinstance(selected_close_1, list) and selected_close_1
+    close_ts_1 = float(replay_cursor_ms_1) / 1000.0
+    assert float(
+        selected_close_1[0].get("selected_at_close_ts") or 0.0
+    ) == pytest.approx(close_ts_1)
+
+    # Preview між close: змінюємо RANGE (якби не freeze, selection мав би змінитися).
+    replay_cursor_ms_2 = replay_cursor_ms_1 + (5 * 60 * 1000)
+    asset_preview = _make_basic_asset(
+        smc_hint={
+            "structure": {},
+            "liquidity": {},
+            "zones": {},
+            "signals": [],
+            "meta": {"smc_compute_kind": "preview"},
+        },
+        smc_liquidity={
+            "amd_phase": "MANIP",
+            "pools": [],
+            "magnets": [
+                {
+                    "kind": "MAG",
+                    "level": 0.0,
+                    "meta": {"symbol": "xauusd"},
+                    "pools": [
+                        {"liq_type": "RANGE_EXTREME", "level": 2420.0},
+                        {"liq_type": "RANGE_EXTREME", "level": 2405.0},
+                    ],
+                }
+            ],
+        },
+    )
+    asset_preview["ohlcv_frames_by_tf"] = {"5m": bars_5m, "4h": bars_4h}
+    meta_2 = _make_basic_meta(replay_cursor_ms=replay_cursor_ms_2, seq=2)
+
+    state_preview = build_viewer_state(
+        asset_preview, meta_2, fxcm_block=None, cache=cache
+    )
+    selected_preview = state_preview.get("levels_selected_v1")
+    assert selected_preview == selected_close_1
+
+    # Close#2: тепер маємо оновити selection і selected_at_close_ts.
+    asset_close_2 = dict(asset_preview)
+    asset_close_2["smc_hint"] = dict(asset_preview["smc_hint"])  # type: ignore[index]
+    asset_close_2["smc_hint"]["meta"] = {"smc_compute_kind": "close"}  # type: ignore[index]
+
+    state_close_2 = build_viewer_state(
+        asset_close_2, meta_2, fxcm_block=None, cache=cache
+    )
+    selected_close_2 = state_close_2.get("levels_selected_v1")
+    assert isinstance(selected_close_2, list) and selected_close_2
+    assert selected_close_2 != selected_close_1
+    close_ts_2 = float(replay_cursor_ms_2) / 1000.0
+    assert float(
+        selected_close_2[0].get("selected_at_close_ts") or 0.0
+    ) == pytest.approx(close_ts_2)
 
 
 def test_build_viewer_state_cache_backfills_events_and_zones() -> None:

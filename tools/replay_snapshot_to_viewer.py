@@ -121,6 +121,64 @@ def _tf_ms(tf: str) -> int:
     raise ValueError(f"Непідтримуваний TF: {tf}")
 
 
+# Levels-V1 (3.2.2x): мінімальна глибина барів для prev-day та споріднених кандидатів.
+# ВАЖЛИВО: ці бари мають бути лише "complete" (close_time <= asof_ms), без lookahead.
+LEVELS_V1_MIN_CLOSED_BARS_BY_TF: dict[str, int] = {
+    "5m": 600,
+    "1h": 72,
+    "4h": 48,
+}
+
+
+def _frame_to_ohlcv_bars_for_viewer(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    """Конвертує DataFrame OHLCV у список барів (UI /ohlcv-форма).
+
+    Важливо:
+    - `time` повертаємо як close_time (ms), якщо він є, інакше як open_time (ms);
+    - додаємо `complete=True`, щоб policy могла бути однозначною.
+    """
+    if frame is None or getattr(frame, "empty", True):
+        return []
+
+    # Локальний імпорт: цей модуль імортується як скрипт, і core.serialization
+    # у нас підтягується всередині main(); тут робимо best-effort без глобальних side effects.
+    from core.serialization import safe_float
+
+    records = frame.to_dict("records")
+    out: list[dict[str, Any]] = []
+    for r in records:
+        if not isinstance(r, dict):
+            continue
+        t_any = r.get("close_time") or r.get("open_time")
+        if t_any is None:
+            continue
+        try:
+            t_ms = int(float(t_any))
+        except (TypeError, ValueError):
+            continue
+
+        o = safe_float(r.get("open"))
+        h = safe_float(r.get("high"))
+        low = safe_float(r.get("low"))
+        c = safe_float(r.get("close"))
+        v = safe_float(r.get("volume")) or 0.0
+        if o is None or h is None or low is None or c is None:
+            continue
+        out.append(
+            {
+                "time": int(t_ms),
+                "open": float(o),
+                "high": float(h),
+                "low": float(low),
+                "close": float(c),
+                "volume": float(v),
+                "complete": True,
+            }
+        )
+
+    return out
+
+
 def _add_time_cols(df: pd.DataFrame, *, tf: str) -> pd.DataFrame:
     """Додає open_time/close_time як ms, якщо можливо.
 
@@ -180,6 +238,30 @@ def _slice_closed_tail(
     if window > 0 and len(part) > window:
         part = part.iloc[-max(10, int(window)) :]
     return part.copy()
+
+
+def _build_ohlcv_frames_by_tf_for_levels(
+    df_by_tf: dict[str, pd.DataFrame],
+    *,
+    asof_ms: int,
+) -> dict[str, list[dict[str, Any]]]:
+    """Будує `asset["ohlcv_frames_by_tf"]` для Levels-V1.
+
+    Гарантує:
+    - anti-lookahead: беремо тільки закриті бари (close_time <= asof_ms);
+    - мінімальні хвости за TF (див. LEVELS_V1_MIN_CLOSED_BARS_BY_TF);
+    - стабільний контракт барів (UI /ohlcv-форма + complete=True).
+    """
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    for tf, min_bars in LEVELS_V1_MIN_CLOSED_BARS_BY_TF.items():
+        df = df_by_tf.get(tf)
+        if df is None or df.empty:
+            out[tf] = []
+            continue
+        frame = _slice_closed_tail(df, now_ms=int(asof_ms), window=int(min_bars))
+        out[tf] = _frame_to_ohlcv_bars_for_viewer(frame)
+    return out
 
 
 def _aggregate_partial_primary_from_1m(
@@ -339,6 +421,16 @@ async def main() -> int:
         help=(
             "Холодний старт: порахувати стан на останніх барах і опублікувати лише 1 snapshot "
             "(без покрокового replay)"
+        ),
+    )
+    ap.add_argument(
+        "--publish-once-asof-ms",
+        type=int,
+        default=0,
+        help=(
+            "(QA) Для --publish-once: зафіксувати 'asof' (now_ms) на конкретному close_time (ms) "
+            "і взяти кадр лише з барів, які закриті до цього моменту. "
+            "Корисно, щоб перевіряти prev-day кандидати (PDH/PDL), якщо останній день у снапшоті — свято/вихідний."
         ),
     )
     ap.add_argument(
@@ -523,6 +615,18 @@ async def main() -> int:
             print(f"ПОМИЛКА: немає даних для base_tf={base_tf} (publish_once)")
             return 3
 
+        asof_ms_override = int(args.publish_once_asof_ms or 0)
+        if asof_ms_override > 0 and "close_time" in df_base.columns:
+            df_base = df_base[
+                pd.to_numeric(df_base["close_time"], errors="coerce")
+                <= asof_ms_override
+            ].copy()
+            if df_base.empty:
+                print(
+                    f"ПОМИЛКА: після фільтру publish_once_asof_ms={asof_ms_override} не залишилось барів (base_tf={base_tf})"
+                )
+                return 3
+
         if window <= 0:
             frame_base = df_base.copy()
         else:
@@ -543,6 +647,8 @@ async def main() -> int:
             df_1h = _load_tf_or_empty("1h", tail_limit=max(limit, 300))
             df_4h = _load_tf_or_empty("4h", tail_limit=max(limit, 200))
             now_ms = int(frame_base["close_time"].iloc[-1])
+            if asof_ms_override > 0:
+                now_ms = int(asof_ms_override)
             ohlc_by_tf = {
                 str(base_tf): _slice_closed_tail(df_base, now_ms=now_ms, window=window),
             }
@@ -650,6 +756,31 @@ async def main() -> int:
             "smc_hint": hint_plain,
         }
 
+        # Для Levels-V1 candidates (3.2.2x): гарантуємо мінімальний lookback
+        # "до asof_ms" і *без* lookahead (лише complete бари).
+        try:
+            levels_asof_ms = int(asof_ms_override or frame_base["close_time"].iloc[-1])
+            df_5m = _load_tf_or_empty(
+                "5m",
+                tail_limit=max(
+                    LEVELS_V1_MIN_CLOSED_BARS_BY_TF["5m"] * 2, limit * 2, 1400
+                ),
+            )
+            df_1h_levels = _load_tf_or_empty(
+                "1h",
+                tail_limit=max(LEVELS_V1_MIN_CLOSED_BARS_BY_TF["1h"] * 2, 200),
+            )
+            df_4h_levels = _load_tf_or_empty(
+                "4h",
+                tail_limit=max(LEVELS_V1_MIN_CLOSED_BARS_BY_TF["4h"] * 2, 120),
+            )
+            asset_any["ohlcv_frames_by_tf"] = _build_ohlcv_frames_by_tf_for_levels(
+                {"5m": df_5m, "1h": df_1h_levels, "4h": df_4h_levels},
+                asof_ms=levels_asof_ms,
+            )
+        except Exception:
+            asset_any["ohlcv_frames_by_tf"] = {}
+
         viewer_state = build_viewer_state(
             cast(UiSmcAssetPayload, asset_any),
             cast(UiSmcMeta, meta_any),
@@ -676,6 +807,34 @@ async def main() -> int:
 
     if not bool(args.tv_like):
         # Legacy replay: як було раніше (один TF з --path).
+
+        # 3.2.2x: готуємо DF-джерела для Levels-V1 один раз (щоб не перечитувати jsonl).
+        try:
+            df_5m_levels = (
+                df_path_tf
+                if str(tf_from_path).lower() == "5m"
+                else _load_tf_or_empty(
+                    "5m",
+                    tail_limit=max(
+                        LEVELS_V1_MIN_CLOSED_BARS_BY_TF["5m"] * 2,
+                        limit * 2,
+                        1400,
+                    ),
+                )
+            )
+            df_1h_levels = _load_tf_or_empty(
+                "1h",
+                tail_limit=max(LEVELS_V1_MIN_CLOSED_BARS_BY_TF["1h"] * 2, 200),
+            )
+            df_4h_levels = _load_tf_or_empty(
+                "4h",
+                tail_limit=max(LEVELS_V1_MIN_CLOSED_BARS_BY_TF["4h"] * 2, 120),
+            )
+        except Exception:
+            df_5m_levels = pd.DataFrame()
+            df_1h_levels = pd.DataFrame()
+            df_4h_levels = pd.DataFrame()
+
         for i in range(2, len(df_path_tf) + 1):
             if window <= 0:
                 start = 0
@@ -775,6 +934,17 @@ async def main() -> int:
                 "smc_hint": hint_plain,
             }
 
+            # 3.2.2x: рівні (PDH/PDL) потребують достатньої історії, тому
+            # підкладаємо хвости 5m/1h/4h "до asof_ms" без lookahead.
+            try:
+                levels_asof_ms = int(frame["close_time"].iloc[-1])
+                asset_any["ohlcv_frames_by_tf"] = _build_ohlcv_frames_by_tf_for_levels(
+                    {"5m": df_5m_levels, "1h": df_1h_levels, "4h": df_4h_levels},
+                    asof_ms=levels_asof_ms,
+                )
+            except Exception:
+                asset_any["ohlcv_frames_by_tf"] = {}
+
             viewer_state = build_viewer_state(
                 cast(UiSmcAssetPayload, asset_any),
                 cast(UiSmcMeta, meta_any),
@@ -835,8 +1005,18 @@ async def main() -> int:
 
     # Додаткові TF (best-effort): 1m/1h/4h.
     df_1m = _load_tf_or_empty("1m", tail_limit=max(limit * 5, 1200))
-    df_1h = _load_tf_or_empty("1h", tail_limit=max(limit, 400))
-    df_4h = _load_tf_or_empty("4h", tail_limit=max(limit, 250))
+    df_1h = _load_tf_or_empty(
+        "1h",
+        tail_limit=max(limit, LEVELS_V1_MIN_CLOSED_BARS_BY_TF["1h"] * 2, 400),
+    )
+    df_4h = _load_tf_or_empty(
+        "4h",
+        tail_limit=max(limit, LEVELS_V1_MIN_CLOSED_BARS_BY_TF["4h"] * 2, 250),
+    )
+    df_5m_levels = _load_tf_or_empty(
+        "5m",
+        tail_limit=max(limit * 2, LEVELS_V1_MIN_CLOSED_BARS_BY_TF["5m"] * 2, 1400),
+    )
 
     # Відсікаємо timeline до limit барів (останній хвіст).
     if len(df_timeline) > limit:
@@ -1195,6 +1375,16 @@ async def main() -> int:
                 "price": float(last_price) if last_price is not None else None,
                 "smc_hint": last_hint_plain,
             }
+
+            # 3.2.2x: даємо UI builder-у достатню історію для PDH/PDL (та ін. daily),
+            # синхронізовано по часу replay (anti-lookahead).
+            try:
+                asset_any["ohlcv_frames_by_tf"] = _build_ohlcv_frames_by_tf_for_levels(
+                    {"5m": df_5m_levels, "1h": df_1h, "4h": df_4h},
+                    asof_ms=int(now_ms),
+                )
+            except Exception:
+                asset_any["ohlcv_frames_by_tf"] = {}
 
             viewer_state = build_viewer_state(
                 cast(UiSmcAssetPayload, asset_any),

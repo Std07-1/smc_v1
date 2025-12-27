@@ -46,6 +46,7 @@ __all__ = [
     "PROM_HTTP_PORT",
     "SMC_BACKTEST_ENABLED",
     "SMC_RUNTIME_PARAMS",
+    "SMC_DAILY_START_HOUR_UTC",
     "REDIS_CACHE_TTL",
     "REDIS_CHANNEL_SMC_STATE",
     "REDIS_SNAPSHOT_KEY_SMC",
@@ -97,10 +98,10 @@ def _default_namespace_for_mode(mode: str) -> str:
     mode_norm = str(mode or "").strip().lower()
     if mode_norm == "local":
         return "ai_one_local"
-    return "ai_one"
+    return "ai_one_prod"
 
 
-def _env_namespace(default: str = "ai_one") -> str:
+def _env_namespace(default: str = "ai_one_prod") -> str:
     """Повертає namespace для Redis ключів/каналів.
 
     Важливо: це інфраструктурний параметр.
@@ -392,6 +393,31 @@ SMC_RUNTIME_PARAMS: dict[str, Any] = {
     "limit": 300,
     "max_concurrency": 4,
     "log_latency": True,
+}
+
+# ───────────────────────────── Levels-V1 (presentation) ──────────────────────
+
+# Levels-V1 (3.2.2x): вхідні бари для UI_v2.viewer_state_builder (PDH/PDL та ін.).
+# ВАЖЛИВО: це дані *presentation input* (не для SMC-core compute), тому ліміти
+# тут можуть бути більші за SMC_RUNTIME_PARAMS["limit"].
+SMC_VIEWER_OHLCV_FRAMES_BY_TF_ENABLED: bool = True
+SMC_VIEWER_OHLCV_FRAMES_MIN_BARS_BY_TF: dict[str, int] = {
+    "5m": 600,
+    "1h": 72,
+    "4h": 48,
+}
+
+# Визначення «торгового дня» для DAILY кандидатів (PDH/PDL/EDH/EDL).
+# День = [D@start, D+1@start) в UTC, де start задається годиною.
+SMC_DAILY_START_HOUR_UTC: int = 0
+
+# Визначення UTC-вікон торгових сесій для SESSION кандидатів (ASH/ASL, LSH/LSL, NYH/NYL).
+# SSOT по вікнах також зафіксовано в docs/smc_hint_contract.md (ASIA 22–07, LONDON 07–13, NY 13–22).
+# Формат: {TAG: (start_hour_utc, end_hour_utc)}; end може бути < start (перехід через північ).
+SMC_SESSION_WINDOWS_UTC: dict[str, tuple[int, int]] = {
+    "ASIA": (22, 7),
+    "LONDON": (7, 13),
+    "NY": (13, 22),
 }
 INTERVAL_TTL_MAP = {
     "1m": 90,
